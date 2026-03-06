@@ -34,10 +34,11 @@
 - `src/package-avalonia-apphost`：`ChsBuffer.Avalonia.AppHost` 包工程。
 - `samples/simple-pinvoke`：消费端示例工程（dllexport/pinvoke 最小验证）。
 - `samples/avalonia-sample`：Avalonia 消费端示例工程（用于验证 Avalonia AppHost 包）。
-- `tests/matrix`：验证矩阵与测试脚本。
+- `tests/HostForge.TestInfra`：测试共享基础设施（命令执行、工作区构建、断言工具）。
+- `tests/HostForge.AvaloniaAppHost.Tests`：Avalonia AppHost 构建/发布行为的 TUnit 集成测试。
+- `tests/HostForge.StaticAppHost.Tests`：Static AppHost 增量链接矩阵的 TUnit 集成测试。
 - `artifacts/hostlibs/<rid>`：Host 静态库输出目录。
 - `artifacts/skiasharp-2.88.9/<rid>`：SkiaSharp/HarfBuzz 静态库输出目录。
-- `artifacts/logs/matrix`：矩阵测试日志目录。
 
 ## 环境要求
 

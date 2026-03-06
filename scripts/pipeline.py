@@ -80,7 +80,7 @@ REPO_ROOT = SCRIPT_ROOT.parent
 BUILD_HOSTLIBS_SCRIPT = SCRIPT_ROOT / "build-hostlibs.py"
 STATIC_APPHOST_CSPROJ = REPO_ROOT / "src" / "package-static-apphost" / "StaticAppHost.csproj"
 AVALONIA_APPHOST_CSPROJ = REPO_ROOT / "src" / "package-avalonia-apphost" / "AvaloniaAppHost.csproj"
-MATRIX_TEST_SCRIPT = REPO_ROOT / "tests" / "matrix" / "run-static-host-tests.ps1"
+MATRIX_TEST_CSPROJ = REPO_ROOT / "tests" / "HostForge.StaticAppHost.Tests" / "HostForge.StaticAppHost.Tests.csproj"
 
 
 def runtime_rid(arch: str) -> str:
@@ -146,22 +146,18 @@ def run_matrix_test():
 
     header("Run matrix test")
     cmd = [
-        "powershell",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        str(MATRIX_TEST_SCRIPT),
-        "-Configuration",
+        "dotnet",
+        "test",
+        "--project",
+        str(MATRIX_TEST_CSPROJ),
+        "-c",
         args.configuration,
-        "-RuntimeIdentifier",
-        runtime_rid(args.arch),
+        f"-v:{dotnet_verbosity()}",
     ]
     if args.skip_exe_run:
-        cmd.append("-SkipExeRun")
+        cmd.extend(["-e", "HOSTFORGE_MATRIX_SKIP_EXE_RUN=true"])
     if args.no_clean:
-        cmd.append("-NoClean")
-    if args.verbose > 0:
-        cmd.append("-Verbose")
+        cmd.extend(["-e", "HOSTFORGE_MATRIX_NO_CLEAN=true"])
     execv(cmd, cwd=REPO_ROOT)
 
 
