@@ -11,6 +11,55 @@ public class AvaloniaAppHostTests
     }
 
     [Test]
+    public async Task PackageTemplates_IncludeWinX64_AndConditionallyIncludeWinArm64()
+    {
+        string project = Path.Combine(
+            RepoContext.RepoRoot,
+            "src",
+            "package-avalonia-apphost",
+            "AvaloniaAppHost.csproj");
+
+        CommandResult result = await CommandRunner.RunAsync(
+            "dotnet",
+            $"pack \"{project}\" -c Release -v:minimal",
+            RepoContext.RepoRoot);
+
+        AssertEx.Success(result);
+
+        string nuspecPath = Path.Combine(
+            RepoContext.RepoRoot,
+            "src",
+            "package-avalonia-apphost",
+            "obj",
+            "Release",
+            $"ChsBuffer.Avalonia.AppHost.{RepoContext.AvaloniaPackageVersion}.nuspec");
+
+        AssertEx.FileExists(nuspecPath);
+        string nuspec = await File.ReadAllTextAsync(nuspecPath);
+
+        AssertEx.Contains(nuspec, @"template\net10.0\win-x64\apphost.exe");
+        AssertEx.Contains(nuspec, @"template\net10.0\win-x64\singlefilehost.exe");
+
+        bool arm64InputsPresent =
+            Directory.Exists(Path.Combine(RepoContext.RepoRoot, "artifacts", "hostlibs", "win-arm64")) &&
+            Directory.Exists(Path.Combine(RepoContext.RepoRoot, "artifacts", "skiasharp-2.88.9", "win-arm64"));
+
+        if (arm64InputsPresent)
+        {
+            AssertEx.Contains(nuspec, @"template\net10.0\win-arm64\apphost.exe");
+            AssertEx.Contains(nuspec, @"template\net10.0\win-arm64\singlefilehost.exe");
+            AssertEx.NotContains(result.CombinedOutput, "Skipping Avalonia host RID(s) due to missing inputs:");
+        }
+        else
+        {
+            AssertEx.NotContains(nuspec, @"template\net10.0\win-arm64\apphost.exe");
+            AssertEx.NotContains(nuspec, @"template\net10.0\win-arm64\singlefilehost.exe");
+            AssertEx.Contains(result.CombinedOutput, "Skipping Avalonia host RID(s) due to missing inputs:");
+            AssertEx.Contains(result.CombinedOutput, "win-arm64");
+        }
+    }
+
+    [Test]
     public async Task Net9_WinX64_Build_WarnsInactive()
     {
         await using var project = await TestProjectWorkspace.CreateAsync(
@@ -56,12 +105,12 @@ public class AvaloniaAppHostTests
     }
 
     [Test]
-    public async Task Net10_WinArm64_Build_WarnsInactive()
+    public async Task Net10_WinArm64_Build_ActivationDependsOnPackagedTemplate()
     {
         await using var project = await TestProjectWorkspace.CreateAsync(
             targetFramework: "net10.0",
             runtimeIdentifier: "win-arm64",
-            includeSkiaPackages: false,
+            includeSkiaPackages: true,
             includeNativeAssetsPackages: false);
 
         CommandResult result = await CommandRunner.RunAsync(
@@ -70,9 +119,62 @@ public class AvaloniaAppHostTests
             project.ProjectDirectory);
 
         AssertEx.Success(result);
-        AssertEx.Contains(
-            result.CombinedOutput,
-            "ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='net10.0' RuntimeIdentifier='win-arm64'");
+
+        if (IsArm64TemplatePackaged())
+        {
+            AssertEx.NotContains(result.CombinedOutput, "ChsBuffer.Avalonia.AppHost is inactive");
+
+            string exePath = Path.Combine(
+                project.ProjectDirectory,
+                "bin",
+                "Release",
+                "net10.0",
+                "win-arm64",
+                $"{project.ProjectName}.exe");
+            AssertEx.FileExists(exePath);
+        }
+        else
+        {
+            AssertEx.Contains(
+                result.CombinedOutput,
+                "ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='net10.0' RuntimeIdentifier='win-arm64'");
+        }
+    }
+
+    [Test]
+    public async Task Net10_WinArm64_Publish_SkiaHarfBuzzDllsDependOnActivation()
+    {
+        await using var project = await TestProjectWorkspace.CreateAsync(
+            targetFramework: "net10.0",
+            runtimeIdentifier: "win-arm64",
+            includeSkiaPackages: true,
+            includeNativeAssetsPackages: true);
+
+        CommandResult result = await CommandRunner.RunAsync(
+            "dotnet",
+            $"publish \"{project.ProjectFilePath}\" -c Release -v:minimal",
+            project.ProjectDirectory);
+
+        AssertEx.Success(result);
+
+        string publishDir = project.GetPublishDirectory("Release", "net10.0", "win-arm64");
+        string skia = Path.Combine(publishDir, "libSkiaSharp.dll");
+        string harfbuzz = Path.Combine(publishDir, "libHarfBuzzSharp.dll");
+
+        if (IsArm64TemplatePackaged())
+        {
+            AssertEx.NotContains(result.CombinedOutput, "ChsBuffer.Avalonia.AppHost is inactive");
+            AssertEx.FileMissing(skia);
+            AssertEx.FileMissing(harfbuzz);
+        }
+        else
+        {
+            AssertEx.Contains(
+                result.CombinedOutput,
+                "ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='net10.0' RuntimeIdentifier='win-arm64'");
+            AssertEx.FileExists(skia);
+            AssertEx.FileExists(harfbuzz);
+        }
     }
 
     [Test]
@@ -161,4 +263,25 @@ public class AvaloniaAppHostTests
         AssertEx.Success(runResult, "run-exe");
         AssertEx.Contains(runResult.CombinedOutput, "SkiaSharpVersion.Native=");
     }
+
+    private static bool IsArm64TemplatePackaged()
+    {
+        string nuspecPath = Path.Combine(
+            RepoContext.RepoRoot,
+            "src",
+            "package-avalonia-apphost",
+            "obj",
+            "Release",
+            $"ChsBuffer.Avalonia.AppHost.{RepoContext.AvaloniaPackageVersion}.nuspec");
+
+        if (!File.Exists(nuspecPath))
+        {
+            return false;
+        }
+
+        string nuspec = File.ReadAllText(nuspecPath);
+        return nuspec.Contains(@"template\net10.0\win-arm64\apphost.exe", StringComparison.Ordinal) &&
+               nuspec.Contains(@"template\net10.0\win-arm64\singlefilehost.exe", StringComparison.Ordinal);
+    }
+
 }

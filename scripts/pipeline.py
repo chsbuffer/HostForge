@@ -120,9 +120,6 @@ def pack_static_apphost():
 
 
 def pack_avalonia_apphost():
-    if args.arch != "x64":
-        error("Avalonia apphost package currently supports x64 only.")
-
     header("Pack avalonia apphost nuget")
     rid = runtime_rid(args.arch)
     package_assets_dir = REPO_ROOT / "artifacts" / "hostlibs" / rid
@@ -135,6 +132,7 @@ def pack_avalonia_apphost():
             args.configuration,
             f"-v:{dotnet_verbosity()}",
             f"/p:PackageAssetsDir={package_assets_dir}",
+            f"/p:AvaloniaHostRids={rid}",
         ],
         cwd=REPO_ROOT,
     )

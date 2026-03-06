@@ -8,7 +8,7 @@
     <PackageId>ChsBuffer.Avalonia.AppHost</PackageId>
     <Version>$(AvaloniaAppHostPackageVersion)</Version>
     <Authors>ChsBuffer</Authors>
-    <Description>Prelinked Avalonia apphost/singlefilehost templates for win-x64 with optional SkiaSharp/HarfBuzz native runtime copy suppression.</Description>
+    <Description>Prelinked Avalonia apphost/singlefilehost templates for Windows (win-x64/win-arm64) with optional SkiaSharp/HarfBuzz native runtime copy suppression.</Description>
     <PackageTags>avalonia;apphost;single-file;host-template;skia;harfbuzz</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
@@ -20,7 +20,8 @@
     <IsPackable>true</IsPackable>
     <DevelopmentDependency>false</DevelopmentDependency>
 
-    <AvaloniaHostRid>win-x64</AvaloniaHostRid>
+    <AvaloniaHostRids Condition="'$(AvaloniaHostRids)' == ''">win-x64;win-arm64</AvaloniaHostRids>
+    <AvaloniaHostRid Condition="'$(AvaloniaHostRid)' == ''">win-x64</AvaloniaHostRid>
     <AvaloniaTemplateTfm>net10.0</AvaloniaTemplateTfm>
     <PackageAssetsDir Condition="'$(PackageAssetsDir)' == ''">$(HostLibsRoot)\$(AvaloniaHostRid)</PackageAssetsDir>
     <AvaloniaNativeLibsDir Condition="'$(AvaloniaNativeLibsDir)' == ''">$(AvaloniaNativeLibsRoot)\$(AvaloniaHostRid)</AvaloniaNativeLibsDir>
@@ -35,13 +36,15 @@
     <SingleFileHostLinkPath>$(AvaloniaSingleFileHostOutput)</SingleFileHostLinkPath>
     <ComputeNETCoreBuildOutputFiles>true</ComputeNETCoreBuildOutputFiles>
     <_UseSingleFileHostForPublish>true</_UseSingleFileHostForPublish>
-    <AvaloniaTemplateHostPackagePath>template/$(AvaloniaTemplateTfm)/$(AvaloniaHostRid)/</AvaloniaTemplateHostPackagePath>
   </PropertyGroup>
 
   <Import Project="$(MSBuildProjectDirectory)\..\package-static-apphost\build\StaticAppHost.targets" />
 
   <PropertyGroup>
     <StaticHostAssetsDir>$(PackageAssetsDir)</StaticHostAssetsDir>
+    <StaticHostLinkMachine Condition="'$(StaticHostLinkMachine)' == '' and '$(StaticHostRid)' == 'win-arm64'">ARM64</StaticHostLinkMachine>
+    <StaticHostVcVarsArch Condition="'$(StaticHostVcVarsArch)' == '' and '$(StaticHostRid)' == 'win-arm64'">arm64</StaticHostVcVarsArch>
+    <_StaticHostRidSupported Condition="'$(_StaticHostRidSupported)' == '' and ('$(StaticHostRid)' == 'win-x64' or '$(StaticHostRid)' == 'win-arm64')">true</_StaticHostRidSupported>
   </PropertyGroup>
 
   <ItemGroup>
@@ -54,7 +57,7 @@
   </ItemGroup>
 
   <Target Name="_ResolveAvaloniaLinkInputs">
-    <Error Condition="'$(AvaloniaHostRid)' != 'win-x64'" Text="Avalonia apphost package currently supports win-x64 only." />
+    <Error Condition="'$(AvaloniaHostRid)' != 'win-x64' and '$(AvaloniaHostRid)' != 'win-arm64'" Text="Unsupported AvaloniaHostRid: $(AvaloniaHostRid). Supported values: win-x64;win-arm64." />
     <Error Condition="!Exists('$(PackageAssetsDir)')" Text="Host libs directory not found: $(PackageAssetsDir)" />
     <Error Condition="!Exists('$(AvaloniaNativeLibsDir)')" Text="Avalonia native libs directory not found: $(AvaloniaNativeLibsDir)" />
 
@@ -73,13 +76,53 @@
     </ItemGroup>
   </Target>
 
+  <Target Name="_ResolveAvaloniaPackRids">
+    <ItemGroup>
+      <_AvaloniaRequestedRid Include="$(AvaloniaHostRids.Split(';'))" />
+      <_AvaloniaRequestedRid Remove="@(_AvaloniaRequestedRid)"
+                             Condition="'%(_AvaloniaRequestedRid.Identity)' == ''" />
+
+      <_AvaloniaPackRid Include="@(_AvaloniaRequestedRid)"
+                        Condition="Exists('$(HostLibsRoot)\%(_AvaloniaRequestedRid.Identity)') and Exists('$(AvaloniaNativeLibsRoot)\%(_AvaloniaRequestedRid.Identity)')" />
+
+      <_AvaloniaMissingRid Include="@(_AvaloniaRequestedRid)"
+                           Condition="!Exists('$(HostLibsRoot)\%(_AvaloniaRequestedRid.Identity)') or !Exists('$(AvaloniaNativeLibsRoot)\%(_AvaloniaRequestedRid.Identity)')" />
+    </ItemGroup>
+
+    <Warning Condition="'@(_AvaloniaMissingRid)' != ''"
+             Text="Skipping Avalonia host RID(s) due to missing inputs: @(_AvaloniaMissingRid, ', '). Expected host libs under $(HostLibsRoot) and native libs under $(AvaloniaNativeLibsRoot)." />
+
+    <Error Condition="'@(_AvaloniaPackRid)' == ''"
+           Text="No packable AvaloniaHostRids. Checked: $(AvaloniaHostRids)." />
+  </Target>
+
+  <Target Name="_LinkAvaloniaHostsForRid"
+          DependsOnTargets="_ResolveAvaloniaLinkInputs;LinkAppHost;LinkSingleFileHost"
+          Returns="@(_AvaloniaTemplateHostFile)">
+    <ItemGroup>
+      <_AvaloniaTemplateHostFile Include="$(AvaloniaAppHostOutput)">
+        <PackagePath>template/$(AvaloniaTemplateTfm)/$(AvaloniaHostRid)/</PackagePath>
+      </_AvaloniaTemplateHostFile>
+      <_AvaloniaTemplateHostFile Include="$(AvaloniaSingleFileHostOutput)">
+        <PackagePath>template/$(AvaloniaTemplateTfm)/$(AvaloniaHostRid)/</PackagePath>
+      </_AvaloniaTemplateHostFile>
+    </ItemGroup>
+  </Target>
+
   <Target Name="LinkAvaloniaHosts"
           BeforeTargets="_GetPackageFiles"
-          DependsOnTargets="_ResolveAvaloniaLinkInputs;LinkAppHost;LinkSingleFileHost">
-
+          DependsOnTargets="_ResolveAvaloniaPackRids">
+    <MSBuild Projects="$(MSBuildProjectFullPath)"
+             Targets="_LinkAvaloniaHostsForRid"
+             BuildInParallel="false"
+             Properties="Configuration=$(Configuration);AvaloniaHostRid=%(_AvaloniaPackRid.Identity);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);BaseIntermediateOutputPath=$(BaseIntermediateOutputPath)">
+      <Output TaskParameter="TargetOutputs"
+              ItemName="_AvaloniaTemplateHostFileToPack" />
+    </MSBuild>
     <ItemGroup>
-      <None Include="$(AvaloniaAppHostOutput)" Pack="true" PackagePath="$(AvaloniaTemplateHostPackagePath)" />
-      <None Include="$(AvaloniaSingleFileHostOutput)" Pack="true" PackagePath="$(AvaloniaTemplateHostPackagePath)" />
+      <None Include="@(_AvaloniaTemplateHostFileToPack)"
+            Pack="true"
+            PackagePath="%(_AvaloniaTemplateHostFileToPack.PackagePath)" />
     </ItemGroup>
   </Target>
 </Project>

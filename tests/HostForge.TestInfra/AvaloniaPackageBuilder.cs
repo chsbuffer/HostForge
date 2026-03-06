@@ -25,6 +25,18 @@ public static class AvaloniaPackageBuilder
                 "src",
                 "package-avalonia-apphost",
                 "AvaloniaAppHost.csproj");
+            string packageCacheDir = Path.Combine(
+                RepoContext.RepoRoot,
+                "artifacts",
+                "tmp",
+                "nuget",
+                "packages",
+                "chsbuffer.avalonia.apphost");
+
+            if (Directory.Exists(packageCacheDir))
+            {
+                Directory.Delete(packageCacheDir, recursive: true);
+            }
 
             CommandResult result = await CommandRunner.RunAsync(
                 "dotnet",

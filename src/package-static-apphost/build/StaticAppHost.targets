@@ -18,11 +18,12 @@
 
     <StaticHostLinkMachine Condition="'$(StaticHostLinkMachine)' == '' and '$(StaticHostRid)' == 'win-x64'">X64</StaticHostLinkMachine>
     <StaticHostVcVarsArch Condition="'$(StaticHostVcVarsArch)' == '' and '$(StaticHostRid)' == 'win-x64'">x64</StaticHostVcVarsArch>
+    <StaticHostCetCompatFlag Condition="'$(StaticHostLinkMachine)' == 'X64'">/CETCOMPAT</StaticHostCetCompatFlag>
 
     <StaticHostAssetsDir>$(MSBuildThisFileDirectory)$(StaticHostRid)</StaticHostAssetsDir>
     <_FindVcVarsAllPath>$(MSBuildThisFileDirectory)findvcvarsall.bat</_FindVcVarsAllPath>
-    <AppHostLinkFlags>/DEPENDENTLOADFLAG:0x800 /DEBUG /DEBUGTYPE:CV,FIXUP /PDBCOMPRESS /STACK:0x180000 /MANIFEST:NO /CETCOMPAT /INCREMENTAL:NO /OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /subsystem:console /guard:cf </AppHostLinkFlags>
-    <SingleFileHostLinkFlags>/DEPENDENTLOADFLAG:0x800 /DEBUG /DEBUGTYPE:CV,FIXUP /PDBCOMPRESS /STACK:0x180000 /MANIFEST:NO /CETCOMPAT /INCREMENTAL:NO /DELAYLOAD:api-ms-win-core-winrt-l1-1-0.dll /DELAYLOAD:version.dll /OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /subsystem:console /guard:cf </SingleFileHostLinkFlags>
+    <AppHostLinkFlags>/DEPENDENTLOADFLAG:0x800 /DEBUG /DEBUGTYPE:CV,FIXUP /PDBCOMPRESS /STACK:0x180000 /MANIFEST:NO $(StaticHostCetCompatFlag) /INCREMENTAL:NO /OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /subsystem:console /guard:cf </AppHostLinkFlags>
+    <SingleFileHostLinkFlags>/DEPENDENTLOADFLAG:0x800 /DEBUG /DEBUGTYPE:CV,FIXUP /PDBCOMPRESS /STACK:0x180000 /MANIFEST:NO $(StaticHostCetCompatFlag) /INCREMENTAL:NO /DELAYLOAD:api-ms-win-core-winrt-l1-1-0.dll /DELAYLOAD:version.dll /OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /subsystem:console /guard:cf </SingleFileHostLinkFlags>
   </PropertyGroup>
 
   <Target Name="_ResolveHostLinkInputs"
@@ -183,4 +184,3 @@
            Text="[StaticAppHost] MSVC toolchain not found. Install Desktop development with C++ workload (and ARM64 build tools when needed)." />
   </Target>
 </Project>
-

@@ -106,7 +106,13 @@ RUNTIME_ROOT = REPO_ROOT / "repo" / "runtime"
 HOSTLIBS_ROOT = REPO_ROOT / "artifacts" / "hostlibs"
 TMP_ROOT = REPO_ROOT / "artifacts" / "tmp"
 SINGLEFILEHOST_DEF = (
-    RUNTIME_ROOT / "src" / "native" / "corehost" / "apphost" / "static" / "singlefilehost.def"
+    RUNTIME_ROOT
+    / "src"
+    / "native"
+    / "corehost"
+    / "apphost"
+    / "static"
+    / "singlefilehost.def"
 )
 
 
@@ -120,8 +126,8 @@ def hostlibs_dir(arch: str) -> Path:
 
 def run_in_vs_env(cmd: str, cwd: Path, arch: str):
     full_cmd = (
-        f'call "{RUNTIME_ROOT}\\eng\\native\\init-vs-env.cmd" {arch} && '
-        f'cd /d "{cwd}" && '
+        f"call {RUNTIME_ROOT}\\eng\\native\\init-vs-env.cmd {arch} && "
+        f"cd /d {cwd} && "
         f"{cmd}"
     )
     execv(full_cmd)
@@ -135,11 +141,70 @@ def partition_intermediates(items: list[str]):
     return objs, user_libs, win32_libs
 
 
-def bundle_intermediates(name: str, build_root: Path, rsp_path: Path, output: Path, arch: str):
-    if not rsp_path.exists():
-        error(f"RSP not found: {rsp_path}")
+def resolve_rsp_path(build_root: Path, name: str) -> Path | None:
+    direct = build_root / "CMakeFiles" / f"{name}.rsp"
+    if direct.exists():
+        return direct
 
-    intermediates = rsp_path.read_text(encoding="utf-8").split()
+    matches = list(build_root.rglob(f"{name}.rsp"))
+    if not matches:
+        return None
+    return matches[0]
+
+
+def parse_link_inputs_from_ninja(build_root: Path, name: str) -> list[str]:
+    target_file = {
+        "apphost": r"apphost\standalone\apphost.exe",
+        "singlefilehost": r"Corehost.Static\singlefilehost.exe",
+    }.get(name)
+
+    if not target_file:
+        error(f"Unsupported target for ninja parsing: {name}")
+
+    build_ninja = build_root / "build.ninja"
+    if not build_ninja.exists():
+        error(f"build.ninja not found: {build_ninja}")
+
+    lines = build_ninja.read_text(encoding="utf-8").splitlines()
+    marker = f"build {target_file}: "
+    for i, line in enumerate(lines):
+        if not line.startswith(marker):
+            continue
+
+        tail = line.split(": ", 1)[1]
+        tokens = tail.split()
+        if len(tokens) < 2:
+            error(f"Malformed ninja build rule: {line}")
+
+        objs = []
+        for token in tokens[1:]:
+            if token == "|":
+                break
+            objs.append(token)
+
+        link_libs = []
+        for j in range(i + 1, min(i + 16, len(lines))):
+            if lines[j].startswith("  LINK_LIBRARIES = "):
+                link_libs = lines[j].split("=", 1)[1].strip().split()
+                break
+
+        if not objs:
+            error(f"No object files parsed from ninja for {name}")
+        if not link_libs:
+            error(f"No LINK_LIBRARIES parsed from ninja for {name}")
+
+        return [*objs, *link_libs]
+
+    error(f"Target rule not found in build.ninja: {target_file}")
+
+
+def bundle_intermediates(name: str, build_root: Path, output: Path, arch: str):
+    rsp_path = resolve_rsp_path(build_root, name)
+    if rsp_path is not None:
+        intermediates = rsp_path.read_text(encoding="utf-8").split()
+    else:
+        intermediates = parse_link_inputs_from_ninja(build_root, name)
+
     objs, libs, win32_libs = partition_intermediates(intermediates)
 
     vprint("OBJ")
@@ -162,15 +227,15 @@ def bundle_intermediates(name: str, build_root: Path, rsp_path: Path, output: Pa
             f.write(f'#pragma comment(lib, "{lib}")\n')
 
     run_in_vs_env(
-        'cl.exe /nologo /c win32_directives.cpp && '
-        f'lib.exe /nologo win32_directives.obj /out:"{directives_lib.name}"',
+        "cl.exe /nologo /c win32_directives.cpp && "
+        f"lib.exe /nologo win32_directives.obj /out:{directives_lib.name}",
         build_tmp,
         arch,
     )
 
     if args.verbose > 0:
         run_in_vs_env(
-            f'dumpbin.exe /nologo /directives "{directives_lib.name}"',
+            f"dumpbin.exe /nologo /directives {directives_lib.name}",
             build_tmp,
             arch,
         )
@@ -182,14 +247,18 @@ def bundle_intermediates(name: str, build_root: Path, rsp_path: Path, output: Pa
     if not objs:
         error(f"No object/resource files found for {name}")
 
-    quoted_objs = " ".join(f'"{obj}"' for obj in objs)
-    run_in_vs_env(f'lib.exe /nologo {quoted_objs} /out:"{obj_lib.name}"', build_root, arch)
+    quoted_objs = " ".join(objs)
+    run_in_vs_env(
+        f"lib.exe /nologo {quoted_objs} /out:{obj_lib.name}", build_root, arch
+    )
 
     if libs:
-        quoted_libs = " ".join(f'"{lib}"' for lib in libs)
-        run_in_vs_env(f'lib.exe /nologo {quoted_libs} /out:"{lib_lib.name}"', build_root, arch)
+        quoted_libs = " ".join(libs)
+        run_in_vs_env(
+            f"lib.exe /nologo {quoted_libs} /out:{lib_lib.name}", build_root, arch
+        )
     else:
-        run_in_vs_env(f'lib.exe /nologo /out:"{lib_lib.name}"', build_root, arch)
+        run_in_vs_env(f"lib.exe /nologo /out:{lib_lib.name}", build_root, arch)
 
     output.mkdir(parents=True, exist_ok=True)
     cp(obj_lib, output / obj_lib.name)
@@ -201,28 +270,29 @@ def bundle_intermediates(name: str, build_root: Path, rsp_path: Path, output: Pa
 def build_target(build_root: Path, target: str, arch: str):
     header(f"Building {target}.exe")
     run_in_vs_env(
-        f'call "%CMakePath%" --build "{build_root}" --target {target} --config Release -- -d keeprsp',
+        f"cmake --build {build_root} --target {target} --config Release -- -d keeprsp",
         build_root,
         arch,
     )
 
 
 def bundle_target(name: str, build_root: Path, output: Path, arch: str):
-    rsp_path = build_root / "CMakeFiles" / f"{name}.rsp"
-    bundle_intermediates(name, build_root, rsp_path, output, arch)
+    bundle_intermediates(name, build_root, output, arch)
 
 
 def build_singlefilehost():
     arch = resolve_arch()
     header("Configure runtime")
     execv(
-        f'call "{RUNTIME_ROOT}\\src\\coreclr\\build-runtime.cmd" '
+        f"call {RUNTIME_ROOT}\\src\\coreclr\\build-runtime.cmd "
         f"-{arch} -release -os windows -component runtime -ninja -configureonly "
         '-cmakeargs "-DCMAKE_NINJA_FORCE_RESPONSE_FILE=ON"',
         cwd=RUNTIME_ROOT,
     )
 
-    build_root = RUNTIME_ROOT / "artifacts" / "obj" / "coreclr" / f"windows.{arch}.Release"
+    build_root = (
+        RUNTIME_ROOT / "artifacts" / "obj" / "coreclr" / f"windows.{arch}.Release"
+    )
     output = hostlibs_dir(arch)
     build_target(build_root, "singlefilehost", arch)
     bundle_target("singlefilehost", build_root, output, arch)
@@ -236,8 +306,8 @@ def build_apphost():
     header("Configure corehost")
     execv(
         "powershell -NoProfile -ExecutionPolicy ByPass "
-        f'-File "{RUNTIME_ROOT}\\eng\\common\\msbuild.ps1" '
-        f'"{RUNTIME_ROOT}\\src\\native\\corehost\\corehost.proj" '
+        f"-File {RUNTIME_ROOT}\\eng\\common\\msbuild.ps1 "
+        f"{RUNTIME_ROOT}\\src\\native\\corehost\\corehost.proj "
         "/t:BuildCoreHostWindows "
         "/p:ConfigureOnly=true "
         "/p:Ninja=true "
@@ -265,7 +335,9 @@ def build_all():
 
 def parse_args():
     parser = argparse.ArgumentParser(description=".NET App Host LIB build script")
-    parser.add_argument("-v", "--verbose", action="count", default=0, help="verbose output")
+    parser.add_argument(
+        "-v", "--verbose", action="count", default=0, help="verbose output"
+    )
     parser.add_argument(
         "-a",
         "--arch",
@@ -277,7 +349,9 @@ def parse_args():
 
     subparsers = parser.add_subparsers(dest="command")
 
-    apphost_parser = subparsers.add_parser("apphost", help="build and bundle apphost intermediates")
+    apphost_parser = subparsers.add_parser(
+        "apphost", help="build and bundle apphost intermediates"
+    )
     apphost_parser.add_argument(
         "-a",
         "--arch",
@@ -301,7 +375,9 @@ def parse_args():
     )
     singlefilehost_parser.set_defaults(func=build_singlefilehost)
 
-    all_parser = subparsers.add_parser("all", help="build apphost + singlefilehost host libs")
+    all_parser = subparsers.add_parser(
+        "all", help="build apphost + singlefilehost host libs"
+    )
     all_parser.add_argument(
         "-a",
         "--arch",
