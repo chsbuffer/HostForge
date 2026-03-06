@@ -1,0 +1,8 @@
+[submodule "repo/runtime"]
+	path = repo/runtime
+	url = https://github.com/dotnet/runtime
+	branch = release/10.0
+[submodule "repo/SkiaSharp"]
+	path = repo/SkiaSharp
+	url = https://github.com/mono/SkiaSharp
+	branch = release/2.88.9

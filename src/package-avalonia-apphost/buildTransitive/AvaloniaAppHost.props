@@ -1,0 +1,21 @@
+<Project>
+  <PropertyGroup>
+    <_AvaloniaPackageRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\'))</_AvaloniaPackageRoot>
+    <_AvaloniaTemplateTfm Condition="'$(_AvaloniaTemplateTfm)' == '' and '$(TargetFramework)' != ''">$(TargetFramework)</_AvaloniaTemplateTfm>
+    <_AvaloniaTemplateTfm Condition="'$(_AvaloniaTemplateTfm)' == ''">net10.0</_AvaloniaTemplateTfm>
+    <_AvaloniaTemplateRid Condition="'$(_AvaloniaTemplateRid)' == '' and '$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</_AvaloniaTemplateRid>
+    <_AvaloniaTemplateRid Condition="'$(_AvaloniaTemplateRid)' == ''">win-x64</_AvaloniaTemplateRid>
+    <_AvaloniaAppHostPath>$(_AvaloniaPackageRoot)template\$(_AvaloniaTemplateTfm)\$(_AvaloniaTemplateRid)\apphost.exe</_AvaloniaAppHostPath>
+    <_AvaloniaSingleFileHostPath>$(_AvaloniaPackageRoot)template\$(_AvaloniaTemplateTfm)\$(_AvaloniaTemplateRid)\singlefilehost.exe</_AvaloniaSingleFileHostPath>
+    <_AvaloniaModuleInitializer>$(_AvaloniaPackageRoot)contentFiles\cs\net10.0\ModuleInitializer.cs</_AvaloniaModuleInitializer>
+
+    <AppHostSourcePath Condition="'$(AppHostSourcePath)' == '' and Exists('$(_AvaloniaAppHostPath)')">$(_AvaloniaAppHostPath)</AppHostSourcePath>
+    <SingleFileHostSourcePath Condition="'$(SingleFileHostSourcePath)' == '' and Exists('$(_AvaloniaSingleFileHostPath)')">$(_AvaloniaSingleFileHostPath)</SingleFileHostSourcePath>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(_AvaloniaModuleInitializer)')">
+    <Compile Include="$(_AvaloniaModuleInitializer)"
+             Link="HostForge\Avalonia\ModuleInitializer.g.cs"
+             Visible="false" />
+  </ItemGroup>
+</Project>

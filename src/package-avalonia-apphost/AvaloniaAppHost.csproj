@@ -1,0 +1,85 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <NoBuild>true</NoBuild>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <NoWarn>$(NoWarn);NU5128;NU5129</NoWarn>
+    <PackageId>ChsBuffer.Avalonia.AppHost</PackageId>
+    <Version>$(AvaloniaAppHostPackageVersion)</Version>
+    <Authors>ChsBuffer</Authors>
+    <Description>Prelinked Avalonia apphost/singlefilehost templates for win-x64 with optional SkiaSharp/HarfBuzz native runtime copy suppression.</Description>
+    <PackageTags>avalonia;apphost;single-file;host-template;skia;harfbuzz</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageProjectUrl>https://github.com/chsbuffer/HostForge</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/chsbuffer/HostForge</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <IsPackable>true</IsPackable>
+    <DevelopmentDependency>false</DevelopmentDependency>
+
+    <AvaloniaHostRid>win-x64</AvaloniaHostRid>
+    <AvaloniaTemplateTfm>net10.0</AvaloniaTemplateTfm>
+    <PackageAssetsDir Condition="'$(PackageAssetsDir)' == ''">$(HostLibsRoot)\$(AvaloniaHostRid)</PackageAssetsDir>
+    <AvaloniaNativeLibsDir Condition="'$(AvaloniaNativeLibsDir)' == ''">$(AvaloniaNativeLibsRoot)\$(AvaloniaHostRid)</AvaloniaNativeLibsDir>
+    <PackageOutputPath Condition="'$(PackageOutputPath)' == ''">$(AvaloniaAppHostPackageOutputDir)\</PackageOutputPath>
+
+    <AvaloniaHostOutputDir>$(BaseIntermediateOutputPath)avalonia-host\$(AvaloniaHostRid)</AvaloniaHostOutputDir>
+    <AvaloniaAppHostOutput>$(AvaloniaHostOutputDir)\apphost.exe</AvaloniaAppHostOutput>
+    <AvaloniaSingleFileHostOutput>$(AvaloniaHostOutputDir)\singlefilehost.exe</AvaloniaSingleFileHostOutput>
+
+    <StaticHostRid>$(AvaloniaHostRid)</StaticHostRid>
+    <AppHostLinkPath>$(AvaloniaAppHostOutput)</AppHostLinkPath>
+    <SingleFileHostLinkPath>$(AvaloniaSingleFileHostOutput)</SingleFileHostLinkPath>
+    <ComputeNETCoreBuildOutputFiles>true</ComputeNETCoreBuildOutputFiles>
+    <_UseSingleFileHostForPublish>true</_UseSingleFileHostForPublish>
+    <AvaloniaTemplateHostPackagePath>template/$(AvaloniaTemplateTfm)/$(AvaloniaHostRid)/</AvaloniaTemplateHostPackagePath>
+  </PropertyGroup>
+
+  <Import Project="$(MSBuildProjectDirectory)\..\package-static-apphost\build\StaticAppHost.targets" />
+
+  <PropertyGroup>
+    <StaticHostAssetsDir>$(PackageAssetsDir)</StaticHostAssetsDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="buildTransitive\ChsBuffer.Avalonia.AppHost.props" Pack="true" PackagePath="buildTransitive/" />
+    <None Include="buildTransitive\ChsBuffer.Avalonia.AppHost.targets" Pack="true" PackagePath="buildTransitive/" />
+    <None Include="buildTransitive\AvaloniaAppHost.props" Pack="true" PackagePath="buildTransitive/" />
+    <None Include="buildTransitive\AvaloniaAppHost.targets" Pack="true" PackagePath="buildTransitive/" />
+    <None Include="contentFiles\cs\net10.0\ModuleInitializer.cs" Pack="true" PackagePath="contentFiles/cs/net10.0/" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <Target Name="_ResolveAvaloniaLinkInputs">
+    <Error Condition="'$(AvaloniaHostRid)' != 'win-x64'" Text="Avalonia apphost package currently supports win-x64 only." />
+    <Error Condition="!Exists('$(PackageAssetsDir)')" Text="Host libs directory not found: $(PackageAssetsDir)" />
+    <Error Condition="!Exists('$(AvaloniaNativeLibsDir)')" Text="Avalonia native libs directory not found: $(AvaloniaNativeLibsDir)" />
+
+    <ItemGroup>
+      <_AvaloniaNativeLib Include="$(AvaloniaNativeLibsDir)\*.lib" />
+    </ItemGroup>
+
+    <Error Condition="'@(_AvaloniaNativeLib)' == ''"
+           Text="No .lib files were found in $(AvaloniaNativeLibsDir)." />
+
+    <ItemGroup>
+      <NativeLibrary Include="@(_AvaloniaNativeLib)">
+       <WholeArchive>true</WholeArchive>
+      </NativeLibrary>
+      <LinkerArg Include="FontSub.lib;opengl32.lib;advapi32.lib;gdi32.lib"/>
+    </ItemGroup>
+  </Target>
+
+  <Target Name="LinkAvaloniaHosts"
+          BeforeTargets="_GetPackageFiles"
+          DependsOnTargets="_ResolveAvaloniaLinkInputs;LinkAppHost;LinkSingleFileHost">
+
+    <ItemGroup>
+      <None Include="$(AvaloniaAppHostOutput)" Pack="true" PackagePath="$(AvaloniaTemplateHostPackagePath)" />
+      <None Include="$(AvaloniaSingleFileHostOutput)" Pack="true" PackagePath="$(AvaloniaTemplateHostPackagePath)" />
+    </ItemGroup>
+  </Target>
+</Project>

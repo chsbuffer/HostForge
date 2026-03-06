@@ -1,0 +1,31 @@
+<Project>
+  <PropertyGroup>
+    <DisableSkiaHarfBuzzRuntimeCopy Condition="'$(DisableSkiaHarfBuzzRuntimeCopy)' == ''">true</DisableSkiaHarfBuzzRuntimeCopy>
+  </PropertyGroup>
+
+  <Target Name="DisableSkiaHarfBuzzCopyLocalItems"
+          AfterTargets="ResolveReferences"
+          Condition="'$(DisableSkiaHarfBuzzRuntimeCopy)' == 'true'">
+    <ItemGroup>
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)"
+                               Condition="'%(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension)' == 'libSkiaSharp.dll' or '%(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension)' == 'libHarfBuzzSharp.dll'" />
+      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)"
+                            Condition="'%(NativeCopyLocalItems.Filename)%(NativeCopyLocalItems.Extension)' == 'libSkiaSharp.dll' or '%(NativeCopyLocalItems.Filename)%(NativeCopyLocalItems.Extension)' == 'libHarfBuzzSharp.dll'" />
+      <RuntimeCopyLocalItems Remove="@(RuntimeCopyLocalItems)"
+                             Condition="'%(RuntimeCopyLocalItems.Filename)%(RuntimeCopyLocalItems.Extension)' == 'libSkiaSharp.dll' or '%(RuntimeCopyLocalItems.Filename)%(RuntimeCopyLocalItems.Extension)' == 'libHarfBuzzSharp.dll'" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="DisableSkiaHarfBuzzPublishItems"
+          BeforeTargets="_CopyResolvedFilesToPublishPreserveNewest;_CopyResolvedFilesToPublishAlways"
+          Condition="'$(DisableSkiaHarfBuzzRuntimeCopy)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'libSkiaSharp.dll' or '%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'libHarfBuzzSharp.dll'" />
+      <_ResolvedFileToPublishPreserveNewest Remove="@(_ResolvedFileToPublishPreserveNewest)"
+                                            Condition="'%(_ResolvedFileToPublishPreserveNewest.Filename)%(_ResolvedFileToPublishPreserveNewest.Extension)' == 'libSkiaSharp.dll' or '%(_ResolvedFileToPublishPreserveNewest.Filename)%(_ResolvedFileToPublishPreserveNewest.Extension)' == 'libHarfBuzzSharp.dll'" />
+      <_ResolvedFileToPublishAlways Remove="@(_ResolvedFileToPublishAlways)"
+                                    Condition="'%(_ResolvedFileToPublishAlways.Filename)%(_ResolvedFileToPublishAlways.Extension)' == 'libSkiaSharp.dll' or '%(_ResolvedFileToPublishAlways.Filename)%(_ResolvedFileToPublishAlways.Extension)' == 'libHarfBuzzSharp.dll'" />
+    </ItemGroup>
+  </Target>
+</Project>
