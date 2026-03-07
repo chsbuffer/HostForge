@@ -1,3 +1,71 @@
 <Project>
-  <Import Project="$(MSBuildThisFileDirectory)AvaloniaAppHost.targets" />
+  <PropertyGroup>
+    <DisableSkiaHarfBuzzRuntimeCopy Condition="'$(DisableSkiaHarfBuzzRuntimeCopy)' == ''">true</DisableSkiaHarfBuzzRuntimeCopy>
+  </PropertyGroup>
+
+  <Target Name="ResolveAvaloniaAppHostActivation"
+          BeforeTargets="PrepareForBuild;_GetAppHostPaths">
+    <PropertyGroup>
+      <_AvaloniaTemplateTfm Condition="'$(_AvaloniaTemplateTfm)' == ''">$(TargetFramework)</_AvaloniaTemplateTfm>
+      <_AvaloniaTemplateTfm Condition="'$(_AvaloniaTemplateTfm)' == ''">net10.0</_AvaloniaTemplateTfm>
+
+      <_AvaloniaTemplateRid Condition="'$(_AvaloniaTemplateRid)' == ''">$(RuntimeIdentifier)</_AvaloniaTemplateRid>
+      <_AvaloniaTemplateRid Condition="'$(_AvaloniaTemplateRid)' == ''">win-x64</_AvaloniaTemplateRid>
+
+      <_AvaloniaAppHostPath>$(_AvaloniaPackageRoot)template\$(_AvaloniaTemplateTfm)\$(_AvaloniaTemplateRid)\apphost.exe</_AvaloniaAppHostPath>
+      <_AvaloniaSingleFileHostPath>$(_AvaloniaPackageRoot)template\$(_AvaloniaTemplateTfm)\$(_AvaloniaTemplateRid)\singlefilehost.exe</_AvaloniaSingleFileHostPath>
+
+      <AvaloniaAppHostActive Condition="'$(AvaloniaAppHostActive)' == '' and '$(TargetFramework)' != '' and Exists('$(_AvaloniaAppHostPath)') and Exists('$(_AvaloniaSingleFileHostPath)')">true</AvaloniaAppHostActive>
+      <AvaloniaAppHostActive Condition="'$(AvaloniaAppHostActive)' == ''">false</AvaloniaAppHostActive>
+
+      <AppHostSourcePath Condition="'$(AvaloniaAppHostActive)' == 'true' and '$(AppHostSourcePath)' == '' and Exists('$(_AvaloniaAppHostPath)')">$(_AvaloniaAppHostPath)</AppHostSourcePath>
+      <SingleFileHostSourcePath Condition="'$(AvaloniaAppHostActive)' == 'true' and '$(SingleFileHostSourcePath)' == '' and Exists('$(_AvaloniaSingleFileHostPath)')">$(_AvaloniaSingleFileHostPath)</SingleFileHostSourcePath>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="InjectAvaloniaModuleInitializer"
+          BeforeTargets="CoreCompile"
+          DependsOnTargets="ResolveAvaloniaAppHostActivation"
+          Condition="'$(AvaloniaAppHostActive)' == 'true' and Exists('$(_AvaloniaModuleInitializer)')">
+    <ItemGroup>
+      <Compile Include="$(_AvaloniaModuleInitializer)"
+               Link="HostForge\Avalonia\ModuleInitializer.g.cs"
+               Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="WarnAvaloniaAppHostInactive"
+          BeforeTargets="PrepareForBuild"
+          DependsOnTargets="ResolveAvaloniaAppHostActivation"
+          Condition="'$(TargetFramework)' != '' and '$(AvaloniaAppHostActive)' != 'true'">
+    <Warning Text="ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='$(TargetFramework)' RuntimeIdentifier='$(RuntimeIdentifier)'. Expected templates under 'template/$(_AvaloniaTemplateTfm)/$(_AvaloniaTemplateRid)' (or default net10.0/win-x64). Host replacement and Skia/HarfBuzz runtime copy suppression are disabled." />
+  </Target>
+
+  <Target Name="DisableSkiaHarfBuzzCopyLocalItems"
+          AfterTargets="ResolveReferences"
+          DependsOnTargets="ResolveAvaloniaAppHostActivation"
+          Condition="'$(DisableSkiaHarfBuzzRuntimeCopy)' == 'true' and '$(AvaloniaAppHostActive)' == 'true'">
+    <ItemGroup>
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)"
+                               Condition="'%(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension)' == 'libSkiaSharp.dll' or '%(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension)' == 'libHarfBuzzSharp.dll'" />
+      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)"
+                            Condition="'%(NativeCopyLocalItems.Filename)%(NativeCopyLocalItems.Extension)' == 'libSkiaSharp.dll' or '%(NativeCopyLocalItems.Filename)%(NativeCopyLocalItems.Extension)' == 'libHarfBuzzSharp.dll'" />
+      <RuntimeCopyLocalItems Remove="@(RuntimeCopyLocalItems)"
+                             Condition="'%(RuntimeCopyLocalItems.Filename)%(RuntimeCopyLocalItems.Extension)' == 'libSkiaSharp.dll' or '%(RuntimeCopyLocalItems.Filename)%(RuntimeCopyLocalItems.Extension)' == 'libHarfBuzzSharp.dll'" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="DisableSkiaHarfBuzzPublishItems"
+          BeforeTargets="_CopyResolvedFilesToPublishPreserveNewest;_CopyResolvedFilesToPublishAlways"
+          DependsOnTargets="ResolveAvaloniaAppHostActivation"
+          Condition="'$(DisableSkiaHarfBuzzRuntimeCopy)' == 'true' and '$(AvaloniaAppHostActive)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'libSkiaSharp.dll' or '%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'libHarfBuzzSharp.dll'" />
+      <_ResolvedFileToPublishPreserveNewest Remove="@(_ResolvedFileToPublishPreserveNewest)"
+                                            Condition="'%(_ResolvedFileToPublishPreserveNewest.Filename)%(_ResolvedFileToPublishPreserveNewest.Extension)' == 'libSkiaSharp.dll' or '%(_ResolvedFileToPublishPreserveNewest.Filename)%(_ResolvedFileToPublishPreserveNewest.Extension)' == 'libHarfBuzzSharp.dll'" />
+      <_ResolvedFileToPublishAlways Remove="@(_ResolvedFileToPublishAlways)"
+                                    Condition="'%(_ResolvedFileToPublishAlways.Filename)%(_ResolvedFileToPublishAlways.Extension)' == 'libSkiaSharp.dll' or '%(_ResolvedFileToPublishAlways.Filename)%(_ResolvedFileToPublishAlways.Extension)' == 'libHarfBuzzSharp.dll'" />
+    </ItemGroup>
+  </Target>
 </Project>

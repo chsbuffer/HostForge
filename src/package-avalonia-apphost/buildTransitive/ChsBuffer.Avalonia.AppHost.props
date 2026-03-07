@@ -1,3 +1,6 @@
 <Project>
-  <Import Project="$(MSBuildThisFileDirectory)AvaloniaAppHost.props" />
+  <PropertyGroup>
+    <_AvaloniaPackageRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\'))</_AvaloniaPackageRoot>
+    <_AvaloniaModuleInitializer>$(_AvaloniaPackageRoot)contentFiles\cs\net10.0\ModuleInitializer.cs</_AvaloniaModuleInitializer>
+  </PropertyGroup>
 </Project>

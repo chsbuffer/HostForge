@@ -27,7 +27,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\..\externals\skia\third_party\externals\harfbuzz\src\harfbuzz-subset.cc" />
+    <ClCompile Include="..\skia\third_party\externals\harfbuzz\src\harfbuzz-subset.cc" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
@@ -130,8 +130,8 @@
       HB_EXTERN=__declspec (dllexport) extern
     </HarfBuzzDefines>
     <HarfBuzzIncludes>
-      ..\..\..\externals\skia\third_party\externals\harfbuzz\src\;
-      ..\..\..\externals\skia\third_party\harfbuzz\
+      ..\skia\third_party\externals\harfbuzz\src\;
+      ..\skia\third_party\harfbuzz\
     </HarfBuzzIncludes>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">

@@ -1,14 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <NoBuild>true</NoBuild>
-    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
     <NoWarn>$(NoWarn);NU5128;NU5129</NoWarn>
     <PackageId>ChsBuffer.Avalonia.AppHost</PackageId>
     <Version>$(AvaloniaAppHostPackageVersion)</Version>
     <Authors>ChsBuffer</Authors>
-    <Description>Prelinked Avalonia apphost/singlefilehost templates for Windows (win-x64/win-arm64) with optional SkiaSharp/HarfBuzz native runtime copy suppression.</Description>
+    <Description>Prelinked Avalonia 11 apphost/singlefilehost templates for .NET 10 on Windows win-x64/win-arm64, with optional SkiaSharp/HarfBuzz native runtime copy suppression.</Description>
     <PackageTags>avalonia;apphost;single-file;host-template;skia;harfbuzz</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
@@ -38,6 +37,11 @@
     <_UseSingleFileHostForPublish>true</_UseSingleFileHostForPublish>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="2.88.9" />
+    <PackageReference Include="HarfBuzzSharp" Version="7.3.0" />
+  </ItemGroup>
+
   <Import Project="$(MSBuildProjectDirectory)\..\package-static-apphost\build\StaticAppHost.targets" />
 
   <PropertyGroup>
@@ -50,10 +54,9 @@
   <ItemGroup>
     <None Include="buildTransitive\ChsBuffer.Avalonia.AppHost.props" Pack="true" PackagePath="buildTransitive/" />
     <None Include="buildTransitive\ChsBuffer.Avalonia.AppHost.targets" Pack="true" PackagePath="buildTransitive/" />
-    <None Include="buildTransitive\AvaloniaAppHost.props" Pack="true" PackagePath="buildTransitive/" />
-    <None Include="buildTransitive\AvaloniaAppHost.targets" Pack="true" PackagePath="buildTransitive/" />
     <None Include="contentFiles\cs\net10.0\ModuleInitializer.cs" Pack="true" PackagePath="contentFiles/cs/net10.0/" />
     <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="README.txt" Pack="true" PackagePath="" />
   </ItemGroup>
 
   <Target Name="_ResolveAvaloniaLinkInputs">

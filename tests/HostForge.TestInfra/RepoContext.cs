@@ -10,10 +10,10 @@ public static class RepoContext
     public static string StaticAppHostPackageVersion { get; } = ReadProperty("StaticAppHostPackageVersion");
 
     public static string AvaloniaPackageOutputDir { get; } =
-        Path.Combine(RepoRoot, "src", "package-avalonia-apphost", "bin", "Release");
+        Path.Combine(RepoRoot, "artifacts", "packages", "Release");
 
     public static string StaticAppHostPackageOutputDir { get; } =
-        Path.Combine(RepoRoot, "src", "package-static-apphost", "bin", "Release");
+        Path.Combine(RepoRoot, "artifacts", "packages", "Release");
 
     public static string ArtifactsTestRoot { get; } =
         Path.Combine(RepoRoot, "artifacts", "tmp", "build-tests");

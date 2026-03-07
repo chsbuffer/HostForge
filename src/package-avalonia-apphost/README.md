@@ -1,10 +1,14 @@
 # ChsBuffer.Avalonia.AppHost
 
-Prelinked Avalonia apphost/singlefilehost template package for `win-x64` and `win-arm64`.
+> Prelinked **Avalonia 11** apphost/singlefilehost template package for **.NET 10.0** on **Windows `win-x64` + `win-arm64`**.
+
+Prelinked Avalonia 11 apphost/singlefilehost template package for `net10.0` on `win-x64` and `win-arm64`.
 
 ## Important first
 
 - Current implementation is intended for **Avalonia 11**.
+- Current template payload is built for **`net10.0`**.
+- Current Windows template RIDs are **`win-x64`** and **`win-arm64`**.
 - Template payload always includes `win-x64`; `win-arm64` is included when local arm64 host/native inputs are present at pack time.
 - `AngleEgl` is not statically linked by this package.
 - Avalonia 11 Win32 default rendering mode is typically `AngleEgl, Software`.
@@ -45,9 +49,9 @@ dotnet add package ChsBuffer.Avalonia.AppHost
 - `template/net10.0/win-x64/singlefilehost.exe`
 - `template/net10.0/win-arm64/apphost.exe` (when arm64 pack inputs exist)
 - `template/net10.0/win-arm64/singlefilehost.exe` (when arm64 pack inputs exist)
-- `buildTransitive/AvaloniaAppHost.props`
+- `buildTransitive/ChsBuffer.Avalonia.AppHost.props`
   - sets `AppHostSourcePath` and `SingleFileHostSourcePath` from the package template path
-- `buildTransitive/AvaloniaAppHost.targets`
+- `buildTransitive/ChsBuffer.Avalonia.AppHost.targets`
   - optional suppression of SkiaSharp/HarfBuzz native runtime copy
 - `contentFiles/cs/net10.0/ModuleInitializer.cs`
   - maps Avalonia native DLL names to the main program handle

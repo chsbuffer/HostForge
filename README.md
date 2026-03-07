@@ -23,11 +23,12 @@
 
 - `docs/roadmap/2026-03-06-ProjectLaunch.md`：项目启动的设计说明。
 - `repo/runtime`：dotnet/runtime 源码（上游源码输入）。
-- `repo/SkiaSharp`：SkiaSharp 源码（用于构建静态 Skia/HarfBuzz 库）。
+- `repo/skia`：mono/skia 源码（用于构建静态 Skia/HarfBuzz 库）。
+- `repo/depot_tools`：Chromium `depot_tools` 工具链（用于 `gn`/`ninja`/依赖同步）。
 - `repo/patch`：本仓库对上游工程使用的补丁与参数文件。
 - `scripts/pipeline.py`：主流水线入口（HostLib 构建 -> 打包 -> 矩阵测试）。
 - `scripts/build-hostlibs.py`：构建 Host 静态库到 `artifacts/hostlibs/<rid>`。
-- `scripts/build-skia-harfbuzz.py`：构建并收集 SkiaSharp/HarfBuzz 静态库到 `artifacts/skiasharp-2.88.9/<rid>`。
+- `scripts/build-skia-harfbuzz.py`：构建并收集 mono/skia + HarfBuzz 静态库到 `artifacts/skiasharp-2.88.9/<rid>`。
 - `scripts/init-vs-env.cmd`：初始化 Visual Studio/MSVC 构建环境。
 - `scripts/set-cmake-path.ps1`：设置 CMake 相关路径辅助脚本。
 - `src/package-static-apphost`：`ChsBuffer.NETCore.StaticAppHost.win-x64` 包工程。

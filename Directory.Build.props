@@ -4,12 +4,13 @@
     <DefaultRid>win-x64</DefaultRid>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
 
-    <StaticAppHostPackageVersion>0.2.2</StaticAppHostPackageVersion>
-    <AvaloniaAppHostPackageVersion>0.1.0</AvaloniaAppHostPackageVersion>
+    <StaticAppHostPackageVersion>1.0.0-dev</StaticAppHostPackageVersion>
+    <AvaloniaAppHostPackageVersion>11.0.0-preview.1</AvaloniaAppHostPackageVersion>
     <AvaloniaVersion>11.3.12</AvaloniaVersion>
 
-    <StaticAppHostPackageOutputDir>$(RepoRoot)src\package-static-apphost\bin\$(Configuration)</StaticAppHostPackageOutputDir>
-    <AvaloniaAppHostPackageOutputDir>$(RepoRoot)src\package-avalonia-apphost\bin\$(Configuration)</AvaloniaAppHostPackageOutputDir>
+    <PackagesOutputRoot>$(RepoRoot)artifacts\packages</PackagesOutputRoot>
+    <StaticAppHostPackageOutputDir>$(PackagesOutputRoot)\$(Configuration)</StaticAppHostPackageOutputDir>
+    <AvaloniaAppHostPackageOutputDir>$(PackagesOutputRoot)\$(Configuration)</AvaloniaAppHostPackageOutputDir>
 
     <HostLibsRoot>$(RepoRoot)artifacts\hostlibs</HostLibsRoot>
     <AvaloniaNativeLibsRoot>$(RepoRoot)artifacts\skiasharp-2.88.9</AvaloniaNativeLibsRoot>
