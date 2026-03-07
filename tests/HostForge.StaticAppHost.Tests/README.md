@@ -1,6 +1,6 @@
 # HostForge.StaticAppHost.Tests
 
-TUnit matrix tests for `ChsBuffer.NETCore.StaticAppHost.win-x64`.
+TUnit matrix tests for the source-based `StaticAppHost.targets` integration.
 
 Run:
 

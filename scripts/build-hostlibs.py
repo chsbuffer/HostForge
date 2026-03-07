@@ -84,7 +84,7 @@ def execv(cmd: str, cwd: Path | None = None, env=None):
     if args.verbose > 0:
         print(cmd)
     proc = subprocess.run(
-        ["cmd.exe", "/d", "/c", cmd],
+        ["cmd.exe", "/d", "/c", cmd] if is_windows else ["bash", "-c", cmd],
         cwd=cwd,
         env=env,
         stdout=out,
@@ -104,7 +104,6 @@ SCRIPT_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_ROOT.parent
 RUNTIME_ROOT = REPO_ROOT / "repo" / "runtime"
 HOSTLIBS_ROOT = REPO_ROOT / "artifacts" / "hostlibs"
-TMP_ROOT = REPO_ROOT / "artifacts" / "tmp"
 SINGLEFILEHOST_DEF = (
     RUNTIME_ROOT
     / "src"
@@ -114,14 +113,13 @@ SINGLEFILEHOST_DEF = (
     / "static"
     / "singlefilehost.def"
 )
-
-
-def resolve_arch() -> str:
+def get_arch() -> str:
     return getattr(args, "sub_arch", None) or args.arch
 
 
-def hostlibs_dir(arch: str) -> Path:
-    return HOSTLIBS_ROOT / f"win-{arch}"
+def get_rid() -> str:
+    _os = "win" if is_windows else "linux"
+    return f"{_os}-{get_arch()}"
 
 
 def run_in_vs_env(cmd: str, cwd: Path, arch: str):
@@ -133,45 +131,79 @@ def run_in_vs_env(cmd: str, cwd: Path, arch: str):
     execv(full_cmd)
 
 
-def partition_intermediates(items: list[str]):
-    objs = [x for x in items if x.endswith((".obj", ".res"))]
-    libs = [x for x in items if x not in objs]
-    user_libs = [x for x in libs if "\\" in x or "/" in x]
-    win32_libs = [x for x in libs if x not in user_libs]
-    return objs, user_libs, win32_libs
+def resolve_token_source(build_root: Path, token: str) -> Path | None:
+    normalized = token.replace("\\", "/")
+
+    if normalized.startswith("/") or (
+        len(normalized) >= 3 and normalized[1] == ":" and normalized[2] == "/"
+    ):
+        candidate = Path(normalized)
+    else:
+        candidate = build_root / Path(normalized)
+
+    return candidate if candidate.exists() else None
 
 
-def resolve_rsp_path(build_root: Path, name: str) -> Path | None:
-    direct = build_root / "CMakeFiles" / f"{name}.rsp"
-    if direct.exists():
-        return direct
+def get_token_output_path(token: str) -> Path:
+    normalized = token.replace("\\", "/")
 
-    matches = list(build_root.rglob(f"{name}.rsp"))
-    if not matches:
-        return None
-    return matches[0]
+    if len(normalized) >= 2 and normalized[1] == ":":
+        normalized = f"{normalized[0]}{normalized[2:]}"
+
+    normalized = normalized.lstrip("/")
+    parts = [part for part in normalized.split("/") if part not in ("", ".")]
+    if not parts:
+        error(f"Cannot derive output path from token: {token}")
+
+    return Path(*parts)
 
 
-def parse_link_inputs_from_ninja(build_root: Path, name: str) -> list[str]:
-    target_file = {
-        "apphost": r"apphost\standalone\apphost.exe",
-        "singlefilehost": r"Corehost.Static\singlefilehost.exe",
+def write_rsp_file(output: Path, name: str, tokens: list[str]):
+    rsp_path = output / f"{name}.rsp"
+    rsp_path.write_text("\n".join(tokens) + "\n", encoding="utf-8")
+    vprint(f"write {rsp_path}")
+
+
+def write_link_flags_file(output: Path, name: str, link_flags: str):
+    link_flags_path = output / f"{name}.linkflags"
+    link_flags_path.write_text(link_flags + "\n", encoding="utf-8")
+    vprint(f"write {link_flags_path}")
+
+
+def parse_link_rule_from_ninja(build_root: Path, name: str) -> tuple[list[str], str]:
+    target_outputs = {
+        "apphost": {
+            "apphost/standalone/apphost",
+            "apphost/standalone/apphost.exe",
+        },
+        "singlefilehost": {
+            "Corehost.Static/singlefilehost",
+            "Corehost.Static/singlefilehost.exe",
+        },
     }.get(name)
 
-    if not target_file:
+    if not target_outputs:
         error(f"Unsupported target for ninja parsing: {name}")
 
-    build_ninja = build_root / "build.ninja"
+    build_ninja = build_root if build_root.suffix == ".ninja" else build_root / "build.ninja"
     if not build_ninja.exists():
         error(f"build.ninja not found: {build_ninja}")
 
     lines = build_ninja.read_text(encoding="utf-8").splitlines()
-    marker = f"build {target_file}: "
     for i, line in enumerate(lines):
-        if not line.startswith(marker):
+        if not line.startswith("build "):
             continue
 
-        tail = line.split(": ", 1)[1]
+        head, sep, tail = line.partition(": ")
+        if not sep:
+            continue
+
+        outputs = {
+            output.replace("\\", "/")
+            for output in head.removeprefix("build ").split()
+        }
+        if outputs.isdisjoint(target_outputs):
+            continue
         tokens = tail.split()
         if len(tokens) < 2:
             error(f"Malformed ninja build rule: {line}")
@@ -183,97 +215,61 @@ def parse_link_inputs_from_ninja(build_root: Path, name: str) -> list[str]:
             objs.append(token)
 
         link_libs = []
+        link_flags = ""
         for j in range(i + 1, min(i + 16, len(lines))):
             if lines[j].startswith("  LINK_LIBRARIES = "):
                 link_libs = lines[j].split("=", 1)[1].strip().split()
-                break
+            elif lines[j].startswith("  LINK_FLAGS = "):
+                link_flags = lines[j].split("=", 1)[1].strip()
 
         if not objs:
             error(f"No object files parsed from ninja for {name}")
         if not link_libs:
             error(f"No LINK_LIBRARIES parsed from ninja for {name}")
+        if not link_flags:
+            error(f"No LINK_FLAGS parsed from ninja for {name}")
 
-        return [*objs, *link_libs]
+        return [*objs, *link_libs], link_flags
 
-    error(f"Target rule not found in build.ninja: {target_file}")
+    error(
+        f"Target rule not found in {build_ninja}: {', '.join(sorted(target_outputs))}"
+    )
+
+
+def parse_link_inputs_from_ninja(build_root: Path, name: str) -> list[str]:
+    inputs, _ = parse_link_rule_from_ninja(build_root, name)
+    return inputs
 
 
 def bundle_intermediates(name: str, build_root: Path, output: Path, arch: str):
-    rsp_path = resolve_rsp_path(build_root, name)
-    if rsp_path is not None:
-        intermediates = rsp_path.read_text(encoding="utf-8").split()
-    else:
-        intermediates = parse_link_inputs_from_ninja(build_root, name)
-
-    objs, libs, win32_libs = partition_intermediates(intermediates)
-
-    vprint("OBJ")
-    vprint("\n".join(objs))
-    vprint("\nLIB")
-    vprint("\n".join(libs))
-    vprint("\nWIN32")
-    vprint("\n".join(win32_libs))
-
-    header("Creating Win32 library directives")
-    TMP_ROOT.mkdir(parents=True, exist_ok=True)
-    build_tmp = TMP_ROOT / f"{name}_win32_directives_lib"
-    rm_rf(build_tmp)
-    build_tmp.mkdir(parents=True, exist_ok=True)
-
-    directives_cpp = build_tmp / "win32_directives.cpp"
-    directives_lib = build_tmp / f"lib{name}_directives.lib"
-    with directives_cpp.open("w", encoding="utf-8") as f:
-        for lib in win32_libs:
-            f.write(f'#pragma comment(lib, "{lib}")\n')
-
-    run_in_vs_env(
-        "cl.exe /nologo /c win32_directives.cpp && "
-        f"lib.exe /nologo win32_directives.obj /out:{directives_lib.name}",
-        build_tmp,
-        arch,
-    )
-
-    if args.verbose > 0:
-        run_in_vs_env(
-            f"dumpbin.exe /nologo /directives {directives_lib.name}",
-            build_tmp,
-            arch,
-        )
-
-    header("Archive intermediates")
-    obj_lib = build_root / f"lib{name}_obj.lib"
-    lib_lib = build_root / f"lib{name}_lib.lib"
-
-    if not objs:
-        error(f"No object/resource files found for {name}")
-
-    quoted_objs = " ".join(objs)
-    run_in_vs_env(
-        f"lib.exe /nologo {quoted_objs} /out:{obj_lib.name}", build_root, arch
-    )
-
-    if libs:
-        quoted_libs = " ".join(libs)
-        run_in_vs_env(
-            f"lib.exe /nologo {quoted_libs} /out:{lib_lib.name}", build_root, arch
-        )
-    else:
-        run_in_vs_env(f"lib.exe /nologo /out:{lib_lib.name}", build_root, arch)
-
     output.mkdir(parents=True, exist_ok=True)
-    cp(obj_lib, output / obj_lib.name)
-    cp(lib_lib, output / lib_lib.name)
-    cp(directives_lib, output / directives_lib.name)
-    rm_rf(build_tmp)
+    intermediates, link_flags = parse_link_rule_from_ninja(build_root, name)
+    copied = 0
+    missing = []
+    copied_outputs: set[Path] = set()
 
+    header("Copy link inputs")
+    for token in intermediates:
+        source = resolve_token_source(build_root, token)
+        if source is None:
+            missing.append(token)
+            continue
 
-def build_target(build_root: Path, target: str, arch: str):
-    header(f"Building {target}.exe")
-    run_in_vs_env(
-        f"cmake --build {build_root} --target {target} --config Release -- -d keeprsp",
-        build_root,
-        arch,
-    )
+        target = output / get_token_output_path(token)
+        if target in copied_outputs:
+            continue
+
+        cp(source, target)
+        copied_outputs.add(target)
+        copied += 1
+
+    write_rsp_file(output, name, intermediates)
+    write_link_flags_file(output, name, link_flags)
+
+    vprint(f"copied files: {copied}")
+    if missing:
+        vprint("missing tokens")
+        vprint("\n".join(missing))
 
 
 def bundle_target(name: str, build_root: Path, output: Path, arch: str):
@@ -281,45 +277,37 @@ def bundle_target(name: str, build_root: Path, output: Path, arch: str):
 
 
 def build_singlefilehost():
-    arch = resolve_arch()
+    arch = get_arch()
     header("Configure runtime")
-    execv(
-        f"call {RUNTIME_ROOT}\\src\\coreclr\\build-runtime.cmd "
-        f"-{arch} -release -os windows -component runtime -ninja -configureonly "
-        '-cmakeargs "-DCMAKE_NINJA_FORCE_RESPONSE_FILE=ON"',
-        cwd=RUNTIME_ROOT,
-    )
+    build_args = f"clr.runtime -ninja -c release -arch {arch}"
+    if is_windows:
+        execv(f"call {RUNTIME_ROOT}\\build.cmd {build_args}")
+    else:
+        execv(f"{RUNTIME_ROOT}/build.sh {build_args}")
 
     build_root = (
         RUNTIME_ROOT / "artifacts" / "obj" / "coreclr" / f"windows.{arch}.Release"
     )
-    output = hostlibs_dir(arch)
-    build_target(build_root, "singlefilehost", arch)
+    output = HOSTLIBS_ROOT / get_rid()
     bundle_target("singlefilehost", build_root, output, arch)
-    cp(SINGLEFILEHOST_DEF, output / SINGLEFILEHOST_DEF.name)
+    if is_windows:
+        cp(SINGLEFILEHOST_DEF, output / SINGLEFILEHOST_DEF.name)
 
 
 def build_apphost():
-    arch = resolve_arch()
-    target_rid = f"win-{arch}"
-
+    arch = get_arch()
     header("Configure corehost")
-    execv(
-        "powershell -NoProfile -ExecutionPolicy ByPass "
-        f"-File {RUNTIME_ROOT}\\eng\\common\\msbuild.ps1 "
-        f"{RUNTIME_ROOT}\\src\\native\\corehost\\corehost.proj "
-        "/t:BuildCoreHostWindows "
-        "/p:ConfigureOnly=true "
-        "/p:Ninja=true "
-        f"/p:Configuration=Release /p:RuntimeConfiguration=Release /p:TargetOS=windows "
-        f"/p:TargetArchitecture={arch} /p:TargetRid={target_rid} "
-        f'/p:RepoRoot="{RUNTIME_ROOT}\\"',
-        cwd=RUNTIME_ROOT,
-    )
+    build_args = f"host.native -ninja -c release -arch {arch}"
+    if is_windows:
+        execv(f"call {RUNTIME_ROOT}\\build.cmd {build_args}")
+        build_root = (
+            RUNTIME_ROOT / "artifacts" / "obj" / f"{get_rid()}.Release" / "corehost"
+        )
+    else:
+        execv(f"{RUNTIME_ROOT}/build.sh {build_args}")
+        build_root = RUNTIME_ROOT / "artifacts" / "obj" / f"{get_rid()}.Release"
 
-    build_root = RUNTIME_ROOT / "artifacts" / "obj" / f"win-{arch}.Release" / "corehost"
-    output = hostlibs_dir(arch)
-    build_target(build_root, "apphost", arch)
+    output = HOSTLIBS_ROOT / get_rid()
     bundle_target("apphost", build_root, output, arch)
 
 

@@ -1,0 +1,87 @@
+<Project>
+  <PropertyGroup>
+    <CppLinker>link</CppLinker>
+    <_FindVcVarsAllPath>$(MSBuildThisFileDirectory)findvcvarsall.bat</_FindVcVarsAllPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <StaticHostWindowsRid Include="win-x64">
+      <Machine>X64</Machine>
+      <VcVarsArch>x64</VcVarsArch>
+    </StaticHostWindowsRid>
+
+    <StaticHostWindowsRid Include="win-arm64">
+      <Machine>ARM64</Machine>
+      <VcVarsArch>arm64</VcVarsArch>
+    </StaticHostWindowsRid>
+  </ItemGroup>
+
+  <Target Name="SetupOSSpecificProps"
+          DependsOnTargets="_SetupHostOutputPaths"
+          Condition="'@(NativeLibrary)' != ''">
+    <ItemGroup>
+      <_NativeLibraryInput Include="@(NativeLibrary)">
+        <WholeArchive Condition="'%(NativeLibrary.WholeArchive)' == ''">false</WholeArchive>
+      </_NativeLibraryInput>
+
+      <_StaticHostWindowsRid Include="@(StaticHostWindowsRid)"
+                                     Condition="'%(Identity)' == '$(StaticHostRid)'" />
+    </ItemGroup>
+
+    <PropertyGroup>
+      <_StaticHostLinkMachine>%(_StaticHostWindowsRid.Machine)</_StaticHostLinkMachine>
+      <_StaticHostVcVarsArch>%(_StaticHostWindowsRid.VcVarsArch)</_StaticHostVcVarsArch>
+      <_StaticHostCetCompatFlag Condition="'$(_StaticHostLinkMachine)' == 'X64'">/CETCOMPAT</_StaticHostCetCompatFlag>
+      <_AppHostLinkFlags>/DEPENDENTLOADFLAG:0x800 /DEBUG /DEBUGTYPE:CV,FIXUP /PDBCOMPRESS /STACK:0x180000 /MANIFEST:NO $(_StaticHostCetCompatFlag) /INCREMENTAL:NO /OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /subsystem:console /guard:cf </_AppHostLinkFlags>
+      <_SingleFileHostLinkFlags>/DEPENDENTLOADFLAG:0x800 /DEBUG /DEBUGTYPE:CV,FIXUP /PDBCOMPRESS /STACK:0x180000 /MANIFEST:NO $(_StaticHostCetCompatFlag) /INCREMENTAL:NO /DELAYLOAD:api-ms-win-core-winrt-l1-1-0.dll /DELAYLOAD:version.dll /OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /subsystem:console /guard:cf </_SingleFileHostLinkFlags>
+    </PropertyGroup>
+
+    <Error Condition="'$(_StaticHostLinkMachine)' == ''"
+           Text="Cannot resolve linker machine for RID '$(StaticHostRid)' from StaticHostWindowsRid." />
+    <Error Condition="'$(_StaticHostVcVarsArch)' == ''"
+           Text="Cannot resolve vcvars architecture for RID '$(StaticHostRid)' from StaticHostWindowsRid." />
+
+    <Exec Command="&quot;$(_FindVcVarsAllPath)&quot; $(_StaticHostVcVarsArch)"
+          IgnoreExitCode="true"
+          ConsoleToMSBuild="true"
+          StandardOutputImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_FindVCVarsallOutput" />
+      <Output TaskParameter="ExitCode" PropertyName="_VCVarsAllFound" />
+    </Exec>
+
+    <ItemGroup Condition="'$(_VCVarsAllFound)' == '0'">
+      <AdditionalNativeLibraryDirectories Include="$(_FindVCVarsallOutput.Split(`#`)[1].Split(';'))" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <_CommonLinkerArg Include="/machine:$(_StaticHostLinkMachine)" />
+      <_CommonLinkerArg Include="@(AdditionalNativeLibraryDirectories->'/LIBPATH:&quot;%(Identity)&quot;')" />
+      <_CommonLinkerArg Include="@(LinkerArg)" />
+
+      <_WholeArchiveNativeLib Include="@(_NativeLibraryInput)" Condition="'%(WholeArchive)' == 'true'" />
+      <_DefaultNativeLib Include="@(_NativeLibraryInput)" Condition="'%(WholeArchive)' != 'true'" />
+
+      <_AppHostLinkerArg Include="@(_CommonLinkerArg)" />
+      <_AppHostLinkerArg Include="$(_AppHostLinkFlags)" />
+      <_AppHostLinkerArg Include="@apphost.rsp" />
+      <_AppHostLinkerArg Include="@(_WholeArchiveNativeLib->'/wholearchive:&quot;%(FullPath)&quot;')" />
+      <_AppHostLinkerArg Include="@(_DefaultNativeLib->'&quot;%(FullPath)&quot;')" />
+      <_AppHostLinkerArg Include="/out:&quot;$(AppHostLinkFullPath)&quot;" />
+
+      <_SingleFileHostLinkerArg Include="@(_CommonLinkerArg)" />
+      <_SingleFileHostLinkerArg Include="$(_SingleFileHostLinkFlags)" />
+      <_SingleFileHostLinkerArg Include="@singlefilehost.rsp" />
+      <_SingleFileHostLinkerArg Include="@(_WholeArchiveNativeLib->'/wholearchive:&quot;%(FullPath)&quot;')" />
+      <_SingleFileHostLinkerArg Include="@(_DefaultNativeLib->'&quot;%(FullPath)&quot;')" />
+      <_SingleFileHostLinkerArg Include="/out:&quot;$(SingleFileHostLinkFullPath)&quot;" />
+    </ItemGroup>
+
+    <PropertyGroup Condition="'$(_VCVarsAllFound)' == '0'">
+      <_CppToolsDirectory>$(_FindVCVarsallOutput.Split(`#`)[0])</_CppToolsDirectory>
+      <CppLinker>$(_CppToolsDirectory)link.exe</CppLinker>
+    </PropertyGroup>
+
+    <Error Condition="'$(_VCVarsAllFound)' == '1'"
+           Text="[StaticAppHost] MSVC toolchain not found. Install Desktop development with C++ workload (and ARM64 build tools when needed)." />
+  </Target>
+</Project>

@@ -19,12 +19,11 @@
     <IsPackable>true</IsPackable>
     <DevelopmentDependency>false</DevelopmentDependency>
 
-    <AvaloniaHostRids Condition="'$(AvaloniaHostRids)' == ''">win-x64;win-arm64</AvaloniaHostRids>
-    <AvaloniaHostRid Condition="'$(AvaloniaHostRid)' == ''">win-x64</AvaloniaHostRid>
-    <AvaloniaTemplateTfm>net10.0</AvaloniaTemplateTfm>
-    <PackageAssetsDir Condition="'$(PackageAssetsDir)' == ''">$(HostLibsRoot)\$(AvaloniaHostRid)</PackageAssetsDir>
-    <AvaloniaNativeLibsDir Condition="'$(AvaloniaNativeLibsDir)' == ''">$(AvaloniaNativeLibsRoot)\$(AvaloniaHostRid)</AvaloniaNativeLibsDir>
-    <PackageOutputPath Condition="'$(PackageOutputPath)' == ''">$(AvaloniaAppHostPackageOutputDir)\</PackageOutputPath>
+    <AvaloniaTemplateTfm Condition="'$(AvaloniaTemplateTfm)' == ''">net10.0</AvaloniaTemplateTfm>
+    <AvaloniaHostRids>win-x64;win-arm64</AvaloniaHostRids>
+    <PackageAssetsDir>$(HostLibsRoot)\$(AvaloniaHostRid)</PackageAssetsDir>
+    <AvaloniaNativeLibsDir>$(AvaloniaNativeLibsRoot)\$(AvaloniaHostRid)</AvaloniaNativeLibsDir>
+    <PackageOutputPath>$(AvaloniaAppHostPackageOutputDir)\</PackageOutputPath>
 
     <AvaloniaHostOutputDir>$(BaseIntermediateOutputPath)avalonia-host\$(AvaloniaHostRid)</AvaloniaHostOutputDir>
     <AvaloniaAppHostOutput>$(AvaloniaHostOutputDir)\apphost.exe</AvaloniaAppHostOutput>
@@ -42,13 +41,10 @@
     <PackageReference Include="HarfBuzzSharp" Version="7.3.0" />
   </ItemGroup>
 
-  <Import Project="$(MSBuildProjectDirectory)\..\package-static-apphost\build\StaticAppHost.targets" />
+  <Import Project="$(MSBuildProjectDirectory)\..\StaticAppHost.targets" />
 
   <PropertyGroup>
     <StaticHostAssetsDir>$(PackageAssetsDir)</StaticHostAssetsDir>
-    <StaticHostLinkMachine Condition="'$(StaticHostLinkMachine)' == '' and '$(StaticHostRid)' == 'win-arm64'">ARM64</StaticHostLinkMachine>
-    <StaticHostVcVarsArch Condition="'$(StaticHostVcVarsArch)' == '' and '$(StaticHostRid)' == 'win-arm64'">arm64</StaticHostVcVarsArch>
-    <_StaticHostRidSupported Condition="'$(_StaticHostRidSupported)' == '' and ('$(StaticHostRid)' == 'win-x64' or '$(StaticHostRid)' == 'win-arm64')">true</_StaticHostRidSupported>
   </PropertyGroup>
 
   <ItemGroup>

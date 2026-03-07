@@ -4,12 +4,14 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RestoreAdditionalProjectSources>$(RestoreAdditionalProjectSources);$(StaticAppHostPackageOutputDir)</RestoreAdditionalProjectSources>
+    <StaticHostRid Condition="'$(StaticHostRid)' == ''">$(DefaultRid)</StaticHostRid>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="ChsBuffer.NETCore.StaticAppHost.win-x64" Version="$(StaticAppHostPackageVersion)" />
-  </ItemGroup>
+  <Import Project="$(MSBuildProjectDirectory)\..\..\src\StaticAppHost.targets" />
+
+  <PropertyGroup>
+    <StaticHostAssetsDir>$(HostLibsRoot)\$(StaticHostRid)</StaticHostAssetsDir>
+  </PropertyGroup>
 
   <ItemGroup>
     <NativeLibrary Include="$(MSBuildProjectDirectory)\NativeLib\dll.lib">

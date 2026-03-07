@@ -14,12 +14,6 @@ public class StaticAppHostMatrixTests
         bool skipExeRun = ReadFlag("HOSTFORGE_MATRIX_SKIP_EXE_RUN");
         bool noClean = ReadFlag("HOSTFORGE_MATRIX_NO_CLEAN");
 
-        string staticProject = Path.Combine(
-            RepoContext.RepoRoot,
-            "src",
-            "package-static-apphost",
-            "StaticAppHost.csproj");
-
         string consumerProject = Path.Combine(
             RepoContext.RepoRoot,
             "samples",
@@ -27,7 +21,6 @@ public class StaticAppHostMatrixTests
             "SimplePInvoke.csproj");
 
         string consumerDir = Path.GetDirectoryName(consumerProject)!;
-        string packageAssetsDir = Path.Combine(RepoContext.RepoRoot, "artifacts", "hostlibs", rid);
         string targetFramework = ReadTargetFramework(consumerProject);
 
         if (!noClean)
@@ -38,13 +31,12 @@ public class StaticAppHostMatrixTests
 
         var steps = new (string Name, string Arguments, bool? ExpectIncrementalLinker)[]
         {
-            ("01-pack", $"pack \"{staticProject}\" -c {configuration} /p:PackageAssetsDir=\"{packageAssetsDir}\" -v:minimal", null),
-            ("02-build-no-r-first", $"build \"{consumerProject}\" -c {configuration} -v:minimal", true),
-            ("03-build-no-r-second", $"build \"{consumerProject}\" -c {configuration} -v:minimal", false),
-            ("04-build-r-first", $"build \"{consumerProject}\" -c {configuration} -r {rid} -v:minimal", true),
-            ("05-build-r-second", $"build \"{consumerProject}\" -c {configuration} -r {rid} -v:minimal", false),
-            ("06-publish-first", $"publish \"{consumerProject}\" -c {configuration} -r {rid} /p:PublishSingleFile=true -v:minimal", true),
-            ("07-publish-second", $"publish \"{consumerProject}\" -c {configuration} -r {rid} /p:PublishSingleFile=true -v:minimal", false)
+            ("01-build-no-r-first", $"build \"{consumerProject}\" -c {configuration} -v:minimal", true),
+            ("02-build-no-r-second", $"build \"{consumerProject}\" -c {configuration} -v:minimal", false),
+            ("03-build-r-first", $"build \"{consumerProject}\" -c {configuration} -r {rid} -v:minimal", true),
+            ("04-build-r-second", $"build \"{consumerProject}\" -c {configuration} -r {rid} -v:minimal", false),
+            ("05-publish-first", $"publish \"{consumerProject}\" -c {configuration} -r {rid} /p:PublishSingleFile=true -v:minimal", true),
+            ("06-publish-second", $"publish \"{consumerProject}\" -c {configuration} -r {rid} /p:PublishSingleFile=true -v:minimal", false)
         };
 
         foreach ((string name, string arguments, bool? expectedIncrementalLinker) in steps)
@@ -87,7 +79,7 @@ public class StaticAppHostMatrixTests
                 string.Empty,
                 Path.GetDirectoryName(exePath)!);
 
-            AssertEx.Success(runResult, "08-run-exe");
+            AssertEx.Success(runResult, "07-run-exe");
         }
     }
 
@@ -122,5 +114,4 @@ public class StaticAppHostMatrixTests
             Directory.Delete(path, recursive: true);
         }
     }
-
 }

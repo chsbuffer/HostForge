@@ -1,0 +1,119 @@
+<Project>
+  <PropertyGroup>
+    <StaticHostRid Condition="'$(StaticHostRid)' == '' and '$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</StaticHostRid>
+    <StaticHostRid Condition="'$(StaticHostRid)' == '' and '$(AppHostRuntimeIdentifier)' != ''">$(AppHostRuntimeIdentifier)</StaticHostRid>
+    <StaticHostRid Condition="'$(StaticHostRid)' == '' and '$(DefaultAppHostRuntimeIdentifier)' != ''">$(DefaultAppHostRuntimeIdentifier)</StaticHostRid>
+
+    <StaticHostAssetsDir>$(MSBuildThisFileDirectory)$(StaticHostRid)</StaticHostAssetsDir>
+    <_AppHostRspPath>$(StaticHostAssetsDir)\apphost.rsp</_AppHostRspPath>
+    <_SingleFileHostRspPath>$(StaticHostAssetsDir)\singlefilehost.rsp</_SingleFileHostRspPath>
+  </PropertyGroup>
+
+  <Import Project="$(MSBuildThisFileDirectory)StaticAppHost.Windows.targets" />
+
+  <Target Name="_SetupHostOutputPaths">
+    <PropertyGroup>
+      <AppHostLinkPath Condition="'$(AppHostLinkPath)' == ''">$(IntermediateOutputPath)apphost.static.exe</AppHostLinkPath>
+      <SingleFileHostLinkPath Condition="'$(SingleFileHostLinkPath)' == ''">$(IntermediateOutputPath)singlefilehost.static.exe</SingleFileHostLinkPath>
+      <AppHostStampPath Condition="'$(AppHostStampPath)' == ''">$([System.IO.Path]::ChangeExtension('$(AppHostLinkPath)', '.inputs.stamp'))</AppHostStampPath>
+      <SingleFileHostStampPath Condition="'$(SingleFileHostStampPath)' == ''">$([System.IO.Path]::ChangeExtension('$(SingleFileHostLinkPath)', '.inputs.stamp'))</SingleFileHostStampPath>
+      <AppHostLinkFullPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AppHostLinkPath)'))</AppHostLinkFullPath>
+      <SingleFileHostLinkFullPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(SingleFileHostLinkPath)'))</SingleFileHostLinkFullPath>
+      <AppHostStampFullPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AppHostStampPath)'))</AppHostStampFullPath>
+      <SingleFileHostStampFullPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(SingleFileHostStampPath)'))</SingleFileHostStampFullPath>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="_GenerateAppHostFingerprint"
+          DependsOnTargets="_SetupHostOutputPaths;SetupOSSpecificProps">
+
+    <ReadLinesFromFile File="$(_AppHostRspPath)">
+      <Output TaskParameter="Lines" ItemName="_AppHostRspToken" />
+    </ReadLinesFromFile>
+
+    <ItemGroup>
+      <_AppHostFingerprintInput Include="$(_AppHostRspPath)" />
+      <_AppHostFingerprintCandidate Include="@(_AppHostRspToken)">
+        <ResolvedPath>$([MSBuild]::NormalizePath('$(StaticHostAssetsDir)', '%(Identity)'))</ResolvedPath>
+      </_AppHostFingerprintCandidate>
+      <_AppHostFingerprintInput Include="%(_AppHostFingerprintCandidate.ResolvedPath)"
+                               Condition="Exists('%(_AppHostFingerprintCandidate.ResolvedPath)')" />
+    </ItemGroup>
+
+    <PropertyGroup>
+      <_NativeLibraryInputFingerprint>@(_NativeLibraryInput->'%(FullPath)|%(ModifiedTime)|%(Length)|%(WholeArchive)', '&#x0A;')</_NativeLibraryInputFingerprint>
+      <_AppHostAssetFingerprint>@(_AppHostFingerprintInput->'%(FullPath)|%(ModifiedTime)|%(Length)', '&#x0A;')</_AppHostAssetFingerprint>
+      <_ToolchainFingerprint>CppLinker=$(CppLinker)&#x0A;AdditionalNativeLibraryDirectories=@(AdditionalNativeLibraryDirectories, ';')</_ToolchainFingerprint>
+      <_UserLinkerArgFingerprint>@(LinkerArg, '&#x0A;')</_UserLinkerArgFingerprint>
+      <_AppHostFingerprint>NativeLibrary&#x0A;$(_NativeLibraryInputFingerprint)&#x0A;HostAssets&#x0A;$(_AppHostAssetFingerprint)&#x0A;$(_ToolchainFingerprint)&#x0A;UserLinkerArg&#x0A;$(_UserLinkerArgFingerprint)&#x0A;LinkFlags=$(AppHostLinkFlags)</_AppHostFingerprint>
+    </PropertyGroup>
+
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(AppHostStampFullPath)'))" />
+    <WriteLinesToFile File="$(AppHostStampFullPath)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true"
+                      Lines="Rid=$(StaticHostRid)&#x0A;Machine=$(_StaticHostLinkMachine)&#x0A;VcVarsArch=$(_StaticHostVcVarsArch)&#x0A;$(_AppHostFingerprint)" />
+  </Target>
+
+  <Target Name="LinkAppHost"
+          BeforeTargets="_CreateAppHost;_CreateAppHostForPublish"
+          DependsOnTargets="_GenerateAppHostFingerprint"
+          Inputs="$(AppHostStampFullPath)"
+          Outputs="$(AppHostLinkFullPath)"
+          Condition="'@(NativeLibrary)' != '' and ('$(ComputeNETCoreBuildOutputFiles)' == 'true' or '$(_UpdateAppHostForPublish)' == 'true')">
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(AppHostLinkFullPath)'))" />
+    <Exec Command="&quot;$(CppLinker)&quot; @(_AppHostLinkerArg, ' ')"
+          WorkingDirectory="$(StaticHostAssetsDir)" />
+
+    <PropertyGroup>
+      <AppHostSourcePath>$(AppHostLinkFullPath)</AppHostSourcePath>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="_GenerateSingleFileHostFingerprint"
+          DependsOnTargets="_SetupHostOutputPaths;SetupOSSpecificProps">
+
+    <ReadLinesFromFile File="$(_SingleFileHostRspPath)">
+      <Output TaskParameter="Lines" ItemName="_SingleFileHostRspToken" />
+    </ReadLinesFromFile>
+
+    <ItemGroup>
+      <_SingleFileHostFingerprintInput Include="$(_SingleFileHostRspPath)" />
+      <_SingleFileHostFingerprintCandidate Include="@(_SingleFileHostRspToken)">
+        <ResolvedPath>$([MSBuild]::NormalizePath('$(StaticHostAssetsDir)', '%(Identity)'))</ResolvedPath>
+      </_SingleFileHostFingerprintCandidate>
+      <_SingleFileHostFingerprintInput Include="%(_SingleFileHostFingerprintCandidate.ResolvedPath)"
+                                      Condition="Exists('%(_SingleFileHostFingerprintCandidate.ResolvedPath)')" />
+    </ItemGroup>
+
+    <PropertyGroup>
+      <_NativeLibraryInputFingerprint>@(_NativeLibraryInput->'%(FullPath)|%(ModifiedTime)|%(Length)|%(WholeArchive)', '&#x0A;')</_NativeLibraryInputFingerprint>
+      <_SingleFileHostAssetFingerprint>@(_SingleFileHostFingerprintInput->'%(FullPath)|%(ModifiedTime)|%(Length)', '&#x0A;')</_SingleFileHostAssetFingerprint>
+      <_ToolchainFingerprint>CppLinker=$(CppLinker)&#x0A;AdditionalNativeLibraryDirectories=@(AdditionalNativeLibraryDirectories, ';')</_ToolchainFingerprint>
+      <_UserLinkerArgFingerprint>@(LinkerArg, '&#x0A;')</_UserLinkerArgFingerprint>
+      <_SingleFileHostFingerprint>NativeLibrary&#x0A;$(_NativeLibraryInputFingerprint)&#x0A;HostAssets&#x0A;$(_SingleFileHostAssetFingerprint)&#x0A;$(_ToolchainFingerprint)&#x0A;UserLinkerArg&#x0A;$(_UserLinkerArgFingerprint)&#x0A;LinkFlags=$(SingleFileHostLinkFlags)</_SingleFileHostFingerprint>
+    </PropertyGroup>
+
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(SingleFileHostStampFullPath)'))" />
+    <WriteLinesToFile File="$(SingleFileHostStampFullPath)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true"
+                      Lines="Rid=$(StaticHostRid)&#x0A;Machine=$(_StaticHostLinkMachine)&#x0A;VcVarsArch=$(_StaticHostVcVarsArch)&#x0A;$(_SingleFileHostFingerprint)" />
+  </Target>
+
+  <Target Name="LinkSingleFileHost"
+          BeforeTargets="_CreateSingleFileHost"
+          DependsOnTargets="_GenerateSingleFileHostFingerprint"
+          Inputs="$(SingleFileHostStampFullPath)"
+          Outputs="$(SingleFileHostLinkFullPath)"
+          Condition="'@(NativeLibrary)' != '' and '$(_UseSingleFileHostForPublish)' == 'true'">
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(SingleFileHostLinkFullPath)'))" />
+    <Exec Command="&quot;$(CppLinker)&quot; @(_SingleFileHostLinkerArg, ' ')"
+          WorkingDirectory="$(StaticHostAssetsDir)" />
+
+    <PropertyGroup>
+      <SingleFileHostSourcePath>$(SingleFileHostLinkFullPath)</SingleFileHostSourcePath>
+    </PropertyGroup>
+  </Target>
+
+</Project>

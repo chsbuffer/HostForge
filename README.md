@@ -15,7 +15,7 @@
 ## 核心目标
 
 - 基于 runtime 源码产出可复用的 Host 静态库（apphost/singlefilehost）。
-- 提供 `StaticAppHost` NuGet 包，在常规 .NET 构建/发布流程中自动重链接 Host。
+- 提供 `StaticAppHost.targets` 源码级集成，在常规 .NET 构建/发布流程中自动重链接 Host。
 - 提供 `Avalonia AppHost` NuGet 包，面向 Avalonia 11 提供可直接消费的宿主模板与初始化逻辑。
 - 支持增量缓存验证（首次触发链接、二次命中缓存）。
 
@@ -31,7 +31,7 @@
 - `scripts/build-skia-harfbuzz.py`：构建并收集 mono/skia + HarfBuzz 静态库到 `artifacts/skiasharp-2.88.9/<rid>`。
 - `scripts/init-vs-env.cmd`：初始化 Visual Studio/MSVC 构建环境。
 - `scripts/set-cmake-path.ps1`：设置 CMake 相关路径辅助脚本。
-- `src/package-static-apphost`：`ChsBuffer.NETCore.StaticAppHost.win-x64` 包工程。
+- `src/StaticAppHost.targets`、`src/StaticAppHost.Windows.targets`、`src/findvcvarsall.bat`：StaticAppHost 源码级 MSBuild 集成。
 - `src/package-avalonia-apphost`：`ChsBuffer.Avalonia.AppHost` 包工程。
 - `samples/simple-pinvoke`：消费端示例工程（dllexport/pinvoke 最小验证）。
 - `samples/avalonia-sample`：Avalonia 消费端示例工程（用于验证 Avalonia AppHost 包）。
@@ -97,5 +97,5 @@ python .\scripts\pipeline.py pack-avalonia -a x64 -c Release
 - 仅打包 Static Host 包：
 
 ```powershell
-python .\scripts\pipeline.py pack-static -a x64 -c Release
+python .\scripts\pipeline.py matrix -a x64 -c Release
 ```

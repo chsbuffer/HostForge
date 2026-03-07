@@ -4,12 +4,10 @@
     <DefaultRid>win-x64</DefaultRid>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
 
-    <StaticAppHostPackageVersion>1.0.0-dev</StaticAppHostPackageVersion>
-    <AvaloniaAppHostPackageVersion>11.0.0-preview.1</AvaloniaAppHostPackageVersion>
+    <AvaloniaAppHostPackageVersion>11.0.0-preview.2</AvaloniaAppHostPackageVersion>
     <AvaloniaVersion>11.3.12</AvaloniaVersion>
 
     <PackagesOutputRoot>$(RepoRoot)artifacts\packages</PackagesOutputRoot>
-    <StaticAppHostPackageOutputDir>$(PackagesOutputRoot)\$(Configuration)</StaticAppHostPackageOutputDir>
     <AvaloniaAppHostPackageOutputDir>$(PackagesOutputRoot)\$(Configuration)</AvaloniaAppHostPackageOutputDir>
 
     <HostLibsRoot>$(RepoRoot)artifacts\hostlibs</HostLibsRoot>
