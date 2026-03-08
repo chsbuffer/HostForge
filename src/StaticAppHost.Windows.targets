@@ -16,9 +16,7 @@
     </StaticHostWindowsRid>
   </ItemGroup>
 
-  <Target Name="SetupOSSpecificProps"
-          DependsOnTargets="_SetupHostOutputPaths"
-          Condition="'@(NativeLibrary)' != ''">
+  <Target Name="SetupOSSpecificProps">
     <ItemGroup>
       <_NativeLibraryInput Include="@(NativeLibrary)">
         <WholeArchive Condition="'%(NativeLibrary.WholeArchive)' == ''">false</WholeArchive>
@@ -32,8 +30,8 @@
       <_StaticHostLinkMachine>%(_StaticHostWindowsRid.Machine)</_StaticHostLinkMachine>
       <_StaticHostVcVarsArch>%(_StaticHostWindowsRid.VcVarsArch)</_StaticHostVcVarsArch>
       <_StaticHostCetCompatFlag Condition="'$(_StaticHostLinkMachine)' == 'X64'">/CETCOMPAT</_StaticHostCetCompatFlag>
-      <_AppHostLinkFlags>/DEPENDENTLOADFLAG:0x800 /DEBUG /DEBUGTYPE:CV,FIXUP /PDBCOMPRESS /STACK:0x180000 /MANIFEST:NO $(_StaticHostCetCompatFlag) /INCREMENTAL:NO /OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /subsystem:console /guard:cf </_AppHostLinkFlags>
-      <_SingleFileHostLinkFlags>/DEPENDENTLOADFLAG:0x800 /DEBUG /DEBUGTYPE:CV,FIXUP /PDBCOMPRESS /STACK:0x180000 /MANIFEST:NO $(_StaticHostCetCompatFlag) /INCREMENTAL:NO /DELAYLOAD:api-ms-win-core-winrt-l1-1-0.dll /DELAYLOAD:version.dll /OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /subsystem:console /guard:cf </_SingleFileHostLinkFlags>
+      <_AppHostLinkFlags>/DEPENDENTLOADFLAG:0x800 /DEBUG /DEBUGTYPE:CV,FIXUP /PDBCOMPRESS /STACK:0x180000 /MANIFEST:NO $(_StaticHostCetCompatFlag) /INCREMENTAL:NO /OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /subsystem:console /guard:cf /LTCG </_AppHostLinkFlags>
+      <_SingleFileHostLinkFlags>/DEPENDENTLOADFLAG:0x800 /DEBUG /DEBUGTYPE:CV,FIXUP /PDBCOMPRESS /STACK:0x180000 /MANIFEST:NO $(_StaticHostCetCompatFlag) /INCREMENTAL:NO /DELAYLOAD:api-ms-win-core-winrt-l1-1-0.dll /DELAYLOAD:version.dll /OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /subsystem:console /guard:cf /LTCG </_SingleFileHostLinkFlags>
     </PropertyGroup>
 
     <Error Condition="'$(_StaticHostLinkMachine)' == ''"
@@ -70,6 +68,7 @@
 
       <_SingleFileHostLinkerArg Include="@(_CommonLinkerArg)" />
       <_SingleFileHostLinkerArg Include="$(_SingleFileHostLinkFlags)" />
+      <_SingleFileHostLinkerArg Include="/DEF:&quot;$(StaticHostAssetsDir)\\singlefilehost.def&quot;" />
       <_SingleFileHostLinkerArg Include="@singlefilehost.rsp" />
       <_SingleFileHostLinkerArg Include="@(_WholeArchiveNativeLib->'/wholearchive:&quot;%(FullPath)&quot;')" />
       <_SingleFileHostLinkerArg Include="@(_DefaultNativeLib->'&quot;%(FullPath)&quot;')" />

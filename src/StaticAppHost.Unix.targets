@@ -1,0 +1,126 @@
+<Project>
+  <PropertyGroup>
+    <_IsApplePlatform Condition="'$(_IsApplePlatform)' == '' and '$(_targetOS)' == 'osx'">true</_IsApplePlatform>
+    <CppCompilerAndLinkerAlternative />
+    <CppCompilerAndLinkerAlternative Condition="'$(CppCompilerAndLinker)' == '' and '$(_IsApplePlatform)' != 'true'">g++</CppCompilerAndLinkerAlternative>
+    <CppCompilerAndLinker Condition="'$(CppCompilerAndLinker)' == ''">clang++</CppCompilerAndLinker>
+    <CppLinker>$(CppCompilerAndLinker)</CppLinker>
+
+    <LinkerFlavor Condition="'$(LinkerFlavor)' == '' and '$(_targetOS)' == 'freebsd'">lld</LinkerFlavor>
+    <LinkerFlavor Condition="'$(LinkerFlavor)' == '' and '$(_linuxLibcFlavor)' == 'bionic'">lld</LinkerFlavor>
+    <LinkerFlavor Condition="'$(LinkerFlavor)' == '' and '$(_targetOS)' == 'android'">lld</LinkerFlavor>
+    <LinkerFlavor Condition="'$(LinkerFlavor)' == '' and '$(_targetOS)' == 'linux'">lld</LinkerFlavor>
+
+    <_SingleFileHostExportsFile>$([MSBuild]::NormalizePath('$(StaticHostAssetsDir)', 'singlefilehost.exports'))</_SingleFileHostExportsFile>
+
+    <ObjCopyName Condition="'$(ObjCopyName)' == '' and '$(_IsApplePlatform)' != 'true' and !$(CppCompilerAndLinker.Contains('clang'))">objcopy</ObjCopyName>
+    <ObjCopyName Condition="'$(ObjCopyName)' == '' and '$(_IsApplePlatform)' != 'true' and $(CppCompilerAndLinker.Contains('clang'))">llvm-objcopy</ObjCopyName>
+    <ObjCopyNameAlternative Condition="'$(ObjCopyNameAlternative)' == '' and '$(_IsApplePlatform)' != 'true' and $(CppCompilerAndLinker.Contains('clang'))">objcopy</ObjCopyNameAlternative>
+  </PropertyGroup>
+
+  <Target Name="SetupOSSpecificProps">
+    <ItemGroup>
+      <_NativeLibraryInput Include="@(NativeLibrary)">
+        <WholeArchive Condition="'%(NativeLibrary.WholeArchive)' == ''">false</WholeArchive>
+      </_NativeLibraryInput>
+    </ItemGroup>
+
+    <Exec Command="command -v &quot;$(CppLinker)&quot;"
+          IgnoreExitCode="true"
+          StandardOutputImportance="Low">
+      <Output TaskParameter="ExitCode" PropertyName="_WhereLinker" />
+    </Exec>
+
+    <Exec Command="command -v &quot;$(CppCompilerAndLinkerAlternative)&quot;"
+          Condition="'$(CppCompilerAndLinkerAlternative)' != '' and '$(_WhereLinker)' != '0'"
+          IgnoreExitCode="true"
+          StandardOutputImportance="Low">
+      <Output TaskParameter="ExitCode" PropertyName="_WhereLinkerAlt" />
+    </Exec>
+
+    <PropertyGroup Condition="'$(CppCompilerAndLinkerAlternative)' != '' and '$(_WhereLinker)' != '0' and '$(_WhereLinkerAlt)' == '0'">
+      <CppCompilerAndLinker>$(CppCompilerAndLinkerAlternative)</CppCompilerAndLinker>
+      <CppLinker>$(CppCompilerAndLinker)</CppLinker>
+      <_WhereLinker>0</_WhereLinker>
+    </PropertyGroup>
+
+    <Error Condition="'$(_WhereLinker)' != '0' and '$(CppCompilerAndLinkerAlternative)' != ''"
+           Text="Platform linker ('$(CppLinker)' or '$(CppCompilerAndLinkerAlternative)') not found in PATH." />
+    <Error Condition="'$(_WhereLinker)' != '0' and '$(CppCompilerAndLinkerAlternative)' == ''"
+           Text="Requested linker ('$(CppLinker)') not found in PATH." />
+
+    <Exec Command="command -v &quot;$(ObjCopyName)&quot;"
+          Condition="'$(_IsApplePlatform)' != 'true' and '$(ObjCopyName)' != ''"
+          IgnoreExitCode="true"
+          StandardOutputImportance="Low">
+      <Output TaskParameter="ExitCode" PropertyName="_WhereSymbolStripper" />
+    </Exec>
+
+    <Exec Command="command -v &quot;$(ObjCopyNameAlternative)&quot;"
+          Condition="'$(_IsApplePlatform)' != 'true' and '$(ObjCopyNameAlternative)' != '' and '$(_WhereSymbolStripper)' != '0'"
+          IgnoreExitCode="true"
+          StandardOutputImportance="Low">
+      <Output TaskParameter="ExitCode" PropertyName="_WhereSymbolStripperAlt" />
+    </Exec>
+
+    <PropertyGroup Condition="'$(_IsApplePlatform)' != 'true' and '$(ObjCopyNameAlternative)' != '' and '$(_WhereSymbolStripper)' != '0' and '$(_WhereSymbolStripperAlt)' == '0'">
+      <ObjCopyName>$(ObjCopyNameAlternative)</ObjCopyName>
+      <_WhereSymbolStripper>0</_WhereSymbolStripper>
+    </PropertyGroup>
+
+    <Error Condition="'$(_IsApplePlatform)' != 'true' and '$(_WhereSymbolStripper)' != '0' and '$(ObjCopyNameAlternative)' != ''"
+           Text="Symbol stripping tool ('$(ObjCopyName)' or '$(ObjCopyNameAlternative)') not found in PATH." />
+    <Error Condition="'$(_IsApplePlatform)' != 'true' and '$(_WhereSymbolStripper)' != '0' and '$(ObjCopyNameAlternative)' == ''"
+           Text="Symbol stripping tool ('$(ObjCopyName)') not found in PATH." />
+
+    <PropertyGroup>
+      <_AppHostLinkFlags>-fuse-ld=$(LinkerFlavor)</_AppHostLinkFlags>
+      <_AppHostLinkFlags Condition="'$(_IsApplePlatform)' != 'true'">$(_AppHostLinkFlags) -pie -Wl,--build-id=sha1 -Wl,-z,relro,-z,now -Xlinker -Bsymbolic -Wl,--export-dynamic -rdynamic</_AppHostLinkFlags>
+
+      <_SingleFileHostLinkFlags>-fuse-ld=$(LinkerFlavor)</_SingleFileHostLinkFlags>
+      <_SingleFileHostLinkFlags Condition="'$(_IsApplePlatform)' != 'true'">$(_SingleFileHostLinkFlags) -pie -Wl,--build-id=sha1 -Wl,-z,relro,-z,now -Wl,--export-dynamic -rdynamic</_SingleFileHostLinkFlags>
+      <_SingleFileHostLinkFlags Condition="false and '$(_IsApplePlatform)' != 'true'">$(_SingleFileHostLinkFlags) -Wl,--version-script=&quot;$(_SingleFileHostExportsFile)&quot;</_SingleFileHostLinkFlags>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <_CommonLinkerArg Include="-fuse-ld=$(LinkerFlavor)" Condition="'$(LinkerFlavor)' != ''" />
+      <_CommonLinkerArg Include="@(AdditionalNativeLibraryDirectories->'-L&quot;%(Identity)&quot;')" />
+      <_CommonLinkerArg Include="@(LinkerArg)" />
+
+      <_WholeArchiveNativeLib Include="@(_NativeLibraryInput)" Condition="'%(WholeArchive)' == 'true'" />
+      <_DefaultNativeLib Include="@(_NativeLibraryInput)" Condition="'%(WholeArchive)' != 'true'" />
+
+      <_AppHostLinkerArg Include="$(_AppHostLinkFlags)" />
+      <_AppHostLinkerArg Include="@(_CommonLinkerArg)" />
+      <_AppHostLinkerArg Include="@apphost.rsp" />
+      <_AppHostLinkerArg Include="-Wl,--whole-archive" Condition="'$(_IsApplePlatform)' != 'true' and '@(_WholeArchiveNativeLib)' != ''" />
+      <_AppHostLinkerArg Include="@(_WholeArchiveNativeLib->'&quot;%(FullPath)&quot;')" Condition="'$(_IsApplePlatform)' != 'true'" />
+      <_AppHostLinkerArg Include="-Wl,--no-whole-archive" Condition="'$(_IsApplePlatform)' != 'true' and '@(_WholeArchiveNativeLib)' != ''" />
+      <_AppHostLinkerArg Include="@(_WholeArchiveNativeLib->'-Wl,-force_load,&quot;%(FullPath)&quot;')" Condition="'$(_IsApplePlatform)' == 'true'" />
+      <_AppHostLinkerArg Include="@(_DefaultNativeLib->'&quot;%(FullPath)&quot;')" />
+      <_AppHostLinkerArg Include="-o &quot;$(AppHostLinkFullPath)&quot;" />
+
+      <_SingleFileHostLinkerArg Include="$(_SingleFileHostLinkFlags)" />
+      <_SingleFileHostLinkerArg Include="@(_CommonLinkerArg)" />
+      <_SingleFileHostLinkerArg Include="@singlefilehost.rsp" />
+      <_SingleFileHostLinkerArg Include="-Wl,--whole-archive" Condition="'$(_IsApplePlatform)' != 'true' and '@(_WholeArchiveNativeLib)' != ''" />
+      <_SingleFileHostLinkerArg Include="@(_WholeArchiveNativeLib->'&quot;%(FullPath)&quot;')" Condition="'$(_IsApplePlatform)' != 'true'" />
+      <_SingleFileHostLinkerArg Include="-Wl,--no-whole-archive" Condition="'$(_IsApplePlatform)' != 'true' and '@(_WholeArchiveNativeLib)' != ''" />
+      <_SingleFileHostLinkerArg Include="@(_WholeArchiveNativeLib->'-Wl,-force_load,&quot;%(FullPath)&quot;')" Condition="'$(_IsApplePlatform)' == 'true'" />
+      <_SingleFileHostLinkerArg Include="@(_DefaultNativeLib->'&quot;%(FullPath)&quot;')" />
+      <_SingleFileHostLinkerArg Include="-o &quot;$(SingleFileHostLinkFullPath)&quot;" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="StripAppHostSymbols"
+          AfterTargets="LinkAppHost"
+          Condition="'$(_IsApplePlatform)' != 'true' and Exists('$(AppHostLinkFullPath)')">
+    <Exec Command="&quot;$(ObjCopyName)&quot; --strip-debug --strip-unneeded &quot;$(AppHostLinkFullPath)&quot;" />
+  </Target>
+
+  <Target Name="StripSingleFileHostSymbols"
+          AfterTargets="LinkSingleFileHost"
+          Condition="'$(_IsApplePlatform)' != 'true' and Exists('$(SingleFileHostLinkFullPath)')">
+    <Exec Command="&quot;$(ObjCopyName)&quot; --strip-debug --strip-unneeded &quot;$(SingleFileHostLinkFullPath)&quot;" />
+  </Target>
+</Project>

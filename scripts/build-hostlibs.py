@@ -74,9 +74,9 @@ def rm_rf(path: Path):
 
 
 def cp(source: Path, target: Path):
+    vprint(f"cp {source} -> {target}")
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, target)
-    vprint(f"cp {source} -> {target}")
 
 
 def execv(cmd: str, cwd: Path | None = None, env=None):
@@ -104,22 +104,11 @@ SCRIPT_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_ROOT.parent
 RUNTIME_ROOT = REPO_ROOT / "repo" / "runtime"
 HOSTLIBS_ROOT = REPO_ROOT / "artifacts" / "hostlibs"
-SINGLEFILEHOST_DEF = (
-    RUNTIME_ROOT
-    / "src"
-    / "native"
-    / "corehost"
-    / "apphost"
-    / "static"
-    / "singlefilehost.def"
-)
-def get_arch() -> str:
-    return getattr(args, "sub_arch", None) or args.arch
 
 
 def get_rid() -> str:
-    _os = "win" if is_windows else "linux"
-    return f"{_os}-{get_arch()}"
+    os = "win" if args.os == "windows" else args.os
+    return f"{os}-{args.arch}"
 
 
 def run_in_vs_env(cmd: str, cwd: Path, arch: str):
@@ -170,7 +159,9 @@ def write_link_flags_file(output: Path, name: str, link_flags: str):
     vprint(f"write {link_flags_path}")
 
 
-def parse_link_rule_from_ninja(build_root: Path, name: str) -> tuple[list[str], str]:
+def parse_link_rule_from_ninja(
+    build_root: Path, name: str
+) -> tuple[list[str], str, str]:
     target_outputs = {
         "apphost": {
             "apphost/standalone/apphost",
@@ -185,7 +176,8 @@ def parse_link_rule_from_ninja(build_root: Path, name: str) -> tuple[list[str], 
     if not target_outputs:
         error(f"Unsupported target for ninja parsing: {name}")
 
-    build_ninja = build_root if build_root.suffix == ".ninja" else build_root / "build.ninja"
+    build_ninja = build_root / "build.ninja"
+
     if not build_ninja.exists():
         error(f"build.ninja not found: {build_ninja}")
 
@@ -199,8 +191,7 @@ def parse_link_rule_from_ninja(build_root: Path, name: str) -> tuple[list[str], 
             continue
 
         outputs = {
-            output.replace("\\", "/")
-            for output in head.removeprefix("build ").split()
+            output.replace("\\", "/") for output in head.removeprefix("build ").split()
         }
         if outputs.isdisjoint(target_outputs):
             continue
@@ -216,11 +207,14 @@ def parse_link_rule_from_ninja(build_root: Path, name: str) -> tuple[list[str], 
 
         link_libs = []
         link_flags = ""
+        flags = ""
         for j in range(i + 1, min(i + 16, len(lines))):
             if lines[j].startswith("  LINK_LIBRARIES = "):
                 link_libs = lines[j].split("=", 1)[1].strip().split()
             elif lines[j].startswith("  LINK_FLAGS = "):
                 link_flags = lines[j].split("=", 1)[1].strip()
+            elif lines[j].startswith("  FLAGS = "):
+                flags = lines[j].split("=", 1)[1].strip()
 
         if not objs:
             error(f"No object files parsed from ninja for {name}")
@@ -229,21 +223,16 @@ def parse_link_rule_from_ninja(build_root: Path, name: str) -> tuple[list[str], 
         if not link_flags:
             error(f"No LINK_FLAGS parsed from ninja for {name}")
 
-        return [*objs, *link_libs], link_flags
+        return [*objs, *link_libs], link_flags, flags
 
     error(
         f"Target rule not found in {build_ninja}: {', '.join(sorted(target_outputs))}"
     )
 
 
-def parse_link_inputs_from_ninja(build_root: Path, name: str) -> list[str]:
-    inputs, _ = parse_link_rule_from_ninja(build_root, name)
-    return inputs
-
-
 def bundle_intermediates(name: str, build_root: Path, output: Path, arch: str):
     output.mkdir(parents=True, exist_ok=True)
-    intermediates, link_flags = parse_link_rule_from_ninja(build_root, name)
+    intermediates, link_flags, flags = parse_link_rule_from_ninja(build_root, name)
     copied = 0
     missing = []
     copied_outputs: set[Path] = set()
@@ -264,7 +253,7 @@ def bundle_intermediates(name: str, build_root: Path, output: Path, arch: str):
         copied += 1
 
     write_rsp_file(output, name, intermediates)
-    write_link_flags_file(output, name, link_flags)
+    write_link_flags_file(output, name, f"{flags}\n{link_flags}")
 
     vprint(f"copied files: {copied}")
     if missing:
@@ -276,37 +265,72 @@ def bundle_target(name: str, build_root: Path, output: Path, arch: str):
     bundle_intermediates(name, build_root, output, arch)
 
 
-def build_singlefilehost():
-    arch = get_arch()
-    header("Configure runtime")
-    build_args = f"clr.runtime -ninja -c release -arch {arch}"
-    if is_windows:
-        execv(f"call {RUNTIME_ROOT}\\build.cmd {build_args}")
-    else:
-        execv(f"{RUNTIME_ROOT}/build.sh {build_args}")
+def check_os():
+    host_os = platform.system().lower()
+    target_os = args.os
 
-    build_root = (
-        RUNTIME_ROOT / "artifacts" / "obj" / "coreclr" / f"windows.{arch}.Release"
-    )
+    if host_os != target_os:
+        error("cross-compile is unsupported.")
+
+
+def build_singlefilehost():
+    os = args.os
+    arch = args.arch
+
+    if not args.skip_build:
+        header("Build runtime")
+        check_os()
+        build_args = f"clr.runtime -ninja -c release -arch {arch}"
+        if is_windows:
+            execv(f"call {RUNTIME_ROOT}\\build.cmd {build_args}")
+        else:
+            execv(f"{RUNTIME_ROOT}/build.sh {build_args}")
+
+    build_root = RUNTIME_ROOT / "artifacts" / "obj" / "coreclr" / f"{os}.{arch}.Release"
+
+    header("Archive singlefilehost")
     output = HOSTLIBS_ROOT / get_rid()
     bundle_target("singlefilehost", build_root, output, arch)
-    if is_windows:
-        cp(SINGLEFILEHOST_DEF, output / SINGLEFILEHOST_DEF.name)
+    match args.os:
+        case "windows":
+            SINGLEFILEHOST_DEF = (
+                RUNTIME_ROOT
+                / "src"
+                / "native"
+                / "corehost"
+                / "apphost"
+                / "static"
+                / "singlefilehost.def"
+            )
+            cp(SINGLEFILEHOST_DEF, output / SINGLEFILEHOST_DEF.name)
+        case "linux":
+            cp(
+                build_root / "Corehost.Static" / "singlefilehost.exports",
+                output / "singlefilehost.exports",
+            )
 
 
 def build_apphost():
-    arch = get_arch()
-    header("Configure corehost")
-    build_args = f"host.native -ninja -c release -arch {arch}"
-    if is_windows:
-        execv(f"call {RUNTIME_ROOT}\\build.cmd {build_args}")
+    os = args.os
+    arch = args.arch
+
+    if not args.skip_build:
+        header("Build corehost")
+        check_os()
+        build_args = f"host.native -ninja -c release -arch {arch}"
+        if is_windows:
+            execv(f"call {RUNTIME_ROOT}\\build.cmd {build_args}")
+        else:
+            execv(f"{RUNTIME_ROOT}/build.sh {build_args}")
+
+    if os == "windows":
         build_root = (
             RUNTIME_ROOT / "artifacts" / "obj" / f"{get_rid()}.Release" / "corehost"
         )
     else:
-        execv(f"{RUNTIME_ROOT}/build.sh {build_args}")
         build_root = RUNTIME_ROOT / "artifacts" / "obj" / f"{get_rid()}.Release"
 
+    header("Archive corehost")
     output = HOSTLIBS_ROOT / get_rid()
     bundle_target("apphost", build_root, output, arch)
 
@@ -322,59 +346,33 @@ def build_all():
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description=".NET App Host LIB build script")
+    parser = argparse.ArgumentParser(
+        description=".NET App Host LIB build and archive script"
+    )
     parser.add_argument(
         "-v", "--verbose", action="count", default=0, help="verbose output"
+    )
+    parser.add_argument(
+        "target",
+        nargs="?",
+        choices=["apphost", "singlefilehost", "all"],
+        default="all",
+        help="build and archive target",
     )
     parser.add_argument(
         "-a",
         "--arch",
         choices=["x86", "x64", "arm64"],
         default="x64",
-        help="target architecture for the default command",
-    )
-    parser.set_defaults(func=build_all)
-
-    subparsers = parser.add_subparsers(dest="command")
-
-    apphost_parser = subparsers.add_parser(
-        "apphost", help="build and bundle apphost intermediates"
-    )
-    apphost_parser.add_argument(
-        "-a",
-        "--arch",
-        dest="sub_arch",
-        choices=["x86", "x64", "arm64"],
-        default=None,
         help="target architecture",
     )
-    apphost_parser.set_defaults(func=build_apphost)
-
-    singlefilehost_parser = subparsers.add_parser(
-        "singlefilehost", help="build and bundle singlefilehost intermediates"
+    parser.add_argument(
+        "--os",
+        choices=["windows", "linux"],
+        default="windows" if is_windows else "linux",
+        help="target os",
     )
-    singlefilehost_parser.add_argument(
-        "-a",
-        "--arch",
-        dest="sub_arch",
-        choices=["x86", "x64", "arm64"],
-        default=None,
-        help="target architecture",
-    )
-    singlefilehost_parser.set_defaults(func=build_singlefilehost)
-
-    all_parser = subparsers.add_parser(
-        "all", help="build apphost + singlefilehost host libs"
-    )
-    all_parser.add_argument(
-        "-a",
-        "--arch",
-        dest="sub_arch",
-        choices=["x86", "x64", "arm64"],
-        default=None,
-        help="target architecture",
-    )
-    all_parser.set_defaults(func=build_all)
+    parser.add_argument("--skip-build", action="store_true", help="skip build")
 
     return parser.parse_args()
 
@@ -382,7 +380,13 @@ def parse_args():
 def main():
     global args
     args = parse_args()
-    args.func()
+
+    if args.target == "apphost":
+        build_apphost()
+    elif args.target == "singlefilehost":
+        build_singlefilehost()
+    else:
+        build_all()
 
 
 if __name__ == "__main__":

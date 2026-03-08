@@ -1,21 +1,33 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <StaticHostRid Condition="'$(StaticHostRid)' == ''">$(DefaultRid)</StaticHostRid>
+    <PublishAot>false</PublishAot>
+    <PublishSingleFile>true</PublishSingleFile>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <StaticHostAssetsBaseDir>$(HostLibsRoot)</StaticHostAssetsBaseDir>
+  </PropertyGroup>
+
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
   <Import Project="$(MSBuildProjectDirectory)\..\..\src\StaticAppHost.targets" />
 
   <PropertyGroup>
-    <StaticHostAssetsDir>$(HostLibsRoot)\$(StaticHostRid)</StaticHostAssetsDir>
+    <RidOrDefault>$(RuntimeIdentifier)</RidOrDefault>
+    <RidOrDefault Condition="'$(RidOrDefault)' == ''">$(DefaultAppHostRuntimeIdentifier)</RidOrDefault>
   </PropertyGroup>
 
   <ItemGroup>
-    <NativeLibrary Include="$(MSBuildProjectDirectory)\NativeLib\dll.lib">
+    <NativeLibrary Include="$(MSBuildProjectDirectory)\NativeLib\dll.lib" Condition="$(RidOrDefault.StartsWith('win'))">
+      <WholeArchive>true</WholeArchive>
+    </NativeLibrary>
+    <NativeLibrary Include="$(MSBuildProjectDirectory)\NativeLib\dll.a" Condition="!$(RidOrDefault.StartsWith('win'))">
       <WholeArchive>true</WholeArchive>
     </NativeLibrary>
   </ItemGroup>
+
 </Project>

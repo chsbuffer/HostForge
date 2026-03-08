@@ -1,4 +1,5 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IncludeBuildOutput>false</IncludeBuildOutput>
@@ -36,19 +37,19 @@
     <_UseSingleFileHostForPublish>true</_UseSingleFileHostForPublish>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <StaticHostAssetsBaseDir>$(HostLibsRoot)</StaticHostAssetsBaseDir>
+  </PropertyGroup>
+
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+  <Import Project="$(MSBuildProjectDirectory)\..\StaticAppHost.targets" />
+
   <ItemGroup>
     <PackageReference Include="SkiaSharp" Version="2.88.9" />
     <PackageReference Include="HarfBuzzSharp" Version="7.3.0" />
   </ItemGroup>
 
-  <Import Project="$(MSBuildProjectDirectory)\..\StaticAppHost.targets" />
-
-  <PropertyGroup>
-    <StaticHostAssetsDir>$(PackageAssetsDir)</StaticHostAssetsDir>
-  </PropertyGroup>
-
   <ItemGroup>
-    <None Include="buildTransitive\ChsBuffer.Avalonia.AppHost.props" Pack="true" PackagePath="buildTransitive/" />
     <None Include="buildTransitive\ChsBuffer.Avalonia.AppHost.targets" Pack="true" PackagePath="buildTransitive/" />
     <None Include="contentFiles\cs\net10.0\ModuleInitializer.cs" Pack="true" PackagePath="contentFiles/cs/net10.0/" />
     <None Include="README.md" Pack="true" PackagePath="" />

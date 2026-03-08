@@ -13,24 +13,27 @@ Incremental cache is based on native inputs + host assets + RID/machine/flags fi
 
 ## Usage
 
+Directly import:
 ```xml
-<PropertyGroup>
-  <StaticHostRid Condition="'$(StaticHostRid)' == ''">$(DefaultRid)</StaticHostRid>
-</PropertyGroup>
+<Project>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
 
-<Import Project="$(MSBuildProjectDirectory)\..\..\src\StaticAppHost.targets" />
+  <PropertyGroup>
+    <StaticHostAssetsBaseDir>$(HostLibsRoot)</StaticHostAssetsBaseDir>
+  </PropertyGroup>
 
-<PropertyGroup>
-  <StaticHostAssetsDir>$(HostLibsRoot)\$(StaticHostRid)</StaticHostAssetsDir>
-</PropertyGroup>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+  <Import Project="$(MSBuildProjectDirectory)\..\..\src\StaticAppHost.targets" />
 
-<ItemGroup>
-  <NativeLibrary Include="$(MSBuildProjectDirectory)\NativeLib\foo.lib" />
-  <NativeLibrary Include="$(MSBuildProjectDirectory)\NativeLib\bar.lib">
-    <WholeArchive>true</WholeArchive>
-  </NativeLibrary>
-</ItemGroup>
+  <ItemGroup>
+    <NativeLibrary Include="$(MSBuildProjectDirectory)\NativeLib\foo.lib" />
+    <NativeLibrary Include="$(MSBuildProjectDirectory)\NativeLib\bar.lib">
+      <WholeArchive>true</WholeArchive>
+    </NativeLibrary>
+  </ItemGroup>
 ```
+
+NuGet: TBD
 
 ## Source Layout
 

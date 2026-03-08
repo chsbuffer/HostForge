@@ -1,0 +1,60 @@
+<Project>
+
+  <PropertyGroup>
+    <StaticHostRid Condition="'$(StaticHostRid)' == '' and '$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</StaticHostRid>
+    <StaticHostRid Condition="'$(StaticHostRid)' == '' and '$(AppHostRuntimeIdentifier)' != ''">$(AppHostRuntimeIdentifier)</StaticHostRid>
+    <StaticHostRid Condition="'$(StaticHostRid)' == '' and '$(DefaultAppHostRuntimeIdentifier)' != ''">$(DefaultAppHostRuntimeIdentifier)</StaticHostRid>
+  </PropertyGroup>
+
+  <!-- Originaly from https://github.com/dotnet/runtime/blob/v10.0.3/src/coreclr/nativeaot/BuildIntegration/Microsoft.DotNet.ILCompiler.SingleEntry.targets -->
+  <PropertyGroup Condition="'$(StaticHostRid)' != '' and '$(NETCoreSdkPortableRuntimeIdentifier)' != ''">
+    <_hostOS>$(NETCoreSdkPortableRuntimeIdentifier.SubString(0, $(NETCoreSdkPortableRuntimeIdentifier.LastIndexOf('-'))))</_hostOS>
+
+    <_targetsNonPortableSdkRid>false</_targetsNonPortableSdkRid>
+    <_targetsNonPortableSdkRid Condition="'$(StaticHostRid)' == '$(NETCoreSdkRuntimeIdentifier)' and '$(StaticHostRid)' != '$(NETCoreSdkPortableRuntimeIdentifier)'">true</_targetsNonPortableSdkRid>
+
+    <_originalTargetOS>$(StaticHostRid.SubString(0, $(StaticHostRid.LastIndexOf('-'))))</_originalTargetOS>
+    <_originalTargetOS Condition="'$(_targetsNonPortableSdkRid)' == 'true'">$(NETCoreSdkPortableRuntimeIdentifier.SubString(0, $(NETCoreSdkPortableRuntimeIdentifier.LastIndexOf('-'))))</_originalTargetOS>
+    <_originalTargetOS Condition="$(_originalTargetOS.Contains('.'))">$(_originalTargetOS.SubString(0, $(_originalTargetOS.IndexOf('.'))))</_originalTargetOS>
+    <_originalTargetOS Condition="$(_originalTargetOS.StartsWith('win'))">win</_originalTargetOS>
+
+    <!-- On non-Windows, determine _hostArchitecture from NETCoreSdkPortableRuntimeIdentifier -->
+    <_hostArchitecture Condition="'$(OS)' != 'Windows_NT'">$(NETCoreSdkPortableRuntimeIdentifier.SubString($([MSBuild]::Add($(NETCoreSdkPortableRuntimeIdentifier.LastIndexOf('-')), 1))))</_hostArchitecture>
+    <!-- On Windows, default to host that matches OS architecture on Windows. It allows compilation using msbuild.exe that is x86 by default -->
+    <_hostArchitecture Condition="'$(OS)' == 'Windows_NT'">$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant)</_hostArchitecture>
+
+    <!-- Determine _targetArchitecture from RuntimeIdentifier -->
+    <_targetArchitecture>$(StaticHostRid.SubString($([MSBuild]::Add($(StaticHostRid.LastIndexOf('-')), 1))))</_targetArchitecture>
+
+    <!-- Treat linux-musl and linux-bionic etc. as linux -->
+    <_targetOS>$(_originalTargetOS)</_targetOS>
+    <_linuxToken>linux-</_linuxToken>
+    <_linuxLibcFlavor Condition="$(_targetOS.StartsWith($(_linuxToken)))">$(_targetOS.SubString($(_linuxToken.Length)))</_linuxLibcFlavor>
+    <_linuxLibcFlavor Condition="'$(_targetOS)' == 'android'">bionic</_linuxLibcFlavor>
+    <_targetOS Condition="$(_targetOS.StartsWith($(_linuxToken)))">linux</_targetOS>
+
+    <!-- linux-bionic on ARM uses armel (softfp) ABI -->
+    <_targetArchitectureWithAbi>$(_targetArchitecture)</_targetArchitectureWithAbi>
+    <_targetArchitectureWithAbi Condition="'$(_linuxLibcFlavor)' == 'bionic' and '$(_targetArchitecture)' == 'arm'">armel</_targetArchitectureWithAbi>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <StaticHostAssetsBaseDir Condition="'$(StaticHostAssetsBaseDir)' == ''">$(MSBuildThisFileDirectory)</StaticHostAssetsBaseDir>
+    <StaticHostAssetsDir Condition="'$(StaticHostAssetsDir)' == ''">$([MSBuild]::NormalizePath('$(StaticHostAssetsBaseDir)', '$(StaticHostRid)'))</StaticHostAssetsDir>
+    <_AppHostRspPath>$(StaticHostAssetsDir)\apphost.rsp</_AppHostRspPath>
+    <_SingleFileHostRspPath>$(StaticHostAssetsDir)\singlefilehost.rsp</_SingleFileHostRspPath>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <AppHostLinkPath Condition="'$(AppHostLinkPath)' == ''">$(IntermediateOutputPath)apphost.static.exe</AppHostLinkPath>
+    <AppHostStampPath Condition="'$(AppHostStampPath)' == ''">$([System.IO.Path]::ChangeExtension('$(AppHostLinkPath)', '.inputs.stamp'))</AppHostStampPath>
+    <AppHostLinkFullPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AppHostLinkPath)'))</AppHostLinkFullPath>
+    <AppHostStampFullPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AppHostStampPath)'))</AppHostStampFullPath>
+
+    <SingleFileHostLinkPath Condition="'$(SingleFileHostLinkPath)' == ''">$(IntermediateOutputPath)singlefilehost.static.exe</SingleFileHostLinkPath>
+    <SingleFileHostStampPath Condition="'$(SingleFileHostStampPath)' == ''">$([System.IO.Path]::ChangeExtension('$(SingleFileHostLinkPath)', '.inputs.stamp'))</SingleFileHostStampPath>
+    <SingleFileHostLinkFullPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(SingleFileHostLinkPath)'))</SingleFileHostLinkFullPath>
+    <SingleFileHostStampFullPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(SingleFileHostStampPath)'))</SingleFileHostStampFullPath>
+  </PropertyGroup>
+
+</Project>

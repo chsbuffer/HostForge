@@ -3,6 +3,11 @@
     <DisableSkiaHarfBuzzRuntimeCopy Condition="'$(DisableSkiaHarfBuzzRuntimeCopy)' == ''">true</DisableSkiaHarfBuzzRuntimeCopy>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <_AvaloniaPackageRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\'))</_AvaloniaPackageRoot>
+    <_AvaloniaModuleInitializer>$(_AvaloniaPackageRoot)contentFiles\cs\net10.0\ModuleInitializer.cs</_AvaloniaModuleInitializer>
+  </PropertyGroup>
+
   <Target Name="ResolveAvaloniaAppHostActivation"
           BeforeTargets="PrepareForBuild;_GetAppHostPaths">
     <PropertyGroup>

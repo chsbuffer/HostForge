@@ -31,10 +31,10 @@ public class StaticAppHostMatrixTests
 
         var steps = new (string Name, string Arguments, bool? ExpectIncrementalLinker)[]
         {
-            ("01-build-no-r-first", $"build \"{consumerProject}\" -c {configuration} -v:minimal", true),
-            ("02-build-no-r-second", $"build \"{consumerProject}\" -c {configuration} -v:minimal", false),
-            ("03-build-r-first", $"build \"{consumerProject}\" -c {configuration} -r {rid} -v:minimal", true),
-            ("04-build-r-second", $"build \"{consumerProject}\" -c {configuration} -r {rid} -v:minimal", false),
+            ("01-build-no-rid-first", $"build \"{consumerProject}\" -c {configuration} -v:minimal", true),
+            ("02-build-no-rid-second", $"build \"{consumerProject}\" -c {configuration} -v:minimal", false),
+            ("03-build-rid-first", $"build \"{consumerProject}\" -c {configuration} -r {rid} -v:minimal", true),
+            ("04-build-rid-second", $"build \"{consumerProject}\" -c {configuration} -r {rid} -v:minimal", false),
             ("05-publish-first", $"publish \"{consumerProject}\" -c {configuration} -r {rid} /p:PublishSingleFile=true -v:minimal", true),
             ("06-publish-second", $"publish \"{consumerProject}\" -c {configuration} -r {rid} /p:PublishSingleFile=true -v:minimal", false)
         };
