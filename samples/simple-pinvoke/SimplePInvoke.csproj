@@ -30,4 +30,9 @@
     </NativeLibrary>
   </ItemGroup>
 
+  <Target Name="BuildNativeLib" BeforeTargets="CoreCompile">
+    <Exec Command="python build.py"
+          WorkingDirectory="$(ProjectDir)NativeLib" />
+  </Target>
+
 </Project>

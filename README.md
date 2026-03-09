@@ -86,7 +86,7 @@ python .\scripts\pipeline.py matrix
 - 构建 SkiaSharp：
 
 ```powershell
-python .\scripts\pipeline.py skia
+python .\scripts\pipeline.py skia -v
 ```
 或
 ```powershell
@@ -97,7 +97,7 @@ python .\scripts\build-skia-harfbuzz.py -v -a arm64
 - 打包 Avalonia Host 包：
 
 ```powershell
-python .\scripts\pipeline.py pack-avalonia
+python .\scripts\pipeline.py pack-avalonia -v
 ```
 
 ## 实验性 Linux 生成
@@ -105,7 +105,7 @@ python .\scripts\pipeline.py pack-avalonia
 - 构建 HostLib：
 
 ```bash
-python scripts/build-hostlibs.py --os linux --arch x64
+python scripts/build-hostlibs.py -v --os linux --arch x64
 ```
 
 - 运行构建集成矩阵测试：

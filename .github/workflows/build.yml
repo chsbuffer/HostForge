@@ -50,10 +50,10 @@ jobs:
         run: sudo ./eng/common/native/install-dependencies.sh linux
 
       - name: Build hostlibs for Linux x64
-        run: python ./scripts/build-hostlibs.py --os linux --arch x64
+        run: python ./scripts/build-hostlibs.py -v --os linux --arch x64
 
       - name: Run SimplePInvoke sample
-        run: ./repo/runtime/.dotnet/dotnet run --project samples/simple-pinvoke/SimplePInvoke.csproj
+        run: ./repo/runtime/.dotnet/dotnet run --project samples/simple-pinvoke/SimplePInvoke.csproj -v:normal
 
       - name: Publish SimplePInvoke sample trimmed
-        run: ./repo/runtime/.dotnet/dotnet publish samples/simple-pinvoke/SimplePInvoke.csproj -p:"PublishTrimmed=true"
+        run: ./repo/runtime/.dotnet/dotnet publish samples/simple-pinvoke/SimplePInvoke.csproj -v:normal -p:"PublishTrimmed=true"

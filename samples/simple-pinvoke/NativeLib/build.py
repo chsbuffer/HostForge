@@ -30,16 +30,27 @@ def execv(cmd: str, cwd: Path | None = None, env=None):
     return proc
 
 
+def run_in_vs_env(cmd: str, cwd: Path, arch: str, env=None):
+    full_cmd = f"call {INIT_VS_ENV_CMD} {arch} && cd /d {cwd} && {cmd}"
+    execv(full_cmd)
+
+
 SCRIPT_ROOT = Path(__file__).resolve().parent
+INIT_VS_ENV_CMD = SCRIPT_ROOT / ".." / ".." / ".." / "scripts" / "init-vs-env.cmd"
 
 
 def main():
     if is_windows:
-        execv("cl.exe /nologo /c dll.cpp")
-        execv("lib.exe /nologo dll.obj")
+        if not Path(SCRIPT_ROOT, "dll.lib").exists():
+            run_in_vs_env(
+                "cl.exe /nologo /c dll.cpp && lib.exe /nologo dll.obj",
+                cwd=SCRIPT_ROOT,
+                arch="x64",
+            )
     else:
-        execv("clang++ -c dll.cpp")
-        execv("llvm-ar rcs dll.a dll.o")
+        if not Path(SCRIPT_ROOT, "dll.a").exists():
+            execv("clang++ -c dll.cpp")
+            execv("llvm-ar rcs dll.a dll.o")
 
 
 if __name__ == "__main__":

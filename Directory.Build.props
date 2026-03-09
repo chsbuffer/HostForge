@@ -1,7 +1,6 @@
 <Project>
   <PropertyGroup>
     <RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>
-    <DefaultRid>win-x64</DefaultRid>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
 
     <AvaloniaAppHostPackageVersion>11.0.0-preview.2</AvaloniaAppHostPackageVersion>
