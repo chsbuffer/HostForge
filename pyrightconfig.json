@@ -1,0 +1,4 @@
+{
+  "include": ["scripts", "src"],
+  "typeCheckingMode": "standard",
+}

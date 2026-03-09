@@ -1,0 +1,59 @@
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  windows:
+    runs-on: windows-2025-vs2026
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Run pipeline
+        shell: powershell
+        run: python .\scripts\pipeline.py all -v
+
+      - name: Upload nuget packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts\packages\Release
+          if-no-files-found: error
+
+      - name: Upload skiasharp-2.88.9
+        uses: actions/upload-artifact@v4
+        with:
+          name: skiasharp-2.88.9
+          path: artifacts\skiasharp-2.88.9
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Install runtime native dependencies
+        working-directory: ./repo/runtime
+        run: sudo ./eng/common/native/install-dependencies.sh linux
+
+      - name: Build hostlibs for Linux x64
+        run: python ./scripts/build-hostlibs.py --os linux --arch x64
+
+      - name: Run SimplePInvoke sample
+        run: ./repo/runtime/.dotnet/dotnet run --project samples/simple-pinvoke/SimplePInvoke.csproj
+
+      - name: Publish SimplePInvoke sample trimmed
+        run: ./repo/runtime/.dotnet/dotnet publish samples/simple-pinvoke/SimplePInvoke.csproj -p:"PublishTrimmed=true"

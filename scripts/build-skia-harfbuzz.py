@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Never
 
 
 def color_print(code, text):
@@ -16,7 +17,7 @@ def color_print(code, text):
         print(f"{code}{text}\033[0m")
 
 
-def error(text):
+def error(text) -> Never:
     color_print("\033[41;39m", f"\n! {text}\n")
     sys.exit(1)
 
@@ -28,6 +29,21 @@ def header(text):
 def vprint(text):
     if args.verbose > 0:
         print(text)
+
+
+def copy_template(in_path, out, vals: dict[str, str], encoding="utf-8"):
+    out_path = Path(out)
+    template = Path(in_path).read_text(encoding)
+    if not template:
+        error(f"input path {in_path} not exists.")
+
+    for k, v in vals.items():
+        template = template.replace(f"$${k}$$", v)
+
+    if out_path.exists() and template == Path(out_path).read_text(encoding):
+        return
+
+    Path(out_path).write_text(template, encoding)
 
 
 # OS detection
@@ -55,10 +71,10 @@ args: argparse.Namespace
 ###################
 
 
-def execv(cmds: list[str], cwd: Path | None = None, env=None):
+def execv(cmds, cwd: Path | None = None, env=None):
     if args.verbose > 0:
         print(" ".join(str(x) for x in cmds))
-    proc = subprocess.run(cmds, cwd=cwd, env=env, shell=is_windows)
+    proc = subprocess.run(cmds, cwd=cwd, shell=is_windows)
     if proc.returncode != 0:
         error(f"Command failed ({proc.returncode}): {' '.join(str(x) for x in cmds)}")
     return proc
@@ -67,7 +83,7 @@ def execv(cmds: list[str], cwd: Path | None = None, env=None):
 def exec_cmd(cmd: str, cwd: Path | None = None, env=None):
     if args.verbose > 0:
         print(cmd)
-    proc = subprocess.run(["cmd.exe", "/d", "/c", cmd], cwd=cwd, env=env, shell=False)
+    proc = subprocess.run(["cmd.exe", "/d", "/c", cmd], cwd=cwd, shell=False)
     if proc.returncode != 0:
         error(f"Command failed ({proc.returncode}): {cmd}")
     return proc
@@ -75,15 +91,13 @@ def exec_cmd(cmd: str, cwd: Path | None = None, env=None):
 
 def run_in_vs_env(cmd: str, cwd: Path, arch: str, env=None):
     full_cmd = f"call {INIT_VS_ENV_CMD} {arch} && cd /d {cwd} && {cmd}"
-    exec_cmd(full_cmd, env=env)
+    exec_cmd(full_cmd)
 
 
-def resolve_python() -> list[str]:
-    if shutil.which("py"):
-        return ["py", "-3"]
-    if shutil.which("python"):
-        return ["python"]
-    error("Python not found in PATH")
+def cp(source: Path, target: Path):
+    vprint(f"cp {source} -> {target}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
 
 
 ###############
@@ -93,6 +107,10 @@ def resolve_python() -> list[str]:
 SCRIPT_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_ROOT.parent
 
+VC_COMPILER_VER = os.environ.get("VC_COMPILER_VER", "14.5")
+VC_TOOLSET_VER = os.environ.get("VC_TOOLSET_VER", "v145")
+WINDOWS_SDK_VER = os.environ.get("WINDOWS_SDK_VER", "10.0.26100.0")
+
 SKIASHARP_VERSION = "2.88.9"
 SKIA_ROOT = REPO_ROOT / "repo" / "skia"
 DEPOT_TOOLS_ROOT = REPO_ROOT / "repo" / "depot_tools"
@@ -101,6 +119,7 @@ SKIA_OUT_ROOT = SKIA_ROOT / "out" / "windows"
 PATCH_ARGS_GN = REPO_ROOT / "repo" / "patch" / "args.gn"
 
 HARFBUZZ_PROJECT_DIR = REPO_ROOT / "repo" / "HarfBuzzSharp"
+HARFBUZZ_PROJECT_FILE_IN = HARFBUZZ_PROJECT_DIR / "libHarfBuzzSharp.vcxproj.in"
 HARFBUZZ_PROJECT_FILE = HARFBUZZ_PROJECT_DIR / "libHarfBuzzSharp.vcxproj"
 INIT_VS_ENV_CMD = SCRIPT_ROOT / "init-vs-env.cmd"
 
@@ -152,14 +171,6 @@ def harfbuzz_output_lib() -> Path:
     )
 
 
-def ensure_local_depot_tools_in_path(env):
-    if not DEPOT_TOOLS_ROOT.exists():
-        return
-    env["PATH"] = (
-        f"{SKIA_ROOT / 'bin'}{os.pathsep}{DEPOT_TOOLS_ROOT}{os.pathsep}{env.get('PATH', '')}"
-    )
-
-
 def write_args_gn(target: Path):
     cpu = GN_CPU[target_arch()]
     lines = PATCH_ARGS_GN.read_text(encoding="utf-8").splitlines()
@@ -168,35 +179,44 @@ def write_args_gn(target: Path):
         if line.strip().startswith("target_cpu = "):
             output.append(f'target_cpu = "{cpu}"')
             continue
+        if line.strip().startswith("win_vcvars_version = "):
+            output.append(f'win_vcvars_version = "{VC_COMPILER_VER}"')
+            continue
         if target_arch() != "x64" and '"/arch:AVX2"' in line:
             continue
         output.append(line)
     target.write_text("\n".join(output) + "\n", encoding="utf-8")
 
 
-def build_skia(env, python_cmd):
+def build_skia():
     header("Build SkiaSharp")
     out_dir = skia_out_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
     write_args_gn(out_dir / "args.gn")
 
     if not args.skip_sync_deps:
-        execv([*python_cmd, "tools/git-sync-deps"], cwd=SKIA_ROOT, env=env)
+        execv([sys.executable, SKIA_ROOT / "tools/git-sync-deps"], cwd=SKIA_ROOT)
 
-    execv(["gn.exe", "gen", str(out_dir)], cwd=SKIA_ROOT, env=env)
-    execv(
-        ["ninja.exe", "-C", str(out_dir), "skia", "SkiaSharp"], cwd=SKIA_ROOT, env=env
-    )
+    execv([SKIA_ROOT / "bin" / "gn.exe", "gen", out_dir], cwd=SKIA_ROOT)
+    execv([DEPOT_TOOLS_ROOT / "ninja.exe", "-C", out_dir, "skia", "SkiaSharp"])
 
 
-def build_harfbuzz(env):
+def build_harfbuzz():
     header("Build HarfBuzzSharp")
     platform_name = HARFBUZZ_PLATFORM[target_arch()]
+    copy_template(
+        HARFBUZZ_PROJECT_FILE_IN,
+        HARFBUZZ_PROJECT_FILE,
+        {
+            "VC_TOOLSET_VER": VC_TOOLSET_VER,
+            "WINDOWS_SDK_VER": WINDOWS_SDK_VER,
+        },
+        encoding="utf-8-sig",
+    )
     run_in_vs_env(
         f"msbuild {HARFBUZZ_PROJECT_FILE} -m /p:Configuration=Release /p:Platform={platform_name}",
         cwd=HARFBUZZ_PROJECT_DIR,
         arch=target_arch(),
-        env=env,
     )
 
 
@@ -209,33 +229,33 @@ def copy_outputs(output_dir: Path):
     for lib_name in SKIA_OUTPUT_LIBS:
         source = out_dir / lib_name
         target = output_dir / lib_name
-        shutil.copy2(source, target)
-        vprint(f"cp {source} -> {target}")
+        cp(source, target)
 
     harfbuzz_lib = harfbuzz_output_lib()
     target = output_dir / harfbuzz_lib.name
-    shutil.copy2(harfbuzz_lib, target)
-    vprint(f"cp {harfbuzz_lib} -> {target}")
+    cp(harfbuzz_lib, target)
 
 
 def build_all():
     if os.name != "nt":
         error("This script is intended for Windows only")
 
-    env = os.environ.copy()
-    ensure_local_depot_tools_in_path(env)
-    python_cmd = resolve_python()
     output_dir = resolve_output_dir()
 
-    build_skia(env, python_cmd)
-    build_harfbuzz(env)
+    build_skia()
+    build_harfbuzz()
     copy_outputs(output_dir)
     print("\nDone.")
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Build SkiaSharp + HarfBuzz static libs for HostForge."
+        description="Build SkiaSharp + HarfBuzz static libs for HostForge.",
+        epilog="""Environment Variables:
+    VC_COMPILER_VER:\t(default: 14.5)
+    VC_TOOLSET_VER :\t(default: v145)
+    WINDOWS_SDK_VER:\t(default: 10.0.26100.0)""",
+        formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.set_defaults(func=build_all)
     parser.add_argument(

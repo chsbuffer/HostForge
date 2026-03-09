@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 import argparse
 import platform
-import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Never
 
 
 def color_print(code, text):
@@ -15,7 +15,7 @@ def color_print(code, text):
         print(f"{code}{text}\033[0m")
 
 
-def error(text):
+def error(text) -> Never:
     color_print("\033[41;39m", f"\n! {text}\n")
     sys.exit(1)
 
@@ -54,7 +54,7 @@ args: argparse.Namespace
 ###################
 
 
-def execv(cmds: list[str], cwd: Path | None = None, env=None):
+def execv(cmds, cwd: Path | None = None, env=None):
     if args.verbose > 0:
         print(" ".join(str(x) for x in cmds))
     proc = subprocess.run(cmds, cwd=cwd, env=env, shell=is_windows)
@@ -63,12 +63,8 @@ def execv(cmds: list[str], cwd: Path | None = None, env=None):
     return proc
 
 
-def resolve_python():
-    if shutil.which("py"):
-        return ["py", "-3"]
-    if shutil.which("python"):
-        return ["python"]
-    error("Python not found. Install Python 3.10+.")
+def python():
+    return sys.executable
 
 
 ###############
@@ -78,6 +74,7 @@ def resolve_python():
 SCRIPT_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_ROOT.parent
 BUILD_HOSTLIBS_SCRIPT = SCRIPT_ROOT / "build-hostlibs.py"
+BUILD_SKIA_HARFBUZZ_SCRIPT = SCRIPT_ROOT / "build-skia-harfbuzz.py"
 AVALONIA_APPHOST_CSPROJ = (
     REPO_ROOT / "src" / "package-avalonia-apphost" / "AvaloniaAppHost.csproj"
 )
@@ -89,69 +86,46 @@ MATRIX_TEST_CSPROJ = (
 )
 
 
-def runtime_rid(arch: str) -> str:
-    return f"win-{arch}"
-
-
 def dotnet_verbosity() -> str:
     return "normal" if args.verbose > 0 else "minimal"
 
 
 def build_hostlibs():
     header("Build host libs")
-    py = resolve_python()
-    cmd = [*py, str(BUILD_HOSTLIBS_SCRIPT)]
-    if args.verbose > 0:
-        cmd.append("-v")
-    cmd.extend(["all", "-a", args.arch])
-    execv(cmd, cwd=REPO_ROOT)
+    verbose = ["-v"] if args.verbose > 0 else []
+    execv([python(), BUILD_HOSTLIBS_SCRIPT, *verbose, "all", "-a", "x64"])
+    execv([python(), BUILD_HOSTLIBS_SCRIPT, *verbose, "all", "-a", "arm64"])
 
 
-def pack_avalonia_apphost():
-    header("Pack avalonia apphost nuget")
-    rid = runtime_rid(args.arch)
-    execv(
-        [
-            "dotnet",
-            "pack",
-            str(AVALONIA_APPHOST_CSPROJ),
-            "-c",
-            args.configuration,
-            f"-v:{dotnet_verbosity()}",
-            f"/p:AvaloniaHostRids={rid}",
-        ],
-        cwd=REPO_ROOT,
-    )
+def build_skia_harfbuzz():
+    header("Build SkiaSharp and HarfBuzzSharp")
+    verbose = ["-v"] if args.verbose > 0 else []
+    execv([python(), BUILD_SKIA_HARFBUZZ_SCRIPT, *verbose, "-a", "x64"])
+    execv([python(), BUILD_SKIA_HARFBUZZ_SCRIPT, *verbose, "-a", "arm64"])
 
 
 def run_matrix_test():
-    if args.arch != "x64":
-        error(
-            "Matrix test currently only supports x64 package. Use --skip-matrix-test for non-x64."
-        )
-
     header("Run matrix test")
-    cmd = [
-        "dotnet",
-        "test",
-        "--project",
-        str(MATRIX_TEST_CSPROJ),
-        "-c",
-        args.configuration,
-        f"-v:{dotnet_verbosity()}",
-    ]
+    cmd = ["dotnet", "test", "--project", MATRIX_TEST_CSPROJ, "-c", "Release"]
+    cmd.extend([f"-v:{dotnet_verbosity()}"])
     if args.skip_exe_run:
         cmd.extend(["-e", "HOSTFORGE_MATRIX_SKIP_EXE_RUN=true"])
     if args.no_clean:
         cmd.extend(["-e", "HOSTFORGE_MATRIX_NO_CLEAN=true"])
-    execv(cmd, cwd=REPO_ROOT)
+    execv(cmd)
+
+
+def pack_avalonia_apphost():
+    header("Pack avalonia apphost nuget")
+    execv(["dotnet", "pack", AVALONIA_APPHOST_CSPROJ, f"-v:{dotnet_verbosity()}"])
 
 
 def run_all():
-    if not args.skip_host_lib_build:
-        build_hostlibs()
+    build_hostlibs()
     if not args.skip_matrix_test:
         run_matrix_test()
+    build_skia_harfbuzz()
+    pack_avalonia_apphost()
     print("\nPipeline completed.")
 
 
@@ -160,40 +134,20 @@ def run_all():
 ##########################
 
 
-def add_common_options(parser):
-    parser.add_argument(
-        "-a",
-        "--arch",
-        choices=["x64", "x86", "arm64"],
-        default="x64",
-        help="target architecture",
-    )
-    parser.add_argument(
-        "-c",
-        "--configuration",
-        default="Release",
-        help="build configuration (default: Release)",
-    )
-
-
-def add_all_options(parser):
-    parser.add_argument(
-        "--skip-host-lib-build", action="store_true", help="skip HostLib build"
-    )
-    parser.add_argument(
-        "--skip-pack",
-        action="store_true",
-        help="deprecated no-op kept for compatibility",
-    )
-    parser.add_argument(
-        "--skip-matrix-test", action="store_true", help="skip matrix test"
-    )
+def add_matrix_options(parser):
     parser.add_argument(
         "--skip-exe-run", action="store_true", help="skip exe run in matrix test"
     )
     parser.add_argument(
         "--no-clean", action="store_true", help="keep consumer bin/obj in matrix test"
     )
+
+
+def add_all_options(parser):
+    parser.add_argument(
+        "--skip-matrix-test", action="store_true", help="skip matrix test"
+    )
+    add_matrix_options(parser)
 
 
 def parse_args():
@@ -202,7 +156,6 @@ def parse_args():
     parser.add_argument(
         "-v", "--verbose", action="count", default=0, help="verbose output"
     )
-    add_common_options(parser)
     add_all_options(parser)
 
     subparsers = parser.add_subparsers(dest="command")
@@ -211,7 +164,6 @@ def parse_args():
     all_parser.add_argument(
         "-v", "--verbose", action="count", default=0, help="verbose output"
     )
-    add_common_options(all_parser)
     add_all_options(all_parser)
     all_parser.set_defaults(func=run_all)
 
@@ -219,14 +171,22 @@ def parse_args():
     hostlibs_parser.add_argument(
         "-v", "--verbose", action="count", default=0, help="verbose output"
     )
-    hostlibs_parser.add_argument(
-        "-a",
-        "--arch",
-        choices=["x64", "x86", "arm64"],
-        default="x64",
-        help="target architecture",
-    )
     hostlibs_parser.set_defaults(func=build_hostlibs)
+
+    matrix_parser = subparsers.add_parser(
+        "matrix", help="run apphost linking build integration matrix test only"
+    )
+    add_matrix_options(matrix_parser)
+    matrix_parser.add_argument(
+        "-v", "--verbose", action="count", default=0, help="verbose output"
+    )
+    matrix_parser.set_defaults(func=run_matrix_test)
+
+    skia_parser = subparsers.add_parser("skia", help="build SkiaSharp only")
+    skia_parser.add_argument(
+        "-v", "--verbose", action="count", default=0, help="verbose output"
+    )
+    skia_parser.set_defaults(func=build_skia_harfbuzz)
 
     pack_avalonia_parser = subparsers.add_parser(
         "pack-avalonia", help="pack avalonia apphost only"
@@ -234,21 +194,7 @@ def parse_args():
     pack_avalonia_parser.add_argument(
         "-v", "--verbose", action="count", default=0, help="verbose output"
     )
-    add_common_options(pack_avalonia_parser)
     pack_avalonia_parser.set_defaults(func=pack_avalonia_apphost)
-
-    matrix_parser = subparsers.add_parser("matrix", help="run matrix test only")
-    matrix_parser.add_argument(
-        "-v", "--verbose", action="count", default=0, help="verbose output"
-    )
-    add_common_options(matrix_parser)
-    matrix_parser.add_argument(
-        "--skip-exe-run", action="store_true", help="skip exe run in matrix test"
-    )
-    matrix_parser.add_argument(
-        "--no-clean", action="store_true", help="keep consumer bin/obj in matrix test"
-    )
-    matrix_parser.set_defaults(func=run_matrix_test)
 
     return parser.parse_args()
 

@@ -6,6 +6,7 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
+from typing import Never
 
 
 def color_print(code, text):
@@ -16,7 +17,7 @@ def color_print(code, text):
         print(f"{code}{text}\033[0m")
 
 
-def error(text):
+def error(text) -> Never:
     color_print("\033[41;39m", f"\n! {text}\n")
     sys.exit(1)
 
@@ -362,7 +363,7 @@ def parse_args():
     parser.add_argument(
         "-a",
         "--arch",
-        choices=["x86", "x64", "arm64"],
+        choices=["x64", "arm64"],
         default="x64",
         help="target architecture",
     )

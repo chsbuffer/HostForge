@@ -1,5 +1,7 @@
 # HostForge
 
+**ChsBuffer.Avalonia.AppHost**: [![NuGet.org](https://img.shields.io/nuget/v/ChsBuffer.Avalonia.AppHost.svg?logo=nuget)](https://www.nuget.org/packages/ChsBuffer.Avalonia.AppHost/)
+
 ## 项目简介
 
 本项目聚焦一种不依赖 NativeAOT 的“真单文件”发布方案。  
@@ -7,8 +9,8 @@
 
 项目同时覆盖两条落地路径：
 
-- 面向通用 .NET 应用的 `StaticAppHost`。
-- 面向 Avalonia 11 的 `Avalonia AppHost`（预链接 SkiaSharp/HarfBuzz 宿主模板）。
+- 面向通用 .NET 应用的 `StaticAppHost` 构建集成。
+- 面向 Avalonia 11 的 `Avalonia AppHost`（预链接 SkiaSharp 2.88.9 的宿主模板）。
 
 当前重点是 `win-x64`，并配套可验证的构建、打包与测试流水线。
 
@@ -43,59 +45,72 @@
 
 ## 环境要求
 
-- Windows
-- MSVC 工具链
-- .NET SDK 10.x
+- Windows 11
+- MSVC Build Tools 14.50 (VS 2026) x64,arm64
 - Python 3.12+
+- .NET SDK 10.0.101 (可选)
 
 ## 快速开始
 
-1. 一键执行完整流水线（推荐，Python）：
+- 一键执行完整流水线：
 
 ```powershell
-python .\scripts\pipeline.py all
+python .\scripts\pipeline.py all -v
 ```
 
-2. 若仅验证打包与矩阵（跳过 HostLib 编译）：
+- 跳过构建集成矩阵测试（执行 HostLib、SkiaSharp 构建 + 打包 Avalonia App Host）：
 
 ```powershell
-python .\scripts\pipeline.py all --skip-host-lib-build
+python .\scripts\pipeline.py all -v --skip-matrix-test
 ```
 
-3. 仅构建 HostLib（不跑打包和测试）：
+## 逐步生成
+
+- 构建 HostLib：
 
 ```powershell
-python .\scripts\pipeline.py hostlibs -a x64
+python .\scripts\pipeline.py hostlibs -v
+```
+或
+```powershell
+python .\scripts\build-hostlib.py all -v --arch x64
+python .\scripts\build-hostlib.py all -v --arch arm64
 ```
 
-### 跳过测试命令
-
-- 跳过矩阵测试（执行 HostLib 构建 + 打包）：
+- 运行构建集成矩阵测试：
 
 ```powershell
-python .\scripts\pipeline.py all --skip-matrix-test
+python .\scripts\pipeline.py matrix
 ```
 
-- 仅打包（不构建 HostLib、不跑测试）：
+- 构建 SkiaSharp：
 
 ```powershell
-python .\scripts\pipeline.py all --skip-host-lib-build --skip-matrix-test
+python .\scripts\pipeline.py skia
+```
+或
+```powershell
+python .\scripts\build-skia-harfbuzz.py -v -a x64
+python .\scripts\build-skia-harfbuzz.py -v -a arm64
 ```
 
-- 仅运行矩阵测试：
+- 打包 Avalonia Host 包：
 
 ```powershell
-python .\scripts\pipeline.py matrix -a x64 -c Release
+python .\scripts\pipeline.py pack-avalonia
 ```
 
-- 仅打包 Avalonia Host 包：
+## 实验性 Linux 生成
 
-```powershell
-python .\scripts\pipeline.py pack-avalonia -a x64 -c Release
+- 构建 HostLib：
+
+```bash
+python scripts/build-hostlibs.py --os linux --arch x64
 ```
 
-- 仅打包 Static Host 包：
+- 运行构建集成矩阵测试：
 
-```powershell
-python .\scripts\pipeline.py matrix -a x64 -c Release
+```bash
+dotnet run --project samples/simple-pinvoke/SimplePInvoke.csproj
+dotnet publish samples/simple-pinvoke/SimplePInvoke.csproj -p:"PublishTrimmed=true"
 ```
