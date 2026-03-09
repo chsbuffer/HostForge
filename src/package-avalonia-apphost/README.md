@@ -1,15 +1,9 @@
 # ChsBuffer.Avalonia.AppHost
 
-> Prelinked **Avalonia 11** apphost/singlefilehost template package for **.NET 10.0** on **Windows `win-x64` + `win-arm64`**.
-
-Prelinked Avalonia 11 apphost/singlefilehost template package for `net10.0` on `win-x64` and `win-arm64`.
+Prelinked **Avalonia 11** apphost/singlefilehost template package for **.NET 10.0** on **Windows `win-x64` + `win-arm64`**.
 
 ## Important first
 
-- Current implementation is intended for **Avalonia 11**.
-- Current template payload is built for **`net10.0`**.
-- Current Windows template RIDs are **`win-x64`** and **`win-arm64`**.
-- Template payload always includes `win-x64`; `win-arm64` is included when local arm64 host/native inputs are present at pack time.
 - `AngleEgl` is not statically linked by this package.
 - Avalonia 11 Win32 default rendering mode is typically `AngleEgl, Software`.
 - If `av_libglesv2.dll` is not present, default behavior may leave only software rendering available.
@@ -37,48 +31,26 @@ private static AppBuilder BuildAvaloniaApp()
 
 With this configuration, `av_libglesv2.dll` can be removed when a non-ANGLE backend is available on target machines.
 
-## Install
-
-```powershell
-dotnet add package ChsBuffer.Avalonia.AppHost
-```
-
 ## What this package provides
 
 - `template/net10.0/win-x64/apphost.exe`
 - `template/net10.0/win-x64/singlefilehost.exe`
-- `template/net10.0/win-arm64/apphost.exe` (when arm64 pack inputs exist)
-- `template/net10.0/win-arm64/singlefilehost.exe` (when arm64 pack inputs exist)
-- `buildTransitive/ChsBuffer.Avalonia.AppHost.props`
-  - sets `AppHostSourcePath` and `SingleFileHostSourcePath` from the package template path
+- `template/net10.0/win-arm64/apphost.exe`
+- `template/net10.0/win-arm64/singlefilehost.exe`
 - `buildTransitive/ChsBuffer.Avalonia.AppHost.targets`
-  - optional suppression of SkiaSharp/HarfBuzz native runtime copy
+  - sets `AppHostSourcePath` and `SingleFileHostSourcePath` from the package template path
+  - suppress SkiaSharp/HarfBuzz native runtime copy
 - `contentFiles/cs/net10.0/ModuleInitializer.cs`
   - maps Avalonia native DLL names to the main program handle
 
-### Arm64 template inclusion inputs
-
-To include `win-arm64` templates when packing this package, both directories must exist:
-
-- `artifacts/hostlibs/win-arm64`
-- `artifacts/skiasharp-2.88.9/win-arm64`
-
 ## NativeAssets behavior
 
-By default this package sets:
-
-```xml
-<DisableSkiaHarfBuzzRuntimeCopy>true</DisableSkiaHarfBuzzRuntimeCopy>
-```
-
-That removes these files from build/publish output:
+By default this package removes these files from build/publish output:
 
 - `libSkiaSharp.dll`
 - `libHarfBuzzSharp.dll`
 
-### Switch back to default SDK copy behavior
-
-Set this in your app project:
+You can switch back to default SDK copy behavior by set this in your app project:
 
 ```xml
 <PropertyGroup>

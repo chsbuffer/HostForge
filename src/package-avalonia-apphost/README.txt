@@ -28,22 +28,22 @@ for example Vulkan or Wgl, in addition to AngleEgl and Software.
 
 Example:
 
-  private static AppBuilder BuildAvaloniaApp()
-  {
-      return AppBuilder.Configure<App>()
-          .UsePlatformDetect()
-          .LogToTrace()
-          .With(new Win32PlatformOptions
-          {
-              RenderingMode =
-              [
-                  Win32RenderingMode.AngleEgl,
-                  Win32RenderingMode.Vulkan,
-                  Win32RenderingMode.Wgl,
-                  Win32RenderingMode.Software
-              ]
-          });
-  }
+private static AppBuilder BuildAvaloniaApp()
+{
+    return AppBuilder.Configure<App>()
+        .UsePlatformDetect()
+        .LogToTrace()
+        .With(new Win32PlatformOptions
+        {
+            RenderingMode =
+            [
+                Win32RenderingMode.AngleEgl,
+                Win32RenderingMode.Vulkan,
+                Win32RenderingMode.Wgl,
+                Win32RenderingMode.Software
+            ]
+        });
+}
 
 With that configuration, av_libglesv2.dll can be removed when a non-ANGLE backend is available
 on the target machine.

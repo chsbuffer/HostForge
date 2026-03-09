@@ -161,6 +161,10 @@ jobs:
           path: artifacts\packages\Release
           if-no-files-found: error
 
+      - name: Run Avalonia App Host package tests
+        shell: powershell
+        run: dotnet test --project .\tests\HostForge.AvaloniaAppHost.Tests\HostForge.AvaloniaAppHost.Tests.csproj -c Release -v:normal
+
   linux:
     runs-on: ubuntu-latest
 
