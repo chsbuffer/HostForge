@@ -73,8 +73,8 @@ python .\scripts\pipeline.py hostlibs -v
 ```
 或
 ```powershell
-python .\scripts\build-hostlib.py all -v --arch x64
-python .\scripts\build-hostlib.py all -v --arch arm64
+python .\scripts\build-hostlibs.py all -v --arch x64
+python .\scripts\build-hostlibs.py all -v --arch arm64
 ```
 
 - 运行构建集成矩阵测试：

@@ -7,7 +7,7 @@ on:
       - main
 
 jobs:
-  windows:
+  windows-hostlibs-x64:
     runs-on: windows-2025-vs2026
 
     steps:
@@ -15,24 +15,150 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-          submodules: recursive
+          submodules: false
 
-      - name: Run pipeline
+      - name: Initialize runtime submodule
         shell: powershell
-        run: python .\scripts\pipeline.py all -v
+        run: git submodule update --init --depth 1 repo/runtime
+
+      - name: Build hostlibs for Windows x64
+        shell: powershell
+        run: python .\scripts\build-hostlibs.py all -v --arch x64
+
+      - name: Upload hostlibs win-x64
+        uses: actions/upload-artifact@v4
+        with:
+          name: hostlibs-win-x64
+          path: artifacts\hostlibs\win-x64
+          if-no-files-found: error
+
+      - name: Run matrix integration build
+        shell: powershell
+        run: python .\scripts\pipeline.py matrix -v
+
+  windows-hostlibs-arm64:
+    runs-on: windows-2025-vs2026
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Initialize runtime submodule
+        shell: powershell
+        run: git submodule update --init --depth 1 repo/runtime
+
+      - name: Build hostlibs for Windows arm64
+        shell: powershell
+        run: python .\scripts\build-hostlibs.py all -v --arch arm64
+
+      - name: Upload hostlibs win-arm64
+        uses: actions/upload-artifact@v4
+        with:
+          name: hostlibs-win-arm64
+          path: artifacts\hostlibs\win-arm64
+          if-no-files-found: error
+
+  windows-skia-x64:
+    runs-on: windows-2025-vs2026
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Initialize Skia dependencies submodules
+        shell: powershell
+        run: git submodule update --init --depth 1 repo/skia repo/depot_tools
+
+      - name: Build SkiaSharp and HarfBuzz for Windows x64
+        shell: powershell
+        run: python .\scripts\build-skia-harfbuzz.py -v -a x64
+
+      - name: Upload skiasharp-2.88.9 win-x64
+        uses: actions/upload-artifact@v4
+        with:
+          name: skiasharp-2.88.9-win-x64
+          path: artifacts\skiasharp-2.88.9\win-x64
+          if-no-files-found: error
+
+  windows-skia-arm64:
+    runs-on: windows-2025-vs2026
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Initialize Skia dependencies submodules
+        shell: powershell
+        run: git submodule update --init --depth 1 repo/skia repo/depot_tools
+
+      - name: Build SkiaSharp and HarfBuzz for Windows arm64
+        shell: powershell
+        run: python .\scripts\build-skia-harfbuzz.py -v -a arm64
+
+      - name: Upload skiasharp-2.88.9 win-arm64
+        uses: actions/upload-artifact@v4
+        with:
+          name: skiasharp-2.88.9-win-arm64
+          path: artifacts\skiasharp-2.88.9\win-arm64
+          if-no-files-found: error
+
+  windows-pack-avalonia:
+    runs-on: windows-2025-vs2026
+    needs:
+      - windows-hostlibs-x64
+      - windows-hostlibs-arm64
+      - windows-skia-x64
+      - windows-skia-arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Download hostlibs win-x64
+        uses: actions/download-artifact@v4
+        with:
+          name: hostlibs-win-x64
+          path: artifacts\hostlibs\win-x64
+
+      - name: Download hostlibs win-arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: hostlibs-win-arm64
+          path: artifacts\hostlibs\win-arm64
+
+      - name: Download skiasharp-2.88.9 win-x64
+        uses: actions/download-artifact@v4
+        with:
+          name: skiasharp-2.88.9-win-x64
+          path: artifacts\skiasharp-2.88.9\win-x64
+
+      - name: Download skiasharp-2.88.9 win-arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: skiasharp-2.88.9-win-arm64
+          path: artifacts\skiasharp-2.88.9\win-arm64
+
+      - name: Pack Avalonia apphost
+        shell: powershell
+        run: python .\scripts\pipeline.py pack-avalonia -v
 
       - name: Upload nuget packages
         uses: actions/upload-artifact@v4
         with:
           name: nuget-packages
           path: artifacts\packages\Release
-          if-no-files-found: error
-
-      - name: Upload skiasharp-2.88.9
-        uses: actions/upload-artifact@v4
-        with:
-          name: skiasharp-2.88.9
-          path: artifacts\skiasharp-2.88.9
           if-no-files-found: error
 
   linux:
