@@ -53,6 +53,7 @@ jobs:
         run: python .\scripts\build-hostlibs.py all -v --arch ${{ matrix.arch }} --version ${{ matrix.runtime_version }}
 
       - name: Upload hostlibs
+        if: steps.cache_hostlibs.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: hostlibs-${{ matrix.runtime_version }}-${{ matrix.rid }}
@@ -89,12 +90,8 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Install LLVM 21
-        shell: powershell
-        run: |
-          $llvmVersion = "21"
-          $latestChocoVersion = Resolve-ChocoPackageVersion -PackageName "llvm" -TargetVersion $llvmVersion
-          Install-ChocoPackage llvm -ArgumentList '--version', $latestChocoVersion
+      - name: Install LLVM
+        uses: ./.github/actions/install-llvm
 
       - name: Compute skia cache key
         id: skia_key
@@ -121,10 +118,11 @@ jobs:
         run: python .\scripts\build-skia-harfbuzz.py -v -a ${{ matrix.arch }} --version ${{ matrix.skiasharp_version }}
 
       - name: Upload skiasharp
+        if: steps.cache_skia.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: skiasharp-${{ matrix.skiasharp_version }}-${{ matrix.rid }}
-          path: artifacts\skiasharp
+          path: artifacts\skiasharp\${{ matrix.skiasharp_version }}\${{ matrix.rid }}
           if-no-files-found: error
 
   windows-pack-avalonia:
@@ -140,19 +138,76 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Download hostlibs artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: hostlibs-*
-          path: artifacts\hostlibs
-          merge-multiple: true
+      - name: Install LLVM
+        uses: ./.github/actions/install-llvm
 
-      - name: Download skiasharp artifacts
-        uses: actions/download-artifact@v4
+      - name: Compute hostlibs cache keys
+        id: hostlibs_keys
+        shell: powershell
+        run: |
+          $keyX64 = python .\scripts\cache_key.py --kind hostlibs --arch x64 --os windows --runtime-version 10.0
+          "key_x64=$keyX64" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+          $keyArm64 = python .\scripts\cache_key.py --kind hostlibs --arch arm64 --os windows --runtime-version 10.0
+          "key_arm64=$keyArm64" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Restore hostlibs cache (10.0 win-x64)
+        uses: actions/cache@v4
         with:
-          pattern: skiasharp-*
-          path: artifacts\skiasharp
-          merge-multiple: true
+          fail-on-cache-miss: true
+          path: artifacts\hostlibs\10.0\win-x64
+          key: ${{ steps.hostlibs_keys.outputs.key_x64 }}
+
+      - name: Restore hostlibs cache (10.0 win-arm64)
+        uses: actions/cache@v4
+        with:
+          fail-on-cache-miss: true
+          path: artifacts\hostlibs\10.0\win-arm64
+          key: ${{ steps.hostlibs_keys.outputs.key_arm64 }}
+
+      - name: Compute skia cache keys
+        id: skia_keys
+        shell: powershell
+        run: |
+          $keysk2x64 = python .\scripts\cache_key.py --kind skiasharp --skiasharp-version 2.88.9 --arch x64
+          "key_sk2_x64=$keysk2x64" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+          $keysk2arm64 = python .\scripts\cache_key.py --kind skiasharp --skiasharp-version 2.88.9 --arch arm64
+          "key_sk2_arm64=$keysk2arm64" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+          $keysk3x64 = python .\scripts\cache_key.py --kind skiasharp --skiasharp-version 3.119.2 --arch x64
+          "key_sk3_x64=$keysk3x64" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+          $keysk3arm64 = python .\scripts\cache_key.py --kind skiasharp --skiasharp-version 3.119.2 --arch arm64
+          "key_sk3_arm64=$keysk3arm64" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Restore skia cache (2.88.9 win-x64)
+        uses: actions/cache@v4
+        with:
+          fail-on-cache-miss: true
+          path: artifacts\skiasharp\2.88.9\win-x64
+          key: ${{ steps.skia_keys.outputs.key_sk2_x64 }}
+
+      - name: Restore skia cache (2.88.9 win-arm64)
+        uses: actions/cache@v4
+        with:
+          fail-on-cache-miss: true
+          path: artifacts\skiasharp\2.88.9\win-arm64
+          key: ${{ steps.skia_keys.outputs.key_sk2_arm64 }}
+
+      - name: Restore skia cache (3.119.2 win-x64)
+        uses: actions/cache@v4
+        with:
+          fail-on-cache-miss: true
+          path: artifacts\skiasharp\3.119.2\win-x64
+          key: ${{ steps.skia_keys.outputs.key_sk3_x64 }}
+
+      - name: Restore skia cache (3.119.2 win-arm64)
+        uses: actions/cache@v4
+        with:
+          fail-on-cache-miss: true
+          path: artifacts\skiasharp\3.119.2\win-arm64
+          key: ${{ steps.skia_keys.outputs.key_sk3_arm64 }}
 
       - name: Pack Avalonia apphost 11.0
         shell: powershell

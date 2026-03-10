@@ -164,7 +164,7 @@ def write_args_gn(target: Path):
         {
             "SKIA_ARCH": f"{cpu}",
             "VC_COMPILER_VER": VC_COMPILER_VER,
-            "ADDITIONAL_CFLAGS": '"/arch:AVX2",',
+            "ADDITIONAL_CFLAGS": '"/arch:AVX2",' if args.arch == "x64" else "",
             "ADDITIONAL_LDFLAGS": "",
         },
     )

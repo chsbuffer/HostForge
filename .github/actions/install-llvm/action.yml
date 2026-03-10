@@ -1,0 +1,45 @@
+name: install-llvm
+description: Download and install LLVM for Windows
+runs:
+  using: composite
+  steps:
+    - name: Uninstall LLVM (choco)
+      shell: powershell
+      run: |
+        $ErrorActionPreference = 'Stop'
+        choco uninstall llvm -y
+
+    - name: Cache LLVM installer
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.USERPROFILE }}\\llvm-temp
+        key: llvm-21.1.8-win64
+
+    - name: Download and install LLVM
+      shell: powershell
+      run: |
+        $ErrorActionPreference = 'Stop'
+
+        $Version = '21.1.8'
+        $HOME_DIR = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
+
+        $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-${Version}/LLVM-${Version}-win64.exe"
+
+        $llvmTemp = "$HOME_DIR/llvm-temp"
+        $install = "$llvmTemp/llvm.exe"
+
+        # download
+        Write-Host "Downloading LLVM..."
+        New-Item -ItemType Directory -Force -Path "$llvmTemp" | Out-Null
+        if (-not (Test-Path $install)) {
+          (New-Object System.Net.WebClient).DownloadFile("$url", "$install")
+        } else {
+          Write-Host "LLVM installer already cached."
+        }
+
+        # install
+        Write-Host "Installing LLVM..."
+        $proc = Start-Process -FilePath $install -ArgumentList '/S' -Wait -PassThru
+        if ($proc.ExitCode -ne 0) {
+          throw "LLVM install failed with exit code $($proc.ExitCode)"
+        }
