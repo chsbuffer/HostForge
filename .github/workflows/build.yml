@@ -43,7 +43,7 @@ jobs:
           key: ${{ steps.hostlibs_key.outputs.key }}
 
       - name: Checkout runtime deps
-        if: steps.cache_hostlibs.outputs.cache-hit != 'true' || matrix.run_matrix_test
+        if: steps.cache_hostlibs.outputs.cache-hit != 'true'
         shell: powershell
         run: python .\scripts\checkout-deps.py runtime ${{ matrix.runtime_version }}
 
@@ -144,14 +144,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: hostlibs-*
-          path: artifacts
+          path: artifacts\hostlibs
           merge-multiple: true
 
       - name: Download skiasharp artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: skiasharp-*
-          path: artifacts
+          path: artifacts\skiasharp
           merge-multiple: true
 
       - name: Pack Avalonia apphost 11.0
