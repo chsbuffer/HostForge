@@ -14,11 +14,11 @@ jobs:
         include:
           - arch: x64
             rid: win-x64
-            runtime_version: 10.0
+            runtime_version: "10.0"
             run_matrix_test: true
           - arch: arm64
             rid: win-arm64
-            runtime_version: 10.0
+            runtime_version: "10.0"
             run_matrix_test: false
 
     steps:
