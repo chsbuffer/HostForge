@@ -81,6 +81,8 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         return ValueTask.CompletedTask;
     }
 
+    // TODO: Create with Microsoft.Build.Construction
+    // TODO: Don't hardcoded package versions
     private static string BuildProjectFile(
         string projectName,
         string targetFramework,

@@ -4,6 +4,8 @@ namespace HostForge.AvaloniaAppHost.Tests;
 
 public class AvaloniaAppHostTests
 {
+    // TODO: Pass TargetAvaloniaVersion environment variable as property
+    // TODO: Validate SkiaSharp.Version.Native outputs are not 0.0.
     [Before(Class)]
     public static async Task PackAvaloniaPackage()
     {
@@ -11,7 +13,7 @@ public class AvaloniaAppHostTests
     }
 
     [Test]
-    public async Task PackageTemplates_IncludeWinX64_AndConditionallyIncludeWinArm64()
+    public async Task PackageTemplates_IncludeWinX64_Arm64()
     {
         string project = Path.Combine(
             RepoContext.RepoRoot,
@@ -39,23 +41,8 @@ public class AvaloniaAppHostTests
 
         AssertEx.Contains(nuspec, @"template\net10.0\win-x64\apphost.exe");
         AssertEx.Contains(nuspec, @"template\net10.0\win-x64\singlefilehost.exe");
-
-        AssertEx.DirectoryExists(Path.Combine(
-            RepoContext.RepoRoot,
-            "artifacts",
-            "hostlibs",
-            RepoContext.HostLibsVersion,
-            "win-arm64"));
-        AssertEx.DirectoryExists(Path.Combine(
-            RepoContext.RepoRoot,
-            "artifacts",
-            "skiasharp",
-            "2.88.9",
-            "win-arm64"));
-
         AssertEx.Contains(nuspec, @"template\net10.0\win-arm64\apphost.exe");
         AssertEx.Contains(nuspec, @"template\net10.0\win-arm64\singlefilehost.exe");
-        AssertEx.NotContains(result.CombinedOutput, "Skipping Avalonia host RID(s) due to missing inputs:");
     }
 
     [Test]
@@ -119,25 +106,16 @@ public class AvaloniaAppHostTests
 
         AssertEx.Success(result);
 
-        if (IsArm64TemplatePackaged())
-        {
-            AssertEx.NotContains(result.CombinedOutput, "ChsBuffer.Avalonia.AppHost is inactive");
+        AssertEx.NotContains(result.CombinedOutput, "ChsBuffer.Avalonia.AppHost is inactive");
 
-            string exePath = Path.Combine(
-                project.ProjectDirectory,
-                "bin",
-                "Release",
-                "net10.0",
-                "win-arm64",
-                $"{project.ProjectName}.exe");
-            AssertEx.FileExists(exePath);
-        }
-        else
-        {
-            AssertEx.Contains(
-                result.CombinedOutput,
-                "ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='net10.0' RuntimeIdentifier='win-arm64'");
-        }
+        string exePath = Path.Combine(
+            project.ProjectDirectory,
+            "bin",
+            "Release",
+            "net10.0",
+            "win-arm64",
+            $"{project.ProjectName}.exe");
+        AssertEx.FileExists(exePath);
     }
 
     [Test]
@@ -160,20 +138,9 @@ public class AvaloniaAppHostTests
         string skia = Path.Combine(publishDir, "libSkiaSharp.dll");
         string harfbuzz = Path.Combine(publishDir, "libHarfBuzzSharp.dll");
 
-        if (IsArm64TemplatePackaged())
-        {
-            AssertEx.NotContains(result.CombinedOutput, "ChsBuffer.Avalonia.AppHost is inactive");
-            AssertEx.FileMissing(skia);
-            AssertEx.FileMissing(harfbuzz);
-        }
-        else
-        {
-            AssertEx.Contains(
-                result.CombinedOutput,
-                "ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='net10.0' RuntimeIdentifier='win-arm64'");
-            AssertEx.FileExists(skia);
-            AssertEx.FileExists(harfbuzz);
-        }
+        AssertEx.NotContains(result.CombinedOutput, "ChsBuffer.Avalonia.AppHost is inactive");
+        AssertEx.FileMissing(skia);
+        AssertEx.FileMissing(harfbuzz);
     }
 
     [Test]
@@ -261,26 +228,6 @@ public class AvaloniaAppHostTests
 
         AssertEx.Success(runResult, "run-exe");
         AssertEx.Contains(runResult.CombinedOutput, "SkiaSharpVersion.Native=");
-    }
-
-    private static bool IsArm64TemplatePackaged()
-    {
-        string nuspecPath = Path.Combine(
-            RepoContext.RepoRoot,
-            "src",
-            "package-avalonia-apphost",
-            "obj",
-            "Release",
-            $"ChsBuffer.Avalonia.AppHost.{RepoContext.AvaloniaPackageVersion}.nuspec");
-
-        if (!File.Exists(nuspecPath))
-        {
-            return false;
-        }
-
-        string nuspec = File.ReadAllText(nuspecPath);
-        return nuspec.Contains(@"template\net10.0\win-arm64\apphost.exe", StringComparison.Ordinal) &&
-               nuspec.Contains(@"template\net10.0\win-arm64\singlefilehost.exe", StringComparison.Ordinal);
     }
 
 }

@@ -1,4 +1,5 @@
-using System.Xml.Linq;
+using Microsoft.Build.Evaluation;
+using Microsoft.Build.Locator;
 
 namespace HostForge.TestInfra;
 
@@ -15,6 +16,11 @@ public static class RepoContext
 
     public static string ArtifactsTestRoot { get; } =
         Path.Combine(RepoRoot, "artifacts", "tmp", "build-tests");
+
+    static RepoContext()
+    {
+        MSBuildLocator.RegisterDefaults();
+    }
 
     private static string LocateRepoRoot()
     {
@@ -36,12 +42,19 @@ public static class RepoContext
     private static string ReadProperty(string propertyName)
     {
         string propsFile = Path.Combine(RepoRoot, "Directory.Build.props");
-        var document = XDocument.Load(propsFile);
-        string? value = document.Root?
-            .Descendants()
-            .FirstOrDefault(x => x.Name.LocalName == propertyName)?
-            .Value
-            .Trim();
+        string? value;
+
+        using (var projectCollection = new ProjectCollection())
+        {
+            var project = new Project(
+                propsFile,
+                globalProperties: null, // TODO: Read TargetAvaloniaVersion from environment
+                toolsVersion: null,
+                projectCollection: projectCollection,
+                loadSettings: ProjectLoadSettings.IgnoreMissingImports);
+
+            value = project.GetPropertyValue(propertyName);
+        }
 
         if (string.IsNullOrWhiteSpace(value))
         {

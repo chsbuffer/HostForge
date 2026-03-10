@@ -41,6 +41,14 @@ public static class AssertEx
         }
     }
 
+    public static void DirectoryExists(string path)
+    {
+        if (!Directory.Exists(path))
+        {
+            throw new InvalidOperationException($"Expected directory was not found: {path}");
+        }
+    }
+
     public static void FileMissing(string path)
     {
         if (File.Exists(path))
