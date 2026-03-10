@@ -45,8 +45,8 @@
   <Import Project="$(MSBuildProjectDirectory)\..\StaticAppHost.targets" />
 
   <ItemGroup>
-    <PackageReference Include="SkiaSharp" Version="2.88.9" />
-    <PackageReference Include="HarfBuzzSharp" Version="7.3.0" />
+    <PackageReference Include="SkiaSharp" Version="$(SkiaSharpVersion)" />
+    <PackageReference Include="HarfBuzzSharp" Version="$(HarfBuzzVersion)" />
   </ItemGroup>
 
   <ItemGroup>
@@ -69,7 +69,11 @@
            Text="No .lib files were found in $(AvaloniaNativeLibsDir)." />
 
     <ItemGroup>
-      <NativeLibrary Include="@(_AvaloniaNativeLib)">
+      <NativeLibrary Include="@(_AvaloniaNativeLib)" />
+      <NativeLibrary Update="@(NativeLibrary)" Condition="'%(NativeLibrary.Filename)' == 'libHarfBuzzSharp'">
+       <WholeArchive>true</WholeArchive>
+      </NativeLibrary>
+      <NativeLibrary Update="@(NativeLibrary)" Condition="'%(NativeLibrary.Filename)' == 'SkiaSharp'">
        <WholeArchive>true</WholeArchive>
       </NativeLibrary>
       <LinkerArg Include="FontSub.lib;opengl32.lib;advapi32.lib;gdi32.lib"/>

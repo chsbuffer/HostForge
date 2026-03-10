@@ -1,15 +1,45 @@
 <Project>
+
   <PropertyGroup>
     <RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <TargetAvaloniaVersion Condition="'$(TargetAvaloniaVersion)' == ''">11.0</TargetAvaloniaVersion>
+    <AvaloniaAppHostPackageVersionMajor>0</AvaloniaAppHostPackageVersionMajor>
+    <AvaloniaAppHostPackageVersionPrev>preview.2</AvaloniaAppHostPackageVersionPrev>
+  </PropertyGroup>
 
-    <AvaloniaAppHostPackageVersion>11.0.0-preview.2</AvaloniaAppHostPackageVersion>
-    <AvaloniaVersion>11.3.12</AvaloniaVersion>
+  <Choose>
+    <When Condition="'$(TargetAvaloniaVersion)' == '11.0'">
+      <PropertyGroup>
+        <AvaloniaVersion>11.3.12</AvaloniaVersion>
+        <SkiaSharpVersion>2.88.9</SkiaSharpVersion>
+        <HarfBuzzVersion>7.3.0</HarfBuzzVersion>
+      </PropertyGroup>
+    </When>
+    <When Condition="'$(TargetAvaloniaVersion)' == '12.0'">
+      <PropertyGroup>
+        <AvaloniaVersion>12.0.0-preview2</AvaloniaVersion>
+        <SkiaSharpVersion>3.119.2</SkiaSharpVersion>
+        <HarfBuzzVersion>8.3.1.1</HarfBuzzVersion>
+      </PropertyGroup>
+    </When>
+  </Choose>
+
+  <PropertyGroup>
+    <AvaloniaAppHostPackageVersionMeta>skiasharp-v$(SkiaSharpVersion)-harfbuzz-v$(HarfBuzzVersion)</AvaloniaAppHostPackageVersionMeta>
+
+    <AvaloniaAppHostPackageVersion>$(TargetAvaloniaVersion)</AvaloniaAppHostPackageVersion>
+    <AvaloniaAppHostPackageVersion>$(AvaloniaAppHostPackageVersion).$(AvaloniaAppHostPackageVersionMajor)</AvaloniaAppHostPackageVersion>
+    <AvaloniaAppHostPackageVersion Condition="'$(AvaloniaAppHostPackageVersionPrev)' != ''">$(AvaloniaAppHostPackageVersion)-$(AvaloniaAppHostPackageVersionPrev)</AvaloniaAppHostPackageVersion>
+    <AvaloniaAppHostPackageVersion Condition="'$(AvaloniaAppHostPackageVersionMeta)' != ''">$(AvaloniaAppHostPackageVersion)+$(AvaloniaAppHostPackageVersionMeta)</AvaloniaAppHostPackageVersion>
 
     <PackagesOutputRoot>$(RepoRoot)artifacts\packages</PackagesOutputRoot>
     <AvaloniaAppHostPackageOutputDir>$(PackagesOutputRoot)\$(Configuration)</AvaloniaAppHostPackageOutputDir>
 
-    <HostLibsRoot>$(RepoRoot)artifacts\hostlibs</HostLibsRoot>
-    <AvaloniaNativeLibsRoot>$(RepoRoot)artifacts\skiasharp-2.88.9</AvaloniaNativeLibsRoot>
+    <HostLibsVersion>10.0</HostLibsVersion>
+    <HostLibsRoot>$(RepoRoot)artifacts\hostlibs\$(HostLibsVersion)</HostLibsRoot>
+
+    <AvaloniaNativeLibsRoot>$(RepoRoot)artifacts\skiasharp\$(SkiaSharpVersion)</AvaloniaNativeLibsRoot>
   </PropertyGroup>
+
 </Project>

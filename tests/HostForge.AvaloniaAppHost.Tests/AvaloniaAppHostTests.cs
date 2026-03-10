@@ -40,23 +40,22 @@ public class AvaloniaAppHostTests
         AssertEx.Contains(nuspec, @"template\net10.0\win-x64\apphost.exe");
         AssertEx.Contains(nuspec, @"template\net10.0\win-x64\singlefilehost.exe");
 
-        bool arm64InputsPresent =
-            Directory.Exists(Path.Combine(RepoContext.RepoRoot, "artifacts", "hostlibs", "win-arm64")) &&
-            Directory.Exists(Path.Combine(RepoContext.RepoRoot, "artifacts", "skiasharp-2.88.9", "win-arm64"));
+        AssertEx.DirectoryExists(Path.Combine(
+            RepoContext.RepoRoot,
+            "artifacts",
+            "hostlibs",
+            RepoContext.HostLibsVersion,
+            "win-arm64"));
+        AssertEx.DirectoryExists(Path.Combine(
+            RepoContext.RepoRoot,
+            "artifacts",
+            "skiasharp",
+            "2.88.9",
+            "win-arm64"));
 
-        if (arm64InputsPresent)
-        {
-            AssertEx.Contains(nuspec, @"template\net10.0\win-arm64\apphost.exe");
-            AssertEx.Contains(nuspec, @"template\net10.0\win-arm64\singlefilehost.exe");
-            AssertEx.NotContains(result.CombinedOutput, "Skipping Avalonia host RID(s) due to missing inputs:");
-        }
-        else
-        {
-            AssertEx.NotContains(nuspec, @"template\net10.0\win-arm64\apphost.exe");
-            AssertEx.NotContains(nuspec, @"template\net10.0\win-arm64\singlefilehost.exe");
-            AssertEx.Contains(result.CombinedOutput, "Skipping Avalonia host RID(s) due to missing inputs:");
-            AssertEx.Contains(result.CombinedOutput, "win-arm64");
-        }
+        AssertEx.Contains(nuspec, @"template\net10.0\win-arm64\apphost.exe");
+        AssertEx.Contains(nuspec, @"template\net10.0\win-arm64\singlefilehost.exe");
+        AssertEx.NotContains(result.CombinedOutput, "Skipping Avalonia host RID(s) due to missing inputs:");
     }
 
     [Test]

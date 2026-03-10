@@ -7,8 +7,19 @@ on:
       - main
 
 jobs:
-  windows-hostlibs-x64:
+  windows-hostlibs:
     runs-on: windows-2025-vs2026
+    strategy:
+      matrix:
+        include:
+          - arch: x64
+            rid: win-x64
+            runtime_version: 10.0
+            run_matrix_test: true
+          - arch: arm64
+            rid: win-arm64
+            runtime_version: 10.0
+            run_matrix_test: false
 
     steps:
       - name: Checkout repository
@@ -17,27 +28,59 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Initialize runtime submodule
+      - name: Compute hostlibs cache key
+        id: hostlibs_key
         shell: powershell
-        run: git submodule update --init --depth 1 repo/runtime
+        run: |
+          $key = python .\scripts\cache_key.py --kind hostlibs --arch ${{ matrix.arch }} --os windows --runtime-version ${{ matrix.runtime_version }}
+          "key=$key" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Build hostlibs for Windows x64
+      - name: Restore hostlibs cache
+        id: cache_hostlibs
+        uses: actions/cache@v4
+        with:
+          path: artifacts\hostlibs\${{ matrix.runtime_version }}\${{ matrix.rid }}
+          key: ${{ steps.hostlibs_key.outputs.key }}
+
+      - name: Checkout runtime deps
+        if: steps.cache_hostlibs.outputs.cache-hit != 'true' || matrix.run_matrix_test
         shell: powershell
-        run: python .\scripts\build-hostlibs.py all -v --arch x64
+        run: python .\scripts\checkout-deps.py runtime ${{ matrix.runtime_version }}
 
-      - name: Upload hostlibs win-x64
+      - name: Build hostlibs for Windows
+        shell: powershell
+        if: steps.cache_hostlibs.outputs.cache-hit != 'true'
+        run: python .\scripts\build-hostlibs.py all -v --arch ${{ matrix.arch }} --version ${{ matrix.runtime_version }}
+
+      - name: Upload hostlibs
         uses: actions/upload-artifact@v4
         with:
-          name: hostlibs-win-x64
-          path: artifacts\hostlibs\win-x64
+          name: hostlibs-${{ matrix.runtime_version }}-${{ matrix.rid }}
+          path: artifacts\hostlibs
           if-no-files-found: error
 
       - name: Run matrix integration build
+        if: matrix.run_matrix_test
         shell: powershell
         run: python .\scripts\pipeline.py matrix -v
 
-  windows-hostlibs-arm64:
+  windows-skia:
     runs-on: windows-2025-vs2026
+    strategy:
+      matrix:
+        include:
+          - arch: x64
+            rid: win-x64
+            skiasharp_version: 2.88.9
+          - arch: arm64
+            rid: win-arm64
+            skiasharp_version: 2.88.9
+          - arch: x64
+            rid: win-x64
+            skiasharp_version: 3.119.2
+          - arch: arm64
+            rid: win-arm64
+            skiasharp_version: 3.119.2
 
     steps:
       - name: Checkout repository
@@ -46,78 +89,42 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Initialize runtime submodule
+      - name: Compute skia cache key
+        id: skia_key
         shell: powershell
-        run: git submodule update --init --depth 1 repo/runtime
+        run: |
+          $key = python .\scripts\cache_key.py --kind skiasharp --skiasharp-version ${{ matrix.skiasharp_version }} --arch ${{ matrix.arch }}
+          "key=$key" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Build hostlibs for Windows arm64
+      - name: Restore skia cache
+        id: cache_skia
+        uses: actions/cache@v4
+        with:
+          path: artifacts\skiasharp\${{ matrix.skiasharp_version }}\${{ matrix.rid }}
+          key: ${{ steps.skia_key.outputs.key }}
+
+      - name: Checkout Skia deps
+        if: steps.cache_skia.outputs.cache-hit != 'true'
         shell: powershell
-        run: python .\scripts\build-hostlibs.py all -v --arch arm64
+        run: python .\scripts\checkout-deps.py skiasharp ${{ matrix.skiasharp_version }}
 
-      - name: Upload hostlibs win-arm64
+      - name: Build SkiaSharp and HarfBuzz for Windows
+        shell: powershell
+        if: steps.cache_skia.outputs.cache-hit != 'true'
+        run: python .\scripts\build-skia-harfbuzz.py -v -a ${{ matrix.arch }} --version ${{ matrix.skiasharp_version }}
+
+      - name: Upload skiasharp
         uses: actions/upload-artifact@v4
         with:
-          name: hostlibs-win-arm64
-          path: artifacts\hostlibs\win-arm64
-          if-no-files-found: error
-
-  windows-skia-x64:
-    runs-on: windows-2025-vs2026
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-          submodules: false
-
-      - name: Initialize Skia dependencies submodules
-        shell: powershell
-        run: git submodule update --init --depth 1 repo/skia repo/depot_tools
-
-      - name: Build SkiaSharp and HarfBuzz for Windows x64
-        shell: powershell
-        run: python .\scripts\build-skia-harfbuzz.py -v -a x64
-
-      - name: Upload skiasharp-2.88.9 win-x64
-        uses: actions/upload-artifact@v4
-        with:
-          name: skiasharp-2.88.9-win-x64
-          path: artifacts\skiasharp-2.88.9\win-x64
-          if-no-files-found: error
-
-  windows-skia-arm64:
-    runs-on: windows-2025-vs2026
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-          submodules: false
-
-      - name: Initialize Skia dependencies submodules
-        shell: powershell
-        run: git submodule update --init --depth 1 repo/skia repo/depot_tools
-
-      - name: Build SkiaSharp and HarfBuzz for Windows arm64
-        shell: powershell
-        run: python .\scripts\build-skia-harfbuzz.py -v -a arm64
-
-      - name: Upload skiasharp-2.88.9 win-arm64
-        uses: actions/upload-artifact@v4
-        with:
-          name: skiasharp-2.88.9-win-arm64
-          path: artifacts\skiasharp-2.88.9\win-arm64
+          name: skiasharp-${{ matrix.skiasharp_version }}-${{ matrix.rid }}
+          path: artifacts\skiasharp
           if-no-files-found: error
 
   windows-pack-avalonia:
     runs-on: windows-2025-vs2026
     needs:
-      - windows-hostlibs-x64
-      - windows-hostlibs-arm64
-      - windows-skia-x64
-      - windows-skia-arm64
+      - windows-hostlibs
+      - windows-skia
 
     steps:
       - name: Checkout repository
@@ -126,33 +133,27 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Download hostlibs win-x64
+      - name: Download hostlibs artifacts
         uses: actions/download-artifact@v4
         with:
-          name: hostlibs-win-x64
-          path: artifacts\hostlibs\win-x64
+          pattern: hostlibs-*
+          path: artifacts
+          merge-multiple: true
 
-      - name: Download hostlibs win-arm64
+      - name: Download skiasharp artifacts
         uses: actions/download-artifact@v4
         with:
-          name: hostlibs-win-arm64
-          path: artifacts\hostlibs\win-arm64
+          pattern: skiasharp-*
+          path: artifacts
+          merge-multiple: true
 
-      - name: Download skiasharp-2.88.9 win-x64
-        uses: actions/download-artifact@v4
-        with:
-          name: skiasharp-2.88.9-win-x64
-          path: artifacts\skiasharp-2.88.9\win-x64
-
-      - name: Download skiasharp-2.88.9 win-arm64
-        uses: actions/download-artifact@v4
-        with:
-          name: skiasharp-2.88.9-win-arm64
-          path: artifacts\skiasharp-2.88.9\win-arm64
-
-      - name: Pack Avalonia apphost
+      - name: Pack Avalonia apphost 11.0
         shell: powershell
-        run: python .\scripts\pipeline.py pack-avalonia -v
+        run: python .\scripts\pipeline.py pack-avalonia -v --target 11.0
+
+      - name: Pack Avalonia apphost 12.0
+        shell: powershell
+        run: python .\scripts\pipeline.py pack-avalonia -v --target 12.0
 
       - name: Upload nuget packages
         uses: actions/upload-artifact@v4
@@ -173,17 +174,23 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-          submodules: recursive
+          submodules: false
+
+      - name: Checkout runtime deps
+        run: python ./scripts/checkout-deps.py runtime 10.0
 
       - name: Install runtime native dependencies
-        working-directory: ./repo/runtime
+        working-directory: ./repo/runtime-10.0
         run: sudo ./eng/common/native/install-dependencies.sh linux
 
       - name: Build hostlibs for Linux x64
-        run: python ./scripts/build-hostlibs.py -v --os linux --arch x64
+        run: python ./scripts/build-hostlibs.py -v --os linux --arch x64 --version 10.0
 
-      - name: Run SimplePInvoke sample
-        run: ./repo/runtime/.dotnet/dotnet run --project samples/simple-pinvoke/SimplePInvoke.csproj -v:normal
+      - name: Run SimplePInvoke sample linux-x64 apphost
+        run: ./repo/runtime-10.0/.dotnet/dotnet run --project samples/simple-pinvoke/SimplePInvoke.csproj -v:normal
 
-      - name: Publish SimplePInvoke sample trimmed
-        run: ./repo/runtime/.dotnet/dotnet publish samples/simple-pinvoke/SimplePInvoke.csproj -v:normal -p:"PublishTrimmed=true"
+      - name: Publish SimplePInvoke sample trimmed linux-64 singlefilehost
+        run: ./repo/runtime-10.0/.dotnet/dotnet publish samples/simple-pinvoke/SimplePInvoke.csproj -v:normal -p:"PublishTrimmed=true"
+
+      - name: Run SimplePInvoke sample linux-x64 singlefilehost
+        run: samples/simple-pinvoke/bin/Release/net10.0/linux-x64/publish/SimplePInvoke

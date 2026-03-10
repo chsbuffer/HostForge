@@ -8,6 +8,7 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        Console.WriteLine("SkiaSharpNative: " + SkiaSharp.SkiaSharpVersion.Native);
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 

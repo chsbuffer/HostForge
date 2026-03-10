@@ -111,17 +111,17 @@ VC_COMPILER_VER = os.environ.get("VC_COMPILER_VER", "14.5")
 VC_TOOLSET_VER = os.environ.get("VC_TOOLSET_VER", "v145")
 WINDOWS_SDK_VER = os.environ.get("WINDOWS_SDK_VER", "10.0.26100.0")
 
-SKIASHARP_VERSION = "2.88.9"
-SKIA_ROOT = REPO_ROOT / "repo" / "skia"
-DEPOT_TOOLS_ROOT = REPO_ROOT / "repo" / "depot_tools"
-SKIA_OUT_ROOT = SKIA_ROOT / "out" / "windows"
+DEFAULT_VERSION = "2.88.9"
 
-PATCH_ARGS_GN = REPO_ROOT / "repo" / "patch" / "args.gn"
+SKIA_ROOT: Path
+SKIA_BUILD_DIR: Path
 
-HARFBUZZ_PROJECT_DIR = REPO_ROOT / "repo" / "HarfBuzzSharp"
-HARFBUZZ_PROJECT_FILE_IN = HARFBUZZ_PROJECT_DIR / "libHarfBuzzSharp.vcxproj.in"
-HARFBUZZ_PROJECT_FILE = HARFBUZZ_PROJECT_DIR / "libHarfBuzzSharp.vcxproj"
 INIT_VS_ENV_CMD = SCRIPT_ROOT / "init-vs-env.cmd"
+
+HARFBUZZ_SLN_DIR: Path
+HARFBUZZ_PROJECT_FILE: Path
+
+OUTDIR: Path
 
 SKIA_OUTPUT_LIBS = [
     "SkiaSharp.lib",
@@ -129,6 +129,7 @@ SKIA_OUTPUT_LIBS = [
     "skottie.lib",
     "sksg.lib",
     "skshaper.lib",
+    "skresources.lib",
 ]
 
 HARFBUZZ_PLATFORM = {
@@ -142,97 +143,81 @@ GN_CPU = {
 }
 
 
-def target_arch() -> str:
-    return args.arch
-
-
 def target_rid() -> str:
-    return f"win-{target_arch()}"
-
-
-def resolve_output_dir() -> Path:
-    if args.output_dir:
-        return Path(args.output_dir).resolve()
-    return REPO_ROOT / "artifacts" / f"skiasharp-{SKIASHARP_VERSION}" / target_rid()
-
-
-def skia_out_dir() -> Path:
-    return SKIA_OUT_ROOT / target_arch()
+    return f"win-{args.arch}"
 
 
 def harfbuzz_output_lib() -> Path:
-    platform_name = HARFBUZZ_PLATFORM[target_arch()]
-    return (
-        HARFBUZZ_PROJECT_DIR
-        / "bin"
-        / platform_name
-        / "Release"
-        / "libHarfBuzzSharp.lib"
-    )
+    platform_name = HARFBUZZ_PLATFORM[args.arch]
+    return HARFBUZZ_SLN_DIR / "bin" / platform_name / "Release" / "libHarfBuzzSharp.lib"
 
 
 def write_args_gn(target: Path):
-    cpu = GN_CPU[target_arch()]
-    lines = PATCH_ARGS_GN.read_text(encoding="utf-8").splitlines()
-    output = []
-    for line in lines:
-        if line.strip().startswith("target_cpu = "):
-            output.append(f'target_cpu = "{cpu}"')
-            continue
-        if line.strip().startswith("win_vcvars_version = "):
-            output.append(f'win_vcvars_version = "{VC_COMPILER_VER}"')
-            continue
-        if target_arch() != "x64" and '"/arch:AVX2"' in line:
-            continue
-        output.append(line)
-    target.write_text("\n".join(output) + "\n", encoding="utf-8")
+    cpu = GN_CPU[args.arch]
+    ARGS_GN_IN = SCRIPT_ROOT / f"args.{args.version}.gn"
+    if not ARGS_GN_IN.exists():
+        error(f"{ARGS_GN_IN} not found.")
+
+    copy_template(
+        ARGS_GN_IN,
+        target,
+        {
+            "SKIA_ARCH": f"{cpu}",
+            "VC_COMPILER_VER": VC_COMPILER_VER,
+            "ADDITIONAL_CFLAGS": '"/arch:AVX2",',
+            "ADDITIONAL_LDFLAGS": "",
+        },
+    )
 
 
 def build_skia():
     header("Build SkiaSharp")
-    out_dir = skia_out_dir()
-    out_dir.mkdir(parents=True, exist_ok=True)
-    write_args_gn(out_dir / "args.gn")
+    SKIA_BUILD_DIR.mkdir(parents=True, exist_ok=True)
+    write_args_gn(SKIA_BUILD_DIR / "args.gn")
 
     if not args.skip_sync_deps:
         execv([sys.executable, SKIA_ROOT / "tools/git-sync-deps"], cwd=SKIA_ROOT)
 
-    execv([SKIA_ROOT / "bin" / "gn.exe", "gen", out_dir], cwd=SKIA_ROOT)
-    execv([DEPOT_TOOLS_ROOT / "ninja.exe", "-C", out_dir, "skia", "SkiaSharp"])
+    execv([SKIA_ROOT / "bin" / "gn.exe", "gen", SKIA_BUILD_DIR], cwd=SKIA_ROOT)
+    execv(["ninja", "-C", SKIA_BUILD_DIR, "skia", "SkiaSharp"])
 
 
 def build_harfbuzz():
     header("Build HarfBuzzSharp")
-    platform_name = HARFBUZZ_PLATFORM[target_arch()]
+
+    HARFBUZZ_SLN_DIR.mkdir(parents=True, exist_ok=True)
+
+    HARFBUZZ_PROJECT_FILE_IN = SCRIPT_ROOT / "libHarfBuzzSharp.vcxproj.in"
+    HARFBUZZ_PROJECT_FILE = HARFBUZZ_SLN_DIR / "libHarfBuzzSharp.vcxproj"
+    platform_name = HARFBUZZ_PLATFORM[args.arch]
     copy_template(
         HARFBUZZ_PROJECT_FILE_IN,
         HARFBUZZ_PROJECT_FILE,
         {
             "VC_TOOLSET_VER": VC_TOOLSET_VER,
             "WINDOWS_SDK_VER": WINDOWS_SDK_VER,
+            "SKIA_ROOT": str(SKIA_ROOT),
         },
         encoding="utf-8-sig",
     )
     run_in_vs_env(
         f"msbuild {HARFBUZZ_PROJECT_FILE} -m /p:Configuration=Release /p:Platform={platform_name}",
-        cwd=HARFBUZZ_PROJECT_DIR,
-        arch=target_arch(),
+        cwd=HARFBUZZ_SLN_DIR,
+        arch=args.arch,
     )
 
 
-def copy_outputs(output_dir: Path):
+def copy_outputs():
     header("Copy output libraries")
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    out_dir = skia_out_dir()
+    OUTDIR.mkdir(parents=True, exist_ok=True)
 
     for lib_name in SKIA_OUTPUT_LIBS:
-        source = out_dir / lib_name
-        target = output_dir / lib_name
+        source = SKIA_BUILD_DIR / lib_name
+        target = OUTDIR / lib_name
         cp(source, target)
 
     harfbuzz_lib = harfbuzz_output_lib()
-    target = output_dir / harfbuzz_lib.name
+    target = OUTDIR / harfbuzz_lib.name
     cp(harfbuzz_lib, target)
 
 
@@ -240,11 +225,9 @@ def build_all():
     if os.name != "nt":
         error("This script is intended for Windows only")
 
-    output_dir = resolve_output_dir()
-
     build_skia()
     build_harfbuzz()
-    copy_outputs(output_dir)
+    copy_outputs()
     print("\nDone.")
 
 
@@ -269,10 +252,9 @@ def parse_args():
         help="target architecture",
     )
     parser.add_argument(
-        "-o",
-        "--output-dir",
-        default=None,
-        help="Directory to copy built libs (default: artifacts/skiasharp-2.88.9/win-<arch>)",
+        "--version",
+        default=DEFAULT_VERSION,
+        help=f"SkiaSharp version key in DEPS (default: {DEFAULT_VERSION})",
     )
     parser.add_argument(
         "--skip-sync-deps", action="store_true", help="skip running tools/git-sync-deps"
@@ -283,6 +265,18 @@ def parse_args():
 def main():
     global args
     args = parse_args()
+    global SKIA_ROOT, SKIA_BUILD_DIR, OUTDIR, HARFBUZZ_SLN_DIR
+
+    SKIA_ROOT = REPO_ROOT / "repo" / f"skia-{args.version}"
+    SKIA_BUILD_DIR = SKIA_ROOT / "out" / "windows" / args.arch
+
+    HARFBUZZ_SLN_DIR = REPO_ROOT / "repo" / f"HarfBuzzSharp-{args.version}"
+
+    OUTDIR = REPO_ROOT / "artifacts" / "skiasharp" / args.version / target_rid()
+
+    if not SKIA_ROOT.exists():
+        error("source code not found; checkout-deps first.")
+
     args.func()
 
 

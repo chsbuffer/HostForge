@@ -117,7 +117,10 @@ def run_matrix_test():
 
 def pack_avalonia_apphost():
     header("Pack avalonia apphost nuget")
-    execv(["dotnet", "pack", AVALONIA_APPHOST_CSPROJ, f"-v:{dotnet_verbosity()}"])
+    target = [f"-p:TargetAvaloniaVersion={args.target}"]
+    execv(
+        ["dotnet", "pack", AVALONIA_APPHOST_CSPROJ, *target, f"-v:{dotnet_verbosity()}"]
+    )
 
 
 def run_all():
@@ -190,6 +193,12 @@ def parse_args():
 
     pack_avalonia_parser = subparsers.add_parser(
         "pack-avalonia", help="pack avalonia apphost only"
+    )
+    pack_avalonia_parser.add_argument(
+        "--target",
+        choices=["11.0", "12.0"],
+        default="11.0",
+        help="Target Avalonia version. This decides skiasharp version and changes output package version",
     )
     pack_avalonia_parser.add_argument(
         "-v", "--verbose", action="count", default=0, help="verbose output"

@@ -103,8 +103,10 @@ def execv(cmd: str, cwd: Path | None = None, env=None):
 
 SCRIPT_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_ROOT.parent
-RUNTIME_ROOT = REPO_ROOT / "repo" / "runtime"
-HOSTLIBS_ROOT = REPO_ROOT / "artifacts" / "hostlibs"
+RUNTIME_ROOT: Path
+OUTDIR: Path
+
+DEFAULT_VERSION = "10.0"
 
 
 def get_rid() -> str:
@@ -290,8 +292,7 @@ def build_singlefilehost():
     build_root = RUNTIME_ROOT / "artifacts" / "obj" / "coreclr" / f"{os}.{arch}.Release"
 
     header("Archive singlefilehost")
-    output = HOSTLIBS_ROOT / get_rid()
-    bundle_target("singlefilehost", build_root, output, arch)
+    bundle_target("singlefilehost", build_root, OUTDIR, arch)
     match args.os:
         case "windows":
             SINGLEFILEHOST_DEF = (
@@ -303,11 +304,11 @@ def build_singlefilehost():
                 / "static"
                 / "singlefilehost.def"
             )
-            cp(SINGLEFILEHOST_DEF, output / SINGLEFILEHOST_DEF.name)
+            cp(SINGLEFILEHOST_DEF, OUTDIR / SINGLEFILEHOST_DEF.name)
         case "linux":
             cp(
                 build_root / "Corehost.Static" / "singlefilehost.exports",
-                output / "singlefilehost.exports",
+                OUTDIR / "singlefilehost.exports",
             )
 
 
@@ -332,8 +333,7 @@ def build_apphost():
         build_root = RUNTIME_ROOT / "artifacts" / "obj" / f"{get_rid()}.Release"
 
     header("Archive corehost")
-    output = HOSTLIBS_ROOT / get_rid()
-    bundle_target("apphost", build_root, output, arch)
+    bundle_target("apphost", build_root, OUTDIR, arch)
 
 
 def build_all():
@@ -373,6 +373,11 @@ def parse_args():
         default="windows" if is_windows else "linux",
         help="target os",
     )
+    parser.add_argument(
+        "--version",
+        default=DEFAULT_VERSION,
+        help="dotnet/runtime version key in DEPS",
+    )
     parser.add_argument("--skip-build", action="store_true", help="skip build")
 
     return parser.parse_args()
@@ -381,6 +386,13 @@ def parse_args():
 def main():
     global args
     args = parse_args()
+
+    global RUNTIME_ROOT, OUTDIR
+    RUNTIME_ROOT = REPO_ROOT / "repo" / f"runtime-{args.version}"
+    OUTDIR = REPO_ROOT / "artifacts" / "hostlibs" / args.version / get_rid()
+
+    if not RUNTIME_ROOT.exists():
+        error("source code not found; checkout-deps first.")
 
     if args.target == "apphost":
         build_apphost()

@@ -8,6 +8,8 @@ public static class RepoContext
 
     public static string AvaloniaPackageVersion { get; } = ReadProperty("AvaloniaAppHostPackageVersion");
 
+    public static string HostLibsVersion { get; } = ReadProperty("HostLibsVersion");
+
     public static string AvaloniaPackageOutputDir { get; } =
         Path.Combine(RepoRoot, "artifacts", "packages", "Release");
 
