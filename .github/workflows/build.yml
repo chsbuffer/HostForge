@@ -89,6 +89,13 @@ jobs:
           fetch-depth: 1
           submodules: false
 
+      - name: Install LLVM 21
+        shell: powershell
+        run: |
+          $llvmVersion = "21"
+          $latestChocoVersion = Resolve-ChocoPackageVersion -PackageName "llvm" -TargetVersion $llvmVersion
+          Install-ChocoPackage llvm -ArgumentList '--version', $latestChocoVersion
+
       - name: Compute skia cache key
         id: skia_key
         shell: powershell
