@@ -40,7 +40,7 @@ public static class AvaloniaPackageBuilder
 
             CommandResult result = await CommandRunner.RunAsync(
                 "dotnet",
-                $"pack \"{project}\" -c Release -v:minimal",
+                RepoContext.AppendTargetAvaloniaVersionProperty($"pack \"{project}\" -c Release -v:minimal"),
                 RepoContext.RepoRoot,
                 cancellationToken);
 

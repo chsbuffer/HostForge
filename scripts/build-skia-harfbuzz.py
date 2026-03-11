@@ -6,7 +6,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Never
 
 
 def color_print(code, text):
@@ -17,7 +16,7 @@ def color_print(code, text):
         print(f"{code}{text}\033[0m")
 
 
-def error(text) -> Never:
+def error(text):
     color_print("\033[41;39m", f"\n! {text}\n")
     sys.exit(1)
 
@@ -46,7 +45,6 @@ def copy_template(in_path, out, vals: dict[str, str], encoding="utf-8"):
     Path(out_path).write_text(template, encoding)
 
 
-# OS detection
 os_name = platform.system().lower()
 is_windows = os_name not in ("linux", "darwin")
 
@@ -62,19 +60,13 @@ if is_windows:
 if not sys.version_info >= (3, 10):
     error("Requires Python 3.10+")
 
-# Global vars
 args: argparse.Namespace
-
-
-###################
-# Helper functions
-###################
 
 
 def execv(cmds, cwd: Path | None = None, env=None):
     if args.verbose > 0:
         print(" ".join(str(x) for x in cmds))
-    proc = subprocess.run(cmds, cwd=cwd, shell=is_windows)
+    proc = subprocess.run(cmds, cwd=cwd, env=env, shell=is_windows)
     if proc.returncode != 0:
         error(f"Command failed ({proc.returncode}): {' '.join(str(x) for x in cmds)}")
     return proc
@@ -83,7 +75,7 @@ def execv(cmds, cwd: Path | None = None, env=None):
 def exec_cmd(cmd: str, cwd: Path | None = None, env=None):
     if args.verbose > 0:
         print(cmd)
-    proc = subprocess.run(["cmd.exe", "/d", "/c", cmd], cwd=cwd, shell=False)
+    proc = subprocess.run(["cmd.exe", "/d", "/c", cmd], cwd=cwd, env=env, shell=False)
     if proc.returncode != 0:
         error(f"Command failed ({proc.returncode}): {cmd}")
     return proc
@@ -91,7 +83,7 @@ def exec_cmd(cmd: str, cwd: Path | None = None, env=None):
 
 def run_in_vs_env(cmd: str, cwd: Path, arch: str, env=None):
     full_cmd = f"call {INIT_VS_ENV_CMD} {arch} && cd /d {cwd} && {cmd}"
-    exec_cmd(full_cmd)
+    exec_cmd(full_cmd, env=env)
 
 
 def cp(source: Path, target: Path):
@@ -99,10 +91,6 @@ def cp(source: Path, target: Path):
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, target)
 
-
-###############
-# Build logic
-###############
 
 SCRIPT_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_ROOT.parent
@@ -115,6 +103,7 @@ DEFAULT_VERSION = "2.88.9"
 
 SKIA_ROOT: Path
 SKIA_BUILD_DIR: Path
+HARFBUZZ_BUILD_DIR: Path
 
 INIT_VS_ENV_CMD = SCRIPT_ROOT / "init-vs-env.cmd"
 
@@ -123,14 +112,21 @@ HARFBUZZ_PROJECT_FILE: Path
 
 OUTDIR: Path
 
+LINUX_MAP_DIR = SCRIPT_ROOT / "linux"
+LINUX_SKIA_MAP = LINUX_MAP_DIR / "libSkiaSharp.map"
+LINUX_HARFBUZZ_MAP = LINUX_MAP_DIR / "libHarfBuzzSharp.map"
+
 SKIA_OUTPUT_LIBS = [
-    "SkiaSharp.lib",
-    "skia.lib",
-    "skottie.lib",
-    "sksg.lib",
-    "skshaper.lib",
-    "skresources.lib",
+    "SkiaSharp",
+    "skia",
+    "skottie",
+    "sksg",
+    "skshaper",
+    "skresources",
 ]
+
+SKIA_OUTPUT_LIBS_WIN = [f"{x}.lib" for x in SKIA_OUTPUT_LIBS]
+SKIA_OUTPUT_LIBS_LINUX = [f"lib{x}.a" for x in SKIA_OUTPUT_LIBS]
 
 HARFBUZZ_PLATFORM = {
     "x64": "x64",
@@ -144,55 +140,176 @@ GN_CPU = {
 
 
 def target_rid() -> str:
-    return f"win-{args.arch}"
+    prefix = "win" if args.os == "windows" else "linux"
+    return f"{prefix}-{args.arch}"
 
 
 def harfbuzz_output_lib() -> Path:
     platform_name = HARFBUZZ_PLATFORM[args.arch]
-    return HARFBUZZ_SLN_DIR / "bin" / platform_name / "Release" / "libHarfBuzzSharp.lib"
+    if args.os == "windows":
+        return (
+            HARFBUZZ_SLN_DIR
+            / "bin"
+            / platform_name
+            / "Release"
+            / "libHarfBuzzSharp.lib"
+        )
+    else:
+        return HARFBUZZ_BUILD_DIR / "libHarfBuzzSharp.a"
 
 
-def write_args_gn(target: Path):
+def compiler_args_gn() -> list[str]:
+    pairs = [
+        ("cc", os.environ.get("CC")),
+        ("cxx", os.environ.get("CXX")),
+        ("ar", os.environ.get("AR")),
+    ]
+    return [f'{name} = "{value}"' for name, value in pairs if value]
+
+
+def gn() -> str | Path:
+    # if args.os == "windows":
+    #     return SKIA_ROOT / "bin" / "gn.exe"
+    return SKIA_ROOT / "bin" / "gn"
+
+
+def write_windows_args_gn(target: Path):
     cpu = GN_CPU[args.arch]
-    ARGS_GN_IN = SCRIPT_ROOT / f"args.{args.version}.gn"
-    if not ARGS_GN_IN.exists():
-        error(f"{ARGS_GN_IN} not found.")
+    extra_cflags = [
+        '"-DSKIA_C_DLL"',
+        '"/MT"',
+        '"/EHsc"',
+        '"/Z7"',
+    ]
+    extra_ldflags = [
+        '"/DEBUG:FULL"',
+        '"/DEBUGTYPE:CV,FIXUP"',
+    ]
+    lines = [
+        'target_os = "win"',
+        f'target_cpu = "{cpu}"',
+        "skia_enable_fontmgr_win_gdi = false",
+        "skia_use_dng_sdk = true",
+        "skia_use_icu = false",
+        "skia_use_piex = true",
+        "skia_use_sfntly = false",
+        "skia_use_system_expat = false",
+        "skia_use_system_libjpeg_turbo = false",
+        "skia_use_system_libpng = false",
+        "skia_use_system_libwebp = false",
+        "skia_use_system_zlib = false",
+        "skia_enable_skottie = true",
+        "is_static_skiasharp = true",
+        "skia_use_vulkan = true",
+        'clang_win = "C:/Program Files/LLVM"',
+        f'win_vcvars_version = "{VC_COMPILER_VER}"',
+        "skia_enable_tools = false",
+        "is_official_build = true",
+    ]
 
-    copy_template(
-        ARGS_GN_IN,
-        target,
-        {
-            "SKIA_ARCH": f"{cpu}",
-            "VC_COMPILER_VER": VC_COMPILER_VER,
-            "ADDITIONAL_CFLAGS": '"/arch:AVX2",' if args.arch == "x64" else "",
-            "ADDITIONAL_LDFLAGS": "",
-        },
+    if args.version != "2.88.9":
+        lines.insert(4, "skia_use_harfbuzz = false")
+        extra_cflags.append('"/guard:cf"')
+        extra_ldflags.append('"/guard:cf"')
+
+    extra_cflags.extend(
+        [
+            '"-D_HAS_AUTO_PTR_ETC=1"',
+            '"-D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS=1"',
+        ]
     )
+    if args.arch == "x64":
+        extra_cflags.append('"/arch:AVX2"')
+
+    lines.extend(
+        [
+            f"extra_cflags = [ {', '.join(extra_cflags)} ]",
+            f"extra_ldflags = [ {', '.join(extra_ldflags)} ]",
+        ]
+    )
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def build_skia():
+def write_linux_skia_args_gn(target: Path):
+    cpu = GN_CPU[args.arch]
+    lines = [
+        'target_os = "linux"',
+        f'target_cpu = "{cpu}"',
+        "is_official_build = true",
+        "skia_enable_tools = false",
+        "is_static_skiasharp = true",
+        "skia_use_icu = false",
+        "skia_use_piex = true",
+        "skia_use_sfntly = false",
+        "skia_use_system_expat = false",
+        "skia_use_system_freetype2 = false",
+        "skia_use_system_libjpeg_turbo = false",
+        "skia_use_system_libpng = false",
+        "skia_use_system_libwebp = false",
+        "skia_use_system_zlib = false",
+        "skia_enable_skottie = true",
+        "skia_use_vulkan = true",
+        "skia_use_harfbuzz = false",
+        'extra_cflags = [ "-DSKIA_C_DLL", "-DHAVE_SYSCALL_GETRANDOM", "-DXML_DEV_URANDOM" ]',
+        "extra_ldflags = []",
+    ]
+    if args.version != "2.88.9":
+        lines.append("skia_enable_ganesh = true")
+    lines.extend(compiler_args_gn())
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_linux_harfbuzz_args_gn(target: Path):
+    cpu = GN_CPU[args.arch]
+    lines = [
+        'target_os = "linux"',
+        f'target_cpu = "{cpu}"',
+        "is_official_build = true",
+        "is_static_skiasharp = true",
+        "skia_enable_tools = false",
+        "visibility_hidden = false",
+        "extra_asmflags = []",
+        "extra_cflags = []",
+        "extra_ldflags = []",
+    ]
+    lines.extend(compiler_args_gn())
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def build_skia_windows():
     header("Build SkiaSharp")
     SKIA_BUILD_DIR.mkdir(parents=True, exist_ok=True)
-    write_args_gn(SKIA_BUILD_DIR / "args.gn")
+    write_windows_args_gn(SKIA_BUILD_DIR / "args.gn")
 
     if not args.skip_sync_deps:
         execv([sys.executable, SKIA_ROOT / "tools/git-sync-deps"], cwd=SKIA_ROOT)
 
-    execv([SKIA_ROOT / "bin" / "gn.exe", "gen", SKIA_BUILD_DIR], cwd=SKIA_ROOT)
+    execv([gn(), "gen", SKIA_BUILD_DIR], cwd=SKIA_ROOT)
     execv(["ninja", "-C", SKIA_BUILD_DIR, "skia", "SkiaSharp"])
 
 
-def build_harfbuzz():
-    header("Build HarfBuzzSharp")
+def build_skia_linux():
+    header("Build SkiaSharp")
+    SKIA_BUILD_DIR.mkdir(parents=True, exist_ok=True)
+    write_linux_skia_args_gn(SKIA_BUILD_DIR / "args.gn")
 
+    if not args.skip_sync_deps:
+        execv([sys.executable, SKIA_ROOT / "tools/git-sync-deps"], cwd=SKIA_ROOT)
+
+    execv([gn(), "gen", SKIA_BUILD_DIR], cwd=SKIA_ROOT)
+    execv(["ninja", "-C", SKIA_BUILD_DIR, "SkiaSharp"], cwd=SKIA_ROOT)
+
+
+def build_harfbuzz_windows():
+    header("Build HarfBuzzSharp")
     HARFBUZZ_SLN_DIR.mkdir(parents=True, exist_ok=True)
 
-    HARFBUZZ_PROJECT_FILE_IN = SCRIPT_ROOT / "libHarfBuzzSharp.vcxproj.in"
-    HARFBUZZ_PROJECT_FILE = HARFBUZZ_SLN_DIR / "libHarfBuzzSharp.vcxproj"
+    harfbuzz_project_file_in = SCRIPT_ROOT / "libHarfBuzzSharp.vcxproj.in"
+    project_file = HARFBUZZ_SLN_DIR / "libHarfBuzzSharp.vcxproj"
     platform_name = HARFBUZZ_PLATFORM[args.arch]
     copy_template(
-        HARFBUZZ_PROJECT_FILE_IN,
-        HARFBUZZ_PROJECT_FILE,
+        harfbuzz_project_file_in,
+        project_file,
         {
             "VC_TOOLSET_VER": VC_TOOLSET_VER,
             "WINDOWS_SDK_VER": WINDOWS_SDK_VER,
@@ -201,43 +318,59 @@ def build_harfbuzz():
         encoding="utf-8-sig",
     )
     run_in_vs_env(
-        f"msbuild {HARFBUZZ_PROJECT_FILE} -m /p:Configuration=Release /p:Platform={platform_name}",
+        f"msbuild {project_file} -m /p:Configuration=Release /p:Platform={platform_name}",
         cwd=HARFBUZZ_SLN_DIR,
         arch=args.arch,
     )
+
+
+def build_harfbuzz_linux():
+    header("Build HarfBuzzSharp")
+    HARFBUZZ_BUILD_DIR.mkdir(parents=True, exist_ok=True)
+    write_linux_harfbuzz_args_gn(HARFBUZZ_BUILD_DIR / "args.gn")
+    execv([gn(), "gen", HARFBUZZ_BUILD_DIR], cwd=SKIA_ROOT)
+    execv(["ninja", "-C", HARFBUZZ_BUILD_DIR, "HarfBuzzSharp"], cwd=SKIA_ROOT)
 
 
 def copy_outputs():
     header("Copy output libraries")
     OUTDIR.mkdir(parents=True, exist_ok=True)
 
-    for lib_name in SKIA_OUTPUT_LIBS:
-        source = SKIA_BUILD_DIR / lib_name
-        target = OUTDIR / lib_name
-        cp(source, target)
+    for lib_name in (
+        SKIA_OUTPUT_LIBS_WIN if args.os == "windows" else SKIA_OUTPUT_LIBS_LINUX
+    ):
+        cp(SKIA_BUILD_DIR / lib_name, OUTDIR / lib_name)
 
     harfbuzz_lib = harfbuzz_output_lib()
-    target = OUTDIR / harfbuzz_lib.name
-    cp(harfbuzz_lib, target)
+    cp(harfbuzz_lib, OUTDIR / harfbuzz_lib.name)
+
+
+def check_os():
+    host_os = "windows" if is_windows else os_name
+    if host_os != args.os:
+        error("cross-compile is unsupported.")
 
 
 def build_all():
-    if os.name != "nt":
-        error("This script is intended for Windows only")
-
-    build_skia()
-    build_harfbuzz()
+    check_os()
+    if args.os == "windows":
+        build_skia_windows()
+        build_harfbuzz_windows()
+    else:
+        build_skia_linux()
+        build_harfbuzz_linux()
     copy_outputs()
     print("\nDone.")
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Build SkiaSharp + HarfBuzz static libs for HostForge.",
+        description="Build SkiaSharp + HarfBuzz libs for HostForge.",
         epilog="""Environment Variables:
     VC_COMPILER_VER:\t(default: 14.5)
     VC_TOOLSET_VER :\t(default: v145)
-    WINDOWS_SDK_VER:\t(default: 10.0.26100.0)""",
+    WINDOWS_SDK_VER:\t(default: 10.0.26100.0)
+    CC/CXX/AR      :\t(optional Linux toolchain overrides)""",
         formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.set_defaults(func=build_all)
@@ -250,6 +383,12 @@ def parse_args():
         choices=["x64", "arm64"],
         default="x64",
         help="target architecture",
+    )
+    parser.add_argument(
+        "--os",
+        choices=["windows", "linux"],
+        default="windows" if is_windows else "linux",
+        help="target os",
     )
     parser.add_argument(
         "--version",
@@ -265,17 +404,26 @@ def parse_args():
 def main():
     global args
     args = parse_args()
-    global SKIA_ROOT, SKIA_BUILD_DIR, OUTDIR, HARFBUZZ_SLN_DIR
+    global SKIA_ROOT, SKIA_BUILD_DIR, HARFBUZZ_BUILD_DIR, OUTDIR, HARFBUZZ_SLN_DIR
 
     SKIA_ROOT = REPO_ROOT / "repo" / f"skia-{args.version}"
-    SKIA_BUILD_DIR = SKIA_ROOT / "out" / "windows" / args.arch
+    if args.os == "windows":
+        SKIA_BUILD_DIR = SKIA_ROOT / "out" / "windows" / args.arch
+        HARFBUZZ_BUILD_DIR = SKIA_ROOT / "out" / "windows" / args.arch
+    else:
+        SKIA_BUILD_DIR = SKIA_ROOT / "out" / "linux" / args.arch / "skiasharp"
+        HARFBUZZ_BUILD_DIR = SKIA_ROOT / "out" / "linux" / args.arch / "harfbuzz"
 
     HARFBUZZ_SLN_DIR = REPO_ROOT / "repo" / f"HarfBuzzSharp-{args.version}"
-
     OUTDIR = REPO_ROOT / "artifacts" / "skiasharp" / args.version / target_rid()
 
     if not SKIA_ROOT.exists():
         error("source code not found; checkout-deps first.")
+
+    if args.os == "linux":
+        for path in (LINUX_SKIA_MAP, LINUX_HARFBUZZ_MAP):
+            if not path.exists():
+                error(f"Linux map file not found: {path}")
 
     args.func()
 

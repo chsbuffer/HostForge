@@ -1,11 +1,10 @@
+using System.Xml.Linq;
 using HostForge.TestInfra;
 
 namespace HostForge.AvaloniaAppHost.Tests;
 
 public class AvaloniaAppHostTests
 {
-    // TODO: Pass TargetAvaloniaVersion environment variable as property
-    // TODO: Validate SkiaSharp.Version.Native outputs are not 0.0.
     [Before(Class)]
     public static async Task PackAvaloniaPackage()
     {
@@ -13,211 +12,167 @@ public class AvaloniaAppHostTests
     }
 
     [Test]
-    public async Task PackageTemplates_IncludeWinX64_Arm64()
+    public async Task PackageContract_MatchesCurrentTargetAvaloniaVersion()
     {
-        string project = Path.Combine(
-            RepoContext.RepoRoot,
-            "src",
-            "package-avalonia-apphost",
-            "AvaloniaAppHost.csproj");
-
-        CommandResult result = await CommandRunner.RunAsync(
-            "dotnet",
-            $"pack \"{project}\" -c Release -v:minimal",
-            RepoContext.RepoRoot);
-
-        AssertEx.Success(result);
-
         string nuspecPath = Path.Combine(
             RepoContext.RepoRoot,
             "src",
             "package-avalonia-apphost",
             "obj",
             "Release",
-            $"ChsBuffer.Avalonia.AppHost.{RepoContext.AvaloniaPackageVersion}.nuspec");
+            $"ChsBuffer.Avalonia.AppHost.{RepoContext.AvaloniaPackageIdentityVersion}.nuspec");
 
         AssertEx.FileExists(nuspecPath);
-        string nuspec = await File.ReadAllTextAsync(nuspecPath);
 
-        AssertEx.Contains(nuspec, @"template\net10.0\win-x64\apphost.exe");
-        AssertEx.Contains(nuspec, @"template\net10.0\win-x64\singlefilehost.exe");
-        AssertEx.Contains(nuspec, @"template\net10.0\win-arm64\apphost.exe");
-        AssertEx.Contains(nuspec, @"template\net10.0\win-arm64\singlefilehost.exe");
+        string nupkgPath = Path.Combine(
+            RepoContext.AvaloniaPackageOutputDir,
+            $"ChsBuffer.Avalonia.AppHost.{RepoContext.AvaloniaPackageIdentityVersion}.nupkg");
+
+        AssertEx.FileExists(nupkgPath);
+
+        XDocument nuspec = XDocument.Load(nuspecPath);
+        XNamespace ns = nuspec.Root?.Name.Namespace ?? XNamespace.None;
+
+        AssertElementValue(nuspec, ns, "metadata", "version", RepoContext.AvaloniaPackageVersion);
+        AssertDependencyVersion(nuspec, ns, "SkiaSharp", RepoContext.SkiaSharpVersion);
+        AssertDependencyVersion(nuspec, ns, "HarfBuzzSharp", RepoContext.HarfBuzzVersion);
+
+        string[] expectedTemplateTargets =
+        [
+            @"template\net10.0\win-x64\apphost.exe",
+            @"template\net10.0\win-x64\singlefilehost.exe",
+            @"template\net10.0\win-arm64\apphost.exe",
+            @"template\net10.0\win-arm64\singlefilehost.exe"
+        ];
+
+        HashSet<string> actualTargets = nuspec
+            .Descendants(ns + "file")
+            .Select(x => x.Attribute("target")?.Value)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Cast<string>()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string expectedTarget in expectedTemplateTargets)
+        {
+            if (!actualTargets.Contains(expectedTarget))
+            {
+                throw new InvalidOperationException($"Expected template target was not found: {expectedTarget}");
+            }
+        }
     }
 
     [Test]
-    public async Task Net9_WinX64_Build_WarnsInactive()
+    public async Task PublishRules_CoverNet9Net10AndWinX64WinArm64()
     {
-        await using var project = await TestProjectWorkspace.CreateAsync(
-            targetFramework: "net9.0",
-            runtimeIdentifier: "win-x64",
-            includeSkiaPackages: false,
-            includeNativeAssetsPackages: false);
+        PublishRuleCase[] cases =
+        [
+            new("net9_publish_win-x64", "net9.0", "win-x64", ExpectedActive: false, ExpectNativeRuntimeCopy: true, RunExecutable: true),
+            new("net10_publish_win-x64", "net10.0", "win-x64", ExpectedActive: true, ExpectNativeRuntimeCopy: false, RunExecutable: true),
+            new("net9_publish_win-arm64", "net9.0", "win-arm64", ExpectedActive: false, ExpectNativeRuntimeCopy: true, RunExecutable: false),
+            new("net10_publish_win-arm64", "net10.0", "win-arm64", ExpectedActive: true, ExpectNativeRuntimeCopy: false, RunExecutable: false)
+        ];
 
-        CommandResult result = await CommandRunner.RunAsync(
-            "dotnet",
-            $"build \"{project.ProjectFilePath}\" -c Release -v:minimal",
-            project.ProjectDirectory);
+        foreach (PublishRuleCase testCase in cases)
+        {
+            await ExecuteCaseAsync(testCase.Name, async () =>
+            {
+                await using var project = await TestProjectWorkspace.CreateAsync(
+                    targetFramework: testCase.TargetFramework,
+                    runtimeIdentifier: testCase.RuntimeIdentifier,
+                    includeNativeAssetsPackages: true);
 
-        AssertEx.Success(result);
-        AssertEx.Contains(
-            result.CombinedOutput,
-            "ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='net9.0' RuntimeIdentifier='win-x64'");
+                CommandResult result = await RunDotNetCommandAsync("publish", project.ProjectFilePath, project.ProjectDirectory);
+
+                AssertEx.Success(result, testCase.Name);
+                AssertActivationState(result.CombinedOutput, testCase.ExpectedActive, testCase.TargetFramework, testCase.RuntimeIdentifier);
+
+                string outputDirectory = project.GetPublishDirectory("Release", testCase.TargetFramework, testCase.RuntimeIdentifier);
+                AssertNativeRuntimeCopy(outputDirectory, testCase.ExpectNativeRuntimeCopy);
+
+                if (testCase.RunExecutable)
+                {
+                    string exePath = Path.Combine(outputDirectory, $"{project.ProjectName}.exe");
+                    await RunExeAndAssertSuccess(testCase.Name, exePath);
+                }
+            });
+        }
     }
 
     [Test]
-    public async Task Net9_WinX64_Publish_Inactive_KeepsSkiaHarfBuzzDlls_AndExeRuns()
+    public async Task DisableSkiaHarfBuzzRuntimeCopy_AffectsBuildAndPublishOutputs_WinX64()
     {
-        await using var project = await TestProjectWorkspace.CreateAsync(
-            targetFramework: "net9.0",
-            runtimeIdentifier: "win-x64",
-            includeSkiaPackages: true,
-            includeNativeAssetsPackages: true);
+        SwitchRuleCase[] cases =
+        [
+            new("net10_build_default", "build", DisableSkiaHarfBuzzRuntimeCopy: null, ExpectNativeRuntimeCopy: false),
+            new("net10_build_copy-switch-false", "build", DisableSkiaHarfBuzzRuntimeCopy: false, ExpectNativeRuntimeCopy: true),
+            new("net10_publish_copy-switch-false", "publish", DisableSkiaHarfBuzzRuntimeCopy: false, ExpectNativeRuntimeCopy: true)
+        ];
 
-        CommandResult result = await CommandRunner.RunAsync(
-            "dotnet",
-            $"publish \"{project.ProjectFilePath}\" -c Release -v:minimal",
-            project.ProjectDirectory);
+        foreach (SwitchRuleCase testCase in cases)
+        {
+            await ExecuteCaseAsync(testCase.Name, async () =>
+            {
+                await using var project = await TestProjectWorkspace.CreateAsync(
+                    targetFramework: "net10.0",
+                    runtimeIdentifier: "win-x64",
+                    includeNativeAssetsPackages: true,
+                    disableSkiaHarfBuzzRuntimeCopy: testCase.DisableSkiaHarfBuzzRuntimeCopy);
 
-        AssertEx.Success(result);
-        AssertEx.Contains(
-            result.CombinedOutput,
-            "ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='net9.0' RuntimeIdentifier='win-x64'");
+                CommandResult result = await RunDotNetCommandAsync(testCase.Verb, project.ProjectFilePath, project.ProjectDirectory);
 
-        string publishDir = project.GetPublishDirectory("Release", "net9.0", "win-x64");
-        AssertEx.FileExists(Path.Combine(publishDir, "libSkiaSharp.dll"));
-        AssertEx.FileExists(Path.Combine(publishDir, "libHarfBuzzSharp.dll"));
-        await RunExeAndAssertSuccess(Path.Combine(publishDir, $"{project.ProjectName}.exe"));
+                AssertEx.Success(result, testCase.Name);
+                AssertActivationState(result.CombinedOutput, expectedActive: true, "net10.0", "win-x64");
+
+                string outputDirectory = testCase.Verb == "publish"
+                    ? project.GetPublishDirectory("Release", "net10.0", "win-x64")
+                    : GetBuildOutputDirectory(project, "net10.0", "win-x64");
+
+                AssertNativeRuntimeCopy(outputDirectory, testCase.ExpectNativeRuntimeCopy);
+            });
+        }
     }
 
-    [Test]
-    public async Task Net10_WinArm64_Build_ActivationDependsOnPackagedTemplate()
+    private static async Task<CommandResult> RunDotNetCommandAsync(
+        string verb,
+        string projectFilePath,
+        string workingDirectory)
     {
-        await using var project = await TestProjectWorkspace.CreateAsync(
-            targetFramework: "net10.0",
-            runtimeIdentifier: "win-arm64",
-            includeSkiaPackages: true,
-            includeNativeAssetsPackages: false);
-
-        CommandResult result = await CommandRunner.RunAsync(
+        return await CommandRunner.RunAsync(
             "dotnet",
-            $"build \"{project.ProjectFilePath}\" -c Release -v:minimal",
-            project.ProjectDirectory);
+            RepoContext.AppendTargetAvaloniaVersionProperty($"{verb} \"{projectFilePath}\" -c Release -v:minimal"),
+            workingDirectory);
+    }
 
-        AssertEx.Success(result);
-
-        AssertEx.NotContains(result.CombinedOutput, "ChsBuffer.Avalonia.AppHost is inactive");
-
-        string exePath = Path.Combine(
+    private static string GetBuildOutputDirectory(
+        TestProjectWorkspace project,
+        string targetFramework,
+        string runtimeIdentifier)
+    {
+        return Path.Combine(
             project.ProjectDirectory,
             "bin",
             "Release",
-            "net10.0",
-            "win-arm64",
-            $"{project.ProjectName}.exe");
-        AssertEx.FileExists(exePath);
+            targetFramework,
+            runtimeIdentifier);
     }
 
-    [Test]
-    public async Task Net10_WinArm64_Publish_SkiaHarfBuzzDllsDependOnActivation()
+    private static void AssertNativeRuntimeCopy(string outputDirectory, bool expectNativeRuntimeCopy)
     {
-        await using var project = await TestProjectWorkspace.CreateAsync(
-            targetFramework: "net10.0",
-            runtimeIdentifier: "win-arm64",
-            includeSkiaPackages: true,
-            includeNativeAssetsPackages: true);
+        string skiaDllPath = Path.Combine(outputDirectory, "libSkiaSharp.dll");
+        string harfBuzzDllPath = Path.Combine(outputDirectory, "libHarfBuzzSharp.dll");
 
-        CommandResult result = await CommandRunner.RunAsync(
-            "dotnet",
-            $"publish \"{project.ProjectFilePath}\" -c Release -v:minimal",
-            project.ProjectDirectory);
+        if (expectNativeRuntimeCopy)
+        {
+            AssertEx.FileExists(skiaDllPath);
+            AssertEx.FileExists(harfBuzzDllPath);
+            return;
+        }
 
-        AssertEx.Success(result);
-
-        string publishDir = project.GetPublishDirectory("Release", "net10.0", "win-arm64");
-        string skia = Path.Combine(publishDir, "libSkiaSharp.dll");
-        string harfbuzz = Path.Combine(publishDir, "libHarfBuzzSharp.dll");
-
-        AssertEx.NotContains(result.CombinedOutput, "ChsBuffer.Avalonia.AppHost is inactive");
-        AssertEx.FileMissing(skia);
-        AssertEx.FileMissing(harfbuzz);
+        AssertEx.FileMissing(skiaDllPath);
+        AssertEx.FileMissing(harfBuzzDllPath);
     }
 
-    [Test]
-    public async Task Net10_WinX64_Build_ActivatesWithoutInactiveWarning()
-    {
-        await using var project = await TestProjectWorkspace.CreateAsync(
-            targetFramework: "net10.0",
-            runtimeIdentifier: "win-x64",
-            includeSkiaPackages: true,
-            includeNativeAssetsPackages: false);
-
-        CommandResult result = await CommandRunner.RunAsync(
-            "dotnet",
-            $"build \"{project.ProjectFilePath}\" -c Release -v:minimal",
-            project.ProjectDirectory);
-
-        AssertEx.Success(result);
-        AssertEx.NotContains(result.CombinedOutput, "ChsBuffer.Avalonia.AppHost is inactive");
-
-        string exePath = Path.Combine(
-            project.ProjectDirectory,
-            "bin",
-            "Release",
-            "net10.0",
-            "win-x64",
-            $"{project.ProjectName}.exe");
-
-        AssertEx.FileExists(exePath);
-        await RunExeAndAssertSuccess(exePath);
-    }
-
-    [Test]
-    public async Task Net10_WinX64_Publish_DefaultSuppressesSkiaAndHarfBuzzDlls()
-    {
-        await using var project = await TestProjectWorkspace.CreateAsync(
-            targetFramework: "net10.0",
-            runtimeIdentifier: "win-x64",
-            includeSkiaPackages: true,
-            includeNativeAssetsPackages: true);
-
-        CommandResult result = await CommandRunner.RunAsync(
-            "dotnet",
-            $"publish \"{project.ProjectFilePath}\" -c Release -v:minimal",
-            project.ProjectDirectory);
-
-        AssertEx.Success(result);
-
-        string publishDir = project.GetPublishDirectory("Release", "net10.0", "win-x64");
-        AssertEx.FileMissing(Path.Combine(publishDir, "libSkiaSharp.dll"));
-        AssertEx.FileMissing(Path.Combine(publishDir, "libHarfBuzzSharp.dll"));
-        await RunExeAndAssertSuccess(Path.Combine(publishDir, $"{project.ProjectName}.exe"));
-    }
-
-    [Test]
-    public async Task Net10_WinX64_Publish_CopySwitchFalseRestoresSkiaAndHarfBuzzDlls()
-    {
-        await using var project = await TestProjectWorkspace.CreateAsync(
-            targetFramework: "net10.0",
-            runtimeIdentifier: "win-x64",
-            includeSkiaPackages: true,
-            includeNativeAssetsPackages: true,
-            disableSkiaHarfBuzzRuntimeCopy: false);
-
-        CommandResult result = await CommandRunner.RunAsync(
-            "dotnet",
-            $"publish \"{project.ProjectFilePath}\" -c Release -v:minimal",
-            project.ProjectDirectory);
-
-        AssertEx.Success(result);
-
-        string publishDir = project.GetPublishDirectory("Release", "net10.0", "win-x64");
-        AssertEx.FileExists(Path.Combine(publishDir, "libSkiaSharp.dll"));
-        AssertEx.FileExists(Path.Combine(publishDir, "libHarfBuzzSharp.dll"));
-        await RunExeAndAssertSuccess(Path.Combine(publishDir, $"{project.ProjectName}.exe"));
-    }
-
-    private static async Task RunExeAndAssertSuccess(string exePath)
+    private static async Task RunExeAndAssertSuccess(string caseName, string exePath)
     {
         AssertEx.FileExists(exePath);
 
@@ -226,8 +181,104 @@ public class AvaloniaAppHostTests
             string.Empty,
             Path.GetDirectoryName(exePath)!);
 
-        AssertEx.Success(runResult, "run-exe");
-        AssertEx.Contains(runResult.CombinedOutput, "SkiaSharpVersion.Native=");
+        AssertEx.Success(runResult, $"{caseName}:run-exe");
+        AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
     }
 
+    private static void AssertLoadedSkiaSharpNativeVersion(string output)
+    {
+        const string prefix = "SkiaSharpVersion.Native=";
+
+        AssertEx.Contains(output, prefix);
+
+        int start = output.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length;
+        int end = output.IndexOfAny(['\r', '\n'], start);
+        if (end < 0)
+        {
+            end = output.Length;
+        }
+
+        string value = output[start..end].Trim();
+        if (string.IsNullOrWhiteSpace(value) || string.Equals(value, "0.0", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Expected SkiaSharp native version to be loaded, but got '{value}'.{Environment.NewLine}{output}");
+        }
+    }
+
+    private static void AssertActivationState(
+        string combinedOutput,
+        bool expectedActive,
+        string targetFramework,
+        string runtimeIdentifier)
+    {
+        string inactiveMessage =
+            $"ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='{targetFramework}' RuntimeIdentifier='{runtimeIdentifier}'";
+
+        if (expectedActive)
+        {
+            AssertEx.NotContains(combinedOutput, "ChsBuffer.Avalonia.AppHost is inactive");
+            return;
+        }
+
+        AssertEx.Contains(combinedOutput, inactiveMessage);
+    }
+
+    private static void AssertElementValue(
+        XDocument document,
+        XNamespace ns,
+        string parentName,
+        string childName,
+        string expectedValue)
+    {
+        XElement? parent = document.Root?.Element(ns + parentName);
+        XElement? child = parent?.Element(ns + childName);
+        string? actualValue = child?.Value?.Trim();
+
+        if (!string.Equals(actualValue, expectedValue, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Expected {parentName}/{childName}='{expectedValue}', but found '{actualValue ?? "<missing>"}'.");
+        }
+    }
+
+    private static void AssertDependencyVersion(XDocument nuspec, XNamespace ns, string dependencyId, string expectedVersion)
+    {
+        XElement? dependency = nuspec
+            .Descendants(ns + "dependency")
+            .FirstOrDefault(x => string.Equals(x.Attribute("id")?.Value, dependencyId, StringComparison.Ordinal));
+
+        string? actualVersion = dependency?.Attribute("version")?.Value;
+        if (!string.Equals(actualVersion, expectedVersion, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Expected dependency '{dependencyId}' version '{expectedVersion}', but found '{actualVersion ?? "<missing>"}'.");
+        }
+    }
+
+    private static async Task ExecuteCaseAsync(string caseName, Func<Task> action)
+    {
+        try
+        {
+            await action();
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Case '{caseName}' failed.{Environment.NewLine}{ex.Message}", ex);
+        }
+    }
+
+    private sealed record PublishRuleCase(
+        string Name,
+        string TargetFramework,
+        string RuntimeIdentifier,
+        bool ExpectedActive,
+        bool ExpectNativeRuntimeCopy,
+        bool RunExecutable);
+
+    private sealed record SwitchRuleCase(
+        string Name,
+        string Verb,
+        bool? DisableSkiaHarfBuzzRuntimeCopy,
+        bool ExpectNativeRuntimeCopy);
 }

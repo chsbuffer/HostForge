@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 import argparse
+import os
 import platform
 import subprocess
 import sys
 from pathlib import Path
-from typing import Never
 
 
 def color_print(code, text):
@@ -15,7 +15,7 @@ def color_print(code, text):
         print(f"{code}{text}\033[0m")
 
 
-def error(text) -> Never:
+def error(text):
     color_print("\033[41;39m", f"\n! {text}\n")
     sys.exit(1)
 
@@ -84,6 +84,12 @@ MATRIX_TEST_CSPROJ = (
     / "HostForge.StaticAppHost.Tests"
     / "HostForge.StaticAppHost.Tests.csproj"
 )
+AVALONIA_TEST_CSPROJ = (
+    REPO_ROOT
+    / "tests"
+    / "HostForge.AvaloniaAppHost.Tests"
+    / "HostForge.AvaloniaAppHost.Tests.csproj"
+)
 
 
 def dotnet_verbosity() -> str:
@@ -106,13 +112,26 @@ def build_skia_harfbuzz():
 
 def run_matrix_test():
     header("Run matrix test")
+    env = None
+    if args.skip_exe_run or args.no_clean:
+        env = dict(os.environ)
+        if args.skip_exe_run:
+            env["HOSTFORGE_MATRIX_SKIP_EXE_RUN"] = "true"
+        if args.no_clean:
+            env["HOSTFORGE_MATRIX_NO_CLEAN"] = "true"
+
     cmd = ["dotnet", "test", "--project", MATRIX_TEST_CSPROJ, "-c", "Release"]
     cmd.extend([f"-v:{dotnet_verbosity()}"])
-    if args.skip_exe_run:
-        cmd.extend(["-e", "HOSTFORGE_MATRIX_SKIP_EXE_RUN=true"])
-    if args.no_clean:
-        cmd.extend(["-e", "HOSTFORGE_MATRIX_NO_CLEAN=true"])
-    execv(cmd)
+    execv(cmd, env=env)
+
+
+def run_avalonia_test():
+    header("Run avalonia apphost test")
+    env = dict(os.environ)
+    env["TargetAvaloniaVersion"] = args.target
+    cmd = ["dotnet", "test", "--project", AVALONIA_TEST_CSPROJ, "-c", "Release"]
+    cmd.extend([f"-v:{dotnet_verbosity()}"])
+    execv(cmd, env=env)
 
 
 def pack_avalonia_apphost():
@@ -121,15 +140,6 @@ def pack_avalonia_apphost():
     execv(
         ["dotnet", "pack", AVALONIA_APPHOST_CSPROJ, *target, f"-v:{dotnet_verbosity()}"]
     )
-
-
-def run_all():
-    build_hostlibs()
-    if not args.skip_matrix_test:
-        run_matrix_test()
-    build_skia_harfbuzz()
-    pack_avalonia_apphost()
-    print("\nPipeline completed.")
 
 
 ##########################
@@ -146,29 +156,13 @@ def add_matrix_options(parser):
     )
 
 
-def add_all_options(parser):
-    parser.add_argument(
-        "--skip-matrix-test", action="store_true", help="skip matrix test"
-    )
-    add_matrix_options(parser)
-
-
 def parse_args():
     parser = argparse.ArgumentParser(description="HostForge pipeline script")
-    parser.set_defaults(func=run_all)
     parser.add_argument(
         "-v", "--verbose", action="count", default=0, help="verbose output"
     )
-    add_all_options(parser)
 
-    subparsers = parser.add_subparsers(dest="command")
-
-    all_parser = subparsers.add_parser("all", help="run full pipeline")
-    all_parser.add_argument(
-        "-v", "--verbose", action="count", default=0, help="verbose output"
-    )
-    add_all_options(all_parser)
-    all_parser.set_defaults(func=run_all)
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
     hostlibs_parser = subparsers.add_parser("hostlibs", help="build hostlibs only")
     hostlibs_parser.add_argument(
@@ -184,6 +178,20 @@ def parse_args():
         "-v", "--verbose", action="count", default=0, help="verbose output"
     )
     matrix_parser.set_defaults(func=run_matrix_test)
+
+    avalonia_test_parser = subparsers.add_parser(
+        "avalonia-test", help="run avalonia apphost integration test only"
+    )
+    avalonia_test_parser.add_argument(
+        "--target",
+        choices=["11.0", "12.0"],
+        default="11.0",
+        help="Target Avalonia version. This decides skiasharp version and changes output package version",
+    )
+    avalonia_test_parser.add_argument(
+        "-v", "--verbose", action="count", default=0, help="verbose output"
+    )
+    avalonia_test_parser.set_defaults(func=run_avalonia_test)
 
     skia_parser = subparsers.add_parser("skia", help="build SkiaSharp only")
     skia_parser.add_argument(

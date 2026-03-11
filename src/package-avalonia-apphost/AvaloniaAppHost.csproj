@@ -21,7 +21,7 @@
     <DevelopmentDependency>false</DevelopmentDependency>
 
     <AvaloniaTemplateTfm Condition="'$(AvaloniaTemplateTfm)' == ''">net10.0</AvaloniaTemplateTfm>
-    <AvaloniaHostRids>win-x64;win-arm64</AvaloniaHostRids>
+    <AvaloniaHostRids Condition="'$(AvaloniaHostRids)' == ''">win-x64;win-arm64</AvaloniaHostRids>
     <PackageAssetsDir>$(HostLibsRoot)\$(AvaloniaHostRid)</PackageAssetsDir>
     <AvaloniaNativeLibsDir>$(AvaloniaNativeLibsRoot)\$(AvaloniaHostRid)</AvaloniaNativeLibsDir>
     <PackageOutputPath>$(AvaloniaAppHostPackageOutputDir)\</PackageOutputPath>
@@ -57,16 +57,21 @@
   </ItemGroup>
 
   <Target Name="_ResolveAvaloniaLinkInputs">
-    <Error Condition="'$(AvaloniaHostRid)' != 'win-x64' and '$(AvaloniaHostRid)' != 'win-arm64'" Text="Unsupported AvaloniaHostRid: $(AvaloniaHostRid). Supported values: win-x64;win-arm64." />
+    <PropertyGroup>
+      <_AvaloniaHostRidIsWindows>$(AvaloniaHostRid.StartsWith('win'))</_AvaloniaHostRidIsWindows>
+      <_AvaloniaNativeLibExtension Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'">.lib</_AvaloniaNativeLibExtension>
+      <_AvaloniaNativeLibExtension Condition="'$(_AvaloniaHostRidIsWindows)' != 'True'">.a</_AvaloniaNativeLibExtension>
+    </PropertyGroup>
+
     <Error Condition="!Exists('$(PackageAssetsDir)')" Text="Host libs directory not found: $(PackageAssetsDir)" />
     <Error Condition="!Exists('$(AvaloniaNativeLibsDir)')" Text="Avalonia native libs directory not found: $(AvaloniaNativeLibsDir)" />
 
     <ItemGroup>
-      <_AvaloniaNativeLib Include="$(AvaloniaNativeLibsDir)\*.lib" />
+      <_AvaloniaNativeLib Include="$(AvaloniaNativeLibsDir)\*$(_AvaloniaNativeLibExtension)" />
     </ItemGroup>
 
     <Error Condition="'@(_AvaloniaNativeLib)' == ''"
-           Text="No .lib files were found in $(AvaloniaNativeLibsDir)." />
+           Text="No $(_AvaloniaNativeLibExtension) files were found in $(AvaloniaNativeLibsDir)." />
 
     <ItemGroup>
       <NativeLibrary Include="@(_AvaloniaNativeLib)" />
@@ -76,7 +81,11 @@
       <NativeLibrary Update="@(NativeLibrary)" Condition="'%(NativeLibrary.Filename)' == 'SkiaSharp'">
        <WholeArchive>true</WholeArchive>
       </NativeLibrary>
-      <LinkerArg Include="FontSub.lib;opengl32.lib;advapi32.lib;gdi32.lib"/>
+      <NativeLibrary Update="@(NativeLibrary)" Condition="'%(NativeLibrary.Filename)' == 'libSkiaSharp'">
+       <WholeArchive>true</WholeArchive>
+      </NativeLibrary>
+      <LinkerArg Include="FontSub.lib;opengl32.lib;advapi32.lib;gdi32.lib"
+                 Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'" />
     </ItemGroup>
   </Target>
 

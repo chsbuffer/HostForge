@@ -28,7 +28,7 @@
 - `repo/skia-<version>`：mono/skia 源码（用于构建静态 Skia/HarfBuzz 库）。
 - `repo/deps-mirror`：依赖仓库的本地裸仓库缓存（仅非 CI）。
 - `repo/patch`：本仓库对上游工程使用的补丁与参数文件。
-- `scripts/pipeline.py`：主流水线入口（HostLib 构建 -> 打包 -> 矩阵测试）。
+- `scripts/pipeline.py`：构建/测试子命令入口。
 - `scripts/build-hostlibs.py`：构建 Host 静态库到 `artifacts/hostlibs/<version>/<rid>`。
 - `scripts/build-skia-harfbuzz.py`：构建并收集 mono/skia + HarfBuzz 静态库到 `artifacts/skiasharp/<version>/<rid>`。
 - `scripts/init-vs-env.cmd`：初始化 Visual Studio/MSVC 构建环境。
@@ -96,6 +96,12 @@ python .\scripts\build-skia-harfbuzz.py -v -a arm64
 python .\scripts\pipeline.py pack-avalonia -v
 ```
 
+- 运行 Avalonia AppHost 集成测试：
+
+```powershell
+python .\scripts\pipeline.py avalonia-test -v --target 11.0
+```
+
 ## 逐步生成 （SkiaSharp 3，未测试）
 
 - 检出外部依赖
@@ -121,10 +127,16 @@ python .\scripts\build-skia-harfbuzz.py -v -a arm64 --version 3.119.2
 python .\scripts\pipeline.py pack-avalonia -v --target 12.0
 ```
 
+- 运行 Avalonia AppHost 集成测试：
+
+```powershell
+python .\scripts\pipeline.py avalonia-test -v --target 12.0
+```
+
 - 运行 Avalonia 12 示例项目
 
 ```powershell
-dotnet run --project .\samples\avalonia-sample\AvaloniaSample.csproj -c Release -p:TargetAvaloniaVersion=11.0
+dotnet run --project .\samples\avalonia-sample\AvaloniaSample.csproj -c Release -p:TargetAvaloniaVersion=12.0
 ```
 
 ## 实验性 Linux 生成
@@ -133,6 +145,13 @@ dotnet run --project .\samples\avalonia-sample\AvaloniaSample.csproj -c Release 
 
 ```bash
 python scripts/build-hostlibs.py -v --os linux --arch x64
+```
+
+- 构建 SkiaSharp / HarfBuzz：
+
+```bash
+python scripts/build-skia-harfbuzz.py -v --os linux --arch x64
+python scripts/build-skia-harfbuzz.py -v --os linux --arch arm64
 ```
 
 - 运行构建集成矩阵测试：

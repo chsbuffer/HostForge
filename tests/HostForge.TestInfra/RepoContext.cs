@@ -1,13 +1,33 @@
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Locator;
+using System.Runtime.CompilerServices;
 
 namespace HostForge.TestInfra;
 
+static class InitMsBuild {
+#pragma warning disable CA2255
+    [ModuleInitializer]
+#pragma warning restore CA2255
+    public static void AssemblyInitialize(){
+        MSBuildLocator.RegisterDefaults();
+    }
+}
+
 public static class RepoContext
 {
+    public const string TargetAvaloniaVersionEnvironmentVariableName = "TargetAvaloniaVersion";
+
     public static string RepoRoot { get; } = LocateRepoRoot();
 
+    public static string? TargetAvaloniaVersion { get; } = ReadOptionalEnvironmentVariable(TargetAvaloniaVersionEnvironmentVariableName);
+
     public static string AvaloniaPackageVersion { get; } = ReadProperty("AvaloniaAppHostPackageVersion");
+
+    public static string AvaloniaPackageIdentityVersion { get; } = StripSemVerBuildMetadata(AvaloniaPackageVersion);
+
+    public static string SkiaSharpVersion { get; } = ReadProperty("SkiaSharpVersion");
+
+    public static string HarfBuzzVersion { get; } = ReadProperty("HarfBuzzVersion");
 
     public static string HostLibsVersion { get; } = ReadProperty("HostLibsVersion");
 
@@ -17,9 +37,14 @@ public static class RepoContext
     public static string ArtifactsTestRoot { get; } =
         Path.Combine(RepoRoot, "artifacts", "tmp", "build-tests");
 
-    static RepoContext()
+    public static string AppendTargetAvaloniaVersionProperty(string arguments)
     {
-        MSBuildLocator.RegisterDefaults();
+        if (string.IsNullOrWhiteSpace(TargetAvaloniaVersion))
+        {
+            return arguments;
+        }
+
+        return $"{arguments} -p:TargetAvaloniaVersion={TargetAvaloniaVersion}";
     }
 
     private static string LocateRepoRoot()
@@ -48,7 +73,7 @@ public static class RepoContext
         {
             var project = new Project(
                 propsFile,
-                globalProperties: null, // TODO: Read TargetAvaloniaVersion from environment
+                globalProperties: BuildGlobalProperties(),
                 toolsVersion: null,
                 projectCollection: projectCollection,
                 loadSettings: ProjectLoadSettings.IgnoreMissingImports);
@@ -62,5 +87,30 @@ public static class RepoContext
         }
 
         return value;
+    }
+
+    private static Dictionary<string, string>? BuildGlobalProperties()
+    {
+        if (string.IsNullOrWhiteSpace(TargetAvaloniaVersion))
+        {
+            return null;
+        }
+
+        return new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [TargetAvaloniaVersionEnvironmentVariableName] = TargetAvaloniaVersion
+        };
+    }
+
+    private static string? ReadOptionalEnvironmentVariable(string name)
+    {
+        string? value = Environment.GetEnvironmentVariable(name);
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string StripSemVerBuildMetadata(string version)
+    {
+        int separatorIndex = version.IndexOf('+', StringComparison.Ordinal);
+        return separatorIndex < 0 ? version : version[..separatorIndex];
     }
 }

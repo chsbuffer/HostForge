@@ -5,7 +5,6 @@ import platform
 import subprocess
 import sys
 from pathlib import Path
-from typing import Never
 
 
 def color_print(code, text):
@@ -16,7 +15,7 @@ def color_print(code, text):
         print(f"{code}{text}\033[0m")
 
 
-def error(text) -> Never:
+def error(text):
     color_print("\033[41;39m", f"\n! {text}\n")
     sys.exit(1)
 
@@ -224,7 +223,9 @@ def parse_args():
         nargs="?",
         help="checkout target in DEPS, such as runtime or skiasharp",
     )
-    parser.add_argument("version", nargs="?", help="version key under the target in DEPS")
+    parser.add_argument(
+        "version", nargs="?", help="version key under the target in DEPS"
+    )
     return parser.parse_args()
 
 

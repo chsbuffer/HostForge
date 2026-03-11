@@ -1,4 +1,4 @@
-using System.Text;
+using Microsoft.Build.Construction;
 
 namespace HostForge.TestInfra;
 
@@ -21,7 +21,6 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
     public static async Task<TestProjectWorkspace> CreateAsync(
         string targetFramework,
         string runtimeIdentifier,
-        bool includeSkiaPackages,
         bool includeNativeAssetsPackages,
         bool? disableSkiaHarfBuzzRuntimeCopy = null,
         CancellationToken cancellationToken = default)
@@ -37,18 +36,15 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
 
         await File.WriteAllTextAsync(
             Path.Combine(projectDirectory, "Program.cs"),
-            BuildProgramSource(includeSkiaPackages),
+            BuildProgramSource(),
             cancellationToken);
 
-        string csproj = BuildProjectFile(
-            projectName,
+        BuildProjectFile(
+            projectFilePath,
             targetFramework,
             runtimeIdentifier,
-            includeSkiaPackages,
             includeNativeAssetsPackages,
             disableSkiaHarfBuzzRuntimeCopy);
-
-        await File.WriteAllTextAsync(projectFilePath, csproj, cancellationToken);
 
         return new TestProjectWorkspace(rootDirectory, projectDirectory, projectFilePath, projectName);
     }
@@ -81,60 +77,55 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         return ValueTask.CompletedTask;
     }
 
-    // TODO: Create with Microsoft.Build.Construction
-    // TODO: Don't hardcoded package versions
-    private static string BuildProjectFile(
-        string projectName,
+    private static void BuildProjectFile(
+        string projectFilePath,
         string targetFramework,
         string runtimeIdentifier,
-        bool includeSkiaPackages,
         bool includeNativeAssetsPackages,
         bool? disableSkiaHarfBuzzRuntimeCopy)
     {
-        var builder = new StringBuilder();
-        builder.AppendLine("<Project Sdk=\"Microsoft.NET.Sdk\">");
-        builder.AppendLine("  <PropertyGroup>");
-        builder.AppendLine("    <OutputType>Exe</OutputType>");
-        builder.AppendLine($"    <TargetFramework>{targetFramework}</TargetFramework>");
-        builder.AppendLine($"    <RuntimeIdentifier>{runtimeIdentifier}</RuntimeIdentifier>");
-        builder.AppendLine("    <ImplicitUsings>enable</ImplicitUsings>");
-        builder.AppendLine("    <Nullable>enable</Nullable>");
-        builder.AppendLine($"    <RestoreAdditionalProjectSources>$(RestoreAdditionalProjectSources);{RepoContext.AvaloniaPackageOutputDir}</RestoreAdditionalProjectSources>");
+        ProjectRootElement project = ProjectRootElement.Create();
+        project.Sdk = "Microsoft.NET.Sdk";
+
+        ProjectPropertyGroupElement propertyGroup = project.AddPropertyGroup();
+        propertyGroup.AddProperty("OutputType", "Exe");
+        propertyGroup.AddProperty("TargetFramework", targetFramework);
+        propertyGroup.AddProperty("RuntimeIdentifier", runtimeIdentifier);
+        propertyGroup.AddProperty("ImplicitUsings", "enable");
+        propertyGroup.AddProperty("Nullable", "enable");
+        propertyGroup.AddProperty(
+            "RestoreAdditionalProjectSources",
+            "$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)");
 
         if (disableSkiaHarfBuzzRuntimeCopy is not null)
         {
-            builder.AppendLine($"    <DisableSkiaHarfBuzzRuntimeCopy>{disableSkiaHarfBuzzRuntimeCopy.Value.ToString().ToLowerInvariant()}</DisableSkiaHarfBuzzRuntimeCopy>");
+            propertyGroup.AddProperty(
+                "DisableSkiaHarfBuzzRuntimeCopy",
+                disableSkiaHarfBuzzRuntimeCopy.Value.ToString().ToLowerInvariant());
         }
 
-        builder.AppendLine("  </PropertyGroup>");
-        builder.AppendLine();
-        builder.AppendLine("  <ItemGroup>");
-        builder.AppendLine($"    <PackageReference Include=\"ChsBuffer.Avalonia.AppHost\" Version=\"{RepoContext.AvaloniaPackageVersion}\" />");
-
-        if (includeSkiaPackages)
-        {
-            builder.AppendLine("    <PackageReference Include=\"SkiaSharp\" Version=\"2.88.9\" />");
-            builder.AppendLine("    <PackageReference Include=\"HarfBuzzSharp\" Version=\"8.3.1.1\" />");
-        }
+        ProjectItemGroupElement itemGroup = project.AddItemGroup();
+        AddPackageReference(itemGroup, "ChsBuffer.Avalonia.AppHost", "$(AvaloniaAppHostPackageVersion)");
+        AddPackageReference(itemGroup, "SkiaSharp", "$(SkiaSharpVersion)");
+        AddPackageReference(itemGroup, "HarfBuzzSharp", "$(HarfBuzzVersion)");
 
         if (includeNativeAssetsPackages)
         {
-            builder.AppendLine("    <PackageReference Include=\"SkiaSharp.NativeAssets.Win32\" Version=\"2.88.9\" />");
-            builder.AppendLine("    <PackageReference Include=\"HarfBuzzSharp.NativeAssets.Win32\" Version=\"8.3.1.1\" />");
+            AddPackageReference(itemGroup, "SkiaSharp.NativeAssets.Win32", "$(SkiaSharpVersion)");
+            AddPackageReference(itemGroup, "HarfBuzzSharp.NativeAssets.Win32", "$(HarfBuzzVersion)");
         }
 
-        builder.AppendLine("  </ItemGroup>");
-        builder.AppendLine("</Project>");
-        return builder.ToString();
+        project.Save(projectFilePath);
     }
 
-    private static string BuildProgramSource(bool includeSkiaPackages)
+    private static void AddPackageReference(ProjectItemGroupElement itemGroup, string include, string version)
     {
-        if (includeSkiaPackages)
-        {
-            return "Console.WriteLine($\"SkiaSharpVersion.Native={SkiaSharp.SkiaSharpVersion.Native}\");";
-        }
+        ProjectItemElement packageReference = itemGroup.AddItem("PackageReference", include);
+        packageReference.AddMetadata("Version", version, expressAsAttribute: true);
+    }
 
-        return "Console.WriteLine(\"HostForge build test\");";
+    private static string BuildProgramSource()
+    {
+        return "Console.WriteLine($\"SkiaSharpVersion.Native={SkiaSharp.SkiaSharpVersion.Native}\");";
     }
 }

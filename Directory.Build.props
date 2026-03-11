@@ -1,8 +1,6 @@
 <Project>
 
   <PropertyGroup>
-    <RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>
-    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
     <TargetAvaloniaVersion Condition="'$(TargetAvaloniaVersion)' == ''">11.0</TargetAvaloniaVersion>
     <AvaloniaAppHostPackageVersionMajor>0</AvaloniaAppHostPackageVersionMajor>
     <AvaloniaAppHostPackageVersionPrev>preview.2</AvaloniaAppHostPackageVersionPrev>
@@ -28,17 +26,20 @@
   <PropertyGroup>
     <AvaloniaAppHostPackageVersionMeta>skiasharp-v$(SkiaSharpVersion)-harfbuzz-v$(HarfBuzzVersion)</AvaloniaAppHostPackageVersionMeta>
 
-    <AvaloniaAppHostPackageVersion>$(TargetAvaloniaVersion)</AvaloniaAppHostPackageVersion>
-    <AvaloniaAppHostPackageVersion>$(AvaloniaAppHostPackageVersion).$(AvaloniaAppHostPackageVersionMajor)</AvaloniaAppHostPackageVersion>
+    <AvaloniaAppHostPackageVersion>$(TargetAvaloniaVersion).$(AvaloniaAppHostPackageVersionMajor)</AvaloniaAppHostPackageVersion>
     <AvaloniaAppHostPackageVersion Condition="'$(AvaloniaAppHostPackageVersionPrev)' != ''">$(AvaloniaAppHostPackageVersion)-$(AvaloniaAppHostPackageVersionPrev)</AvaloniaAppHostPackageVersion>
-    <AvaloniaAppHostPackageVersion Condition="'$(AvaloniaAppHostPackageVersionMeta)' != ''">$(AvaloniaAppHostPackageVersion)+$(AvaloniaAppHostPackageVersionMeta)</AvaloniaAppHostPackageVersion>
+    <AvaloniaAppHostPackageVersion>$(AvaloniaAppHostPackageVersion)+$(AvaloniaAppHostPackageVersionMeta)</AvaloniaAppHostPackageVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <HostLibsVersion>10.0</HostLibsVersion>
+    <RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
 
     <PackagesOutputRoot>$(RepoRoot)artifacts\packages</PackagesOutputRoot>
     <AvaloniaAppHostPackageOutputDir>$(PackagesOutputRoot)\$(Configuration)</AvaloniaAppHostPackageOutputDir>
 
-    <HostLibsVersion>10.0</HostLibsVersion>
     <HostLibsRoot>$(RepoRoot)artifacts\hostlibs\$(HostLibsVersion)</HostLibsRoot>
-
     <AvaloniaNativeLibsRoot>$(RepoRoot)artifacts\skiasharp\$(SkiaSharpVersion)</AvaloniaNativeLibsRoot>
   </PropertyGroup>
 
