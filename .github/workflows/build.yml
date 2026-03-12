@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: false
@@ -38,7 +38,7 @@ jobs:
       # so a cache miss in this job will save the built output for downstream restore jobs.
       - name: Lookup hostlibs cache
         id: cache_hostlibs
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           lookup-only: true
           path: artifacts\hostlibs\${{ matrix.runtime_version }}\${{ matrix.rid }}
@@ -56,7 +56,7 @@ jobs:
 
       - name: Upload hostlibs artifact
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: hostlibs-${{ matrix.runtime_version }}-${{ matrix.rid }}
           path: artifacts\hostlibs
@@ -69,7 +69,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: false
@@ -82,7 +82,7 @@ jobs:
           "key=$key" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Restore hostlibs cache (10.0 win-x64)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
           path: artifacts\hostlibs\10.0\win-x64
@@ -112,7 +112,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: false
@@ -129,7 +129,7 @@ jobs:
 
       - name: Lookup skia cache
         id: cache_skia
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           lookup-only: true
           path: artifacts\skiasharp\${{ matrix.skiasharp_version }}\${{ matrix.rid }}
@@ -147,7 +147,7 @@ jobs:
 
       - name: Upload skiasharp artifact
         if: steps.cache_skia.outputs.cache-hit != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: skiasharp-${{ matrix.skiasharp_version }}-${{ matrix.rid }}
           path: artifacts\skiasharp\${{ matrix.skiasharp_version }}\${{ matrix.rid }}
@@ -168,7 +168,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: false
@@ -187,14 +187,14 @@ jobs:
           "key_arm64=$keyArm64" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Restore hostlibs cache (10.0 win-x64)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
           path: artifacts\hostlibs\10.0\win-x64
           key: ${{ steps.hostlibs_keys.outputs.key_x64 }}
 
       - name: Restore hostlibs cache (10.0 win-arm64)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
           path: artifacts\hostlibs\10.0\win-arm64
@@ -211,14 +211,14 @@ jobs:
           "key_skia_arm64=$keySkiaArm64" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Restore skia cache (win-x64)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
           path: artifacts\skiasharp\${{ matrix.skiasharp_version }}\win-x64
           key: ${{ steps.skia_keys.outputs.key_skia_x64 }}
 
       - name: Restore skia cache (win-arm64)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
           path: artifacts\skiasharp\${{ matrix.skiasharp_version }}\win-arm64
@@ -229,7 +229,7 @@ jobs:
         run: python .\scripts\pipeline.py link-avalonia -v --target ${{ matrix.avalonia_target }} --os windows
 
       - name: Upload Windows Avalonia apphost artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: avalonia-host-${{ matrix.avalonia_target }}-windows
           path: artifacts\avalonia-host\${{ matrix.avalonia_target }}
@@ -244,7 +244,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: false
@@ -257,7 +257,7 @@ jobs:
 
       - name: Lookup hostlibs cache
         id: cache_hostlibs
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           lookup-only: true
           path: artifacts/hostlibs/10.0/linux-x64
@@ -278,7 +278,7 @@ jobs:
 
       - name: Upload hostlibs artifact
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: hostlibs-10.0-linux-x64
           path: artifacts/hostlibs
@@ -291,7 +291,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: false
@@ -303,7 +303,7 @@ jobs:
           echo "key=$key" >> "$GITHUB_OUTPUT"
 
       - name: Restore hostlibs cache (10.0 linux-x64)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
           path: artifacts/hostlibs/10.0/linux-x64
@@ -326,7 +326,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: false
@@ -344,7 +344,7 @@ jobs:
 
       - name: Lookup skia cache
         id: cache_skia
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           lookup-only: true
           path: artifacts/skiasharp/${{ matrix.skiasharp_version }}/${{ matrix.rid }}
@@ -360,7 +360,7 @@ jobs:
 
       - name: Upload skia artifact
         if: steps.cache_skia.outputs.cache-hit != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: skiasharp-${{ matrix.skiasharp_version }}-${{ matrix.rid }}
           path: artifacts/skiasharp/${{ matrix.skiasharp_version }}/${{ matrix.rid }}
@@ -381,15 +381,15 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: false
 
-      - name: Install libfontconfig1-dev
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libfontconfig1-dev
+          sudo apt-get install -y libfontconfig1-dev build-essential gettext locales cmake llvm clang lld lldb liblldb-dev libunwind8-dev libicu-dev liblttng-ust-dev libssl-dev libkrb5-dev pigz cpio ninja-build
 
       - name: Compute hostlibs cache key
         id: hostlibs_key
@@ -398,7 +398,7 @@ jobs:
           echo "key=$key" >> "$GITHUB_OUTPUT"
 
       - name: Restore hostlibs cache (10.0 linux-x64)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
           path: artifacts/hostlibs/10.0/linux-x64
@@ -411,7 +411,7 @@ jobs:
           echo "key=$key" >> "$GITHUB_OUTPUT"
 
       - name: Restore skia cache (linux-x64)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
           path: artifacts/skiasharp/${{ matrix.skiasharp_version }}/linux-x64
@@ -424,7 +424,7 @@ jobs:
         run: python ./scripts/pipeline.py avalonia-test -v --target ${{ matrix.avalonia_target }}
 
       - name: Upload Linux Avalonia apphost artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: avalonia-host-${{ matrix.avalonia_target }}-linux
           path: artifacts/avalonia-host/${{ matrix.avalonia_target }}
@@ -443,19 +443,19 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: false
 
       - name: Download Windows Avalonia apphost artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.1
         with:
           name: avalonia-host-${{ matrix.avalonia_target }}-windows
           path: artifacts\avalonia-host\${{ matrix.avalonia_target }}
 
       - name: Download Linux Avalonia apphost artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.1
         with:
           name: avalonia-host-${{ matrix.avalonia_target }}-linux
           path: artifacts\avalonia-host\${{ matrix.avalonia_target }}
@@ -465,7 +465,7 @@ jobs:
         run: python .\scripts\pipeline.py pack-avalonia -v --target ${{ matrix.avalonia_target }} --mode all
 
       - name: Upload nuget packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nuget-packages-avalonia-${{ matrix.avalonia_target }}
           path: artifacts\packages\Release

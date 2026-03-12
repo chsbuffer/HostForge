@@ -10,7 +10,7 @@ runs:
         choco uninstall llvm -y
 
     - name: Cache LLVM installer
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ${{ env.USERPROFILE }}\\llvm-temp
         key: llvm-21.1.8-win64
