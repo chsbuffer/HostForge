@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import os
 import platform
 import shutil
 import stat
@@ -275,6 +276,16 @@ def check_os():
         error("cross-compile is unsupported.")
 
 
+def rootfs_dir() -> str | None:
+    return os.environ.get("ROOTFS_DIR")
+
+
+def linux_build_args(base_args: str) -> str:
+    if rootfs_dir():
+        return f"{base_args} --cross"
+    return base_args
+
+
 def build_singlefilehost():
     os = args.os
     arch = args.arch
@@ -286,6 +297,7 @@ def build_singlefilehost():
         if is_windows:
             execv(f"call {RUNTIME_ROOT}\\build.cmd {build_args}")
         else:
+            build_args = linux_build_args(build_args)
             execv(f"{RUNTIME_ROOT}/build.sh {build_args}")
 
     build_root = RUNTIME_ROOT / "artifacts" / "obj" / "coreclr" / f"{os}.{arch}.Release"
@@ -322,6 +334,7 @@ def build_apphost():
         if is_windows:
             execv(f"call {RUNTIME_ROOT}\\build.cmd {build_args}")
         else:
+            build_args = linux_build_args(build_args)
             execv(f"{RUNTIME_ROOT}/build.sh {build_args}")
 
     if os == "windows":
@@ -347,7 +360,12 @@ def build_all():
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description=".NET App Host LIB build and archive script"
+        description=".NET App Host LIB build and archive script",
+        epilog="""
+ROOTFS_DIR:
+  optional Linux sysroot path. When set, build.sh is invoked with --cross automatically.
+""".strip(),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "-v", "--verbose", action="count", default=0, help="verbose output"

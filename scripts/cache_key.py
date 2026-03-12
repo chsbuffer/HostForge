@@ -126,8 +126,12 @@ def skiasharp_cache_key(
             ]
         )
     else:
-        gcc_exe = resolve_gcc_exe(os_name, gcc_path)
-        inputs.append(f"gcc={tool_version(gcc_exe)}")
+        if clang_path:
+            clang_exe = resolve_clang_exe(os_name, clang_path)
+            inputs.append(f"clang={tool_version(clang_exe)}")
+        else:
+            gcc_exe = resolve_gcc_exe(os_name, gcc_path)
+            inputs.append(f"gcc={tool_version(gcc_exe)}")
     digest = hashlib.sha256("\n".join(inputs).encode("utf-8")).hexdigest()
     return f"skiasharp-{os_name}-{skiasharp_version}-{arch}-{digest[:16]}", inputs
 

@@ -132,6 +132,8 @@ def run_avalonia_test():
     header("Run avalonia apphost test")
     env = dict(os.environ)
     env["TargetAvaloniaVersion"] = args.target
+    if args.sysroot:
+        env["ROOTFS_DIR"] = args.sysroot
     cmd = ["dotnet", "test", "--project", AVALONIA_TEST_CSPROJ, "-c", "Release"]
     cmd.extend([f"-v:{dotnet_verbosity()}"])
     execv(cmd, env=env)
@@ -141,6 +143,7 @@ def link_avalonia_apphost():
     header("Link avalonia apphost templates")
     target = [f"-p:TargetAvaloniaVersion={args.target}"]
     os_arg = [f"-p:AvaloniaAppHostTarget={args.os}"]
+    sysroot = [f"-p:Sysroot={args.sysroot}"] if args.sysroot else []
     execv(
         [
             "dotnet",
@@ -149,6 +152,7 @@ def link_avalonia_apphost():
             "/t:LinkAvaloniaHosts",
             *target,
             *os_arg,
+            *sysroot,
             f"-v:{dotnet_verbosity()}",
         ]
     )
@@ -210,6 +214,10 @@ def parse_args():
         help="Target Avalonia version. This decides skiasharp version and changes output package version",
     )
     avalonia_test_parser.add_argument(
+        "--sysroot",
+        help="optional sysroot path exposed to tests as ROOTFS_DIR",
+    )
+    avalonia_test_parser.add_argument(
         "-v", "--verbose", action="count", default=0, help="verbose output"
     )
     avalonia_test_parser.set_defaults(func=run_avalonia_test)
@@ -228,6 +236,10 @@ def parse_args():
         choices=["windows", "linux"],
         required=True,
         help="target OS for generated apphost templates",
+    )
+    link_avalonia_parser.add_argument(
+        "--sysroot",
+        help="optional sysroot path passed to Avalonia apphost link as -p:Sysroot",
     )
     link_avalonia_parser.add_argument(
         "-v", "--verbose", action="count", default=0, help="verbose output"

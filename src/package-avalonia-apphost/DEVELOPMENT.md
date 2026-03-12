@@ -44,7 +44,7 @@ Link one OS:
 
 ```powershell
 python .\scripts\pipeline.py link-avalonia -v --target 11.0 --os windows
-python .\scripts\pipeline.py link-avalonia -v --target 11.0 --os linux
+python .\scripts\pipeline.py link-avalonia -v --target 11.0 --os linux --sysroot repo/rootfs/x64
 ```
 
 Pack one OS:

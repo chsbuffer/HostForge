@@ -33,11 +33,16 @@ flowchart LR
 
     subgraph L["Linux lane"]
         direction LR
+        LSY["linux-sysroot<br/>cache sysroot tar"]
         LH["linux-hostlibs<br/>matrix: linux-x64"]
         LS["linux-skia<br/>matrix: 11.0, 12.0"]
         LLA["linux-link-avalonia<br/>matrix: 11.0, 12.0<br/>link-avalonia + avalonia-test"]
         LM["linux-matrix-test<br/>pipeline.py matrix"]
 
+        LSY --> LH
+        LSY --> LS
+        LSY --> LLA
+        LSY --> LM
         LH --> LLA
         LS --> LLA
         LH --> LM
@@ -57,10 +62,11 @@ Job summary:
 | `windows-matrix-test` | Windows | none | `windows-hostlibs` | StaticAppHost matrix verification |
 | `windows-skia` | Windows | `11.0/12.0` × `win-x64/win-arm64` | - | skia cache / artifact |
 | `windows-link-avalonia` | Windows | `11.0`, `12.0` | `windows-hostlibs`, `windows-skia` | linked Avalonia hosts + `avalonia-test` |
-| `linux-hostlibs` | Linux | `linux-x64` | - | hostlibs cache / artifact |
-| `linux-matrix-test` | Linux | none | `linux-hostlibs` | StaticAppHost matrix verification |
-| `linux-skia` | Linux | `11.0`, `12.0` | - | skia cache / artifact |
-| `linux-link-avalonia` | Linux | `11.0`, `12.0` | `linux-hostlibs`, `linux-skia` | linked Avalonia hosts + `avalonia-test` |
+| `linux-sysroot` | Linux | none | - | sysroot cache / tarball |
+| `linux-hostlibs` | Linux | `linux-x64` | `linux-sysroot` | hostlibs cache / artifact |
+| `linux-matrix-test` | Linux | none | `linux-sysroot`, `linux-hostlibs` | StaticAppHost matrix verification |
+| `linux-skia` | Linux | `11.0`, `12.0` | `linux-sysroot` | skia cache / artifact |
+| `linux-link-avalonia` | Linux | `11.0`, `12.0` | `linux-sysroot`, `linux-hostlibs`, `linux-skia` | linked Avalonia hosts + `avalonia-test` |
 | `pack-avalonia` | Windows | `11.0`, `12.0` | `windows-link-avalonia`, `linux-link-avalonia` | aggregate `all` NuGet package |
 
 ## 核心目标
@@ -194,19 +200,19 @@ dotnet run --project .\samples\avalonia-sample\AvaloniaSample.csproj -c Release 
 - 构建 HostLib：
 
 ```bash
-python scripts/build-hostlibs.py -v --os linux --arch x64
+ROOTFS_DIR=repo/rootfs/x64 python scripts/build-hostlibs.py -v --os linux --arch x64
 ```
 
 - 构建 SkiaSharp / HarfBuzz：
 
 ```bash
-python scripts/build-skia-harfbuzz.py -v --os linux --arch x64
+CC=clang CXX=clang++ ROOTFS_DIR=repo/rootfs/x64 python scripts/build-skia-harfbuzz.py -v --os linux --arch x64
 ```
 
 - 生成 Linux Avalonia AppHost 模板：
 
 ```bash
-python scripts/pipeline.py link-avalonia -v --target 12.0 --os linux
+python scripts/pipeline.py link-avalonia -v --target 12.0 --os linux --sysroot repo/rootfs/x64
 ```
 
 - 运行构建集成矩阵测试：

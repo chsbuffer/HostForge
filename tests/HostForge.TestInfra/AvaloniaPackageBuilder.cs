@@ -4,6 +4,7 @@ public static class AvaloniaPackageBuilder
 {
     private static readonly SemaphoreSlim Lock = new(1, 1);
     private static readonly HashSet<string> PackedModes = new(StringComparer.Ordinal);
+    private const string RootfsDirEnvironmentVariableName = "ROOTFS_DIR";
 
     public static async Task EnsurePackedAsync(
         string packageMode = "windows",
@@ -42,7 +43,8 @@ public static class AvaloniaPackageBuilder
 
             CommandResult result = await CommandRunner.RunAsync(
                 "dotnet",
-                RepoContext.AppendTargetAvaloniaVersionProperty($"pack \"{project}\" -c Release -v:minimal -p:AvaloniaAppHostPackageMode={packageMode}"),
+                RepoContext.AppendTargetAvaloniaVersionProperty(
+                    $"pack \"{project}\" -c Release -v:minimal -p:AvaloniaAppHostPackageMode={packageMode}{BuildSysrootPropertyArgument()}"),
                 RepoContext.RepoRoot,
                 cancellationToken);
 
@@ -58,5 +60,16 @@ public static class AvaloniaPackageBuilder
         {
             Lock.Release();
         }
+    }
+
+    private static string BuildSysrootPropertyArgument()
+    {
+        string? rootfsDir = Environment.GetEnvironmentVariable(RootfsDirEnvironmentVariableName);
+        if (string.IsNullOrWhiteSpace(rootfsDir))
+        {
+            return string.Empty;
+        }
+
+        return $" -p:Sysroot=\"{rootfsDir.Trim()}\"";
     }
 }

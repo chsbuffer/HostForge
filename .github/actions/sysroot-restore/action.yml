@@ -1,0 +1,45 @@
+name: restore-sysroot
+description: Restore and unpack a cached Linux sysroot tarball
+inputs:
+  cache-key:
+    description: Cache key for the packed sysroot tarball
+    required: false
+    default: linux-sysroot-bionic-amd64
+  sysroot-path:
+    description: Directory where the sysroot should be unpacked
+    required: false
+    default: repo/rootfs/x64
+outputs:
+  sysroot-path:
+    description: Unpacked sysroot directory path
+    value: ${{ steps.paths.outputs.sysroot-path }}
+  tar-path:
+    description: Cached sysroot tarball path
+    value: ${{ steps.paths.outputs.tar-path }}
+runs:
+  using: composite
+  steps:
+    - name: Resolve sysroot paths
+      id: paths
+      shell: bash
+      run: |
+        set -euo pipefail
+        sysroot_path='${{ inputs.sysroot-path }}'
+        tar_path="${sysroot_path}.tar.xz"
+        echo "sysroot-path=$sysroot_path" >> "$GITHUB_OUTPUT"
+        echo "tar-path=$tar_path" >> "$GITHUB_OUTPUT"
+
+    - name: Restore sysroot tarball
+      uses: actions/cache@v5
+      with:
+        fail-on-cache-miss: true
+        path: ${{ steps.paths.outputs.tar-path }}
+        key: ${{ inputs.cache-key }}
+
+    - name: Unpack sysroot
+      shell: bash
+      run: |
+        set -euo pipefail
+        sysroot_path='${{ steps.paths.outputs.sysroot-path }}'
+        tar_path='${{ steps.paths.outputs.tar-path }}'
+        bash ./scripts/sysroot-util.sh unpack "$tar_path" "$sysroot_path"

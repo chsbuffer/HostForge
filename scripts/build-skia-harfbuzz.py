@@ -163,6 +163,52 @@ def compiler_args_gn() -> list[str]:
     return [f'{name} = "{value}"' for name, value in pairs if value]
 
 
+def format_gn_list(values: list[str]) -> str:
+    return f"[ {', '.join(values)} ]" if values else "[]"
+
+
+def linux_toolchain_flags_gn() -> tuple[list[str], list[str], list[str]]:
+    build_variant = os.environ.get("BUILD_VARIANT")
+    rootfs_dir = os.environ.get("ROOTFS_DIR")
+    toolchain_arch = os.environ.get("TOOLCHAIN_ARCH")
+    toolchain_target = os.environ.get("TOOLCHAIN_ARCH_TARGET")
+
+    if not rootfs_dir and build_variant in ("alpine", "alpinenodeps"):
+        rootfs_dir = "/alpine"
+
+    init_flags: list[str] = []
+    if rootfs_dir:
+        init_flags.append(f'"--sysroot={rootfs_dir}"')
+    if toolchain_target:
+        init_flags.append(f'"--target={toolchain_target}"')
+
+    bin_flags: list[str] = []
+    include_flags: list[str] = []
+    lib_flags: list[str] = []
+    if toolchain_arch:
+        toolchain_root = f"/usr/{toolchain_arch}"
+        bin_flags.append(f'"-B{toolchain_root}/bin/"')
+        lib_flags.append(f'"-L{toolchain_root}/lib/"')
+        include_flags.extend(
+            [
+                f'"-I{toolchain_root}/include"',
+                f'"-I{toolchain_root}/include/c++/current"',
+                f'"-I{toolchain_root}/include/c++/current/{toolchain_arch}"',
+            ]
+        )
+
+    asmflags = [*init_flags, *bin_flags, *include_flags]
+    if asmflags:
+        asmflags.insert(len(init_flags), '"-no-integrated-as"')
+
+    cflags = [*init_flags, *bin_flags, *include_flags]
+    ldflags = [*init_flags, *bin_flags, *lib_flags]
+    if build_variant in ("alpine", "alpinenodeps"):
+        ldflags.append('"-fuse-ld=lld"')
+
+    return asmflags, cflags, ldflags
+
+
 def gn() -> str | Path:
     # if args.os == "windows":
     #     return SKIA_ROOT / "bin" / "gn.exe"
@@ -228,6 +274,12 @@ def write_windows_args_gn(target: Path):
 
 def write_linux_skia_args_gn(target: Path):
     cpu = GN_CPU[args.arch]
+    extra_asmflags, toolchain_cflags, toolchain_ldflags = linux_toolchain_flags_gn()
+    extra_cflags = toolchain_cflags + [
+        '"-DSKIA_C_DLL"',
+        '"-DHAVE_SYSCALL_GETRANDOM"',
+        '"-DXML_DEV_URANDOM"',
+    ]
     lines = [
         'target_os = "linux"',
         f'target_cpu = "{cpu}"',
@@ -246,8 +298,9 @@ def write_linux_skia_args_gn(target: Path):
         "skia_enable_skottie = true",
         "skia_use_vulkan = true",
         "skia_use_harfbuzz = false",
-        'extra_cflags = [ "-DSKIA_C_DLL", "-DHAVE_SYSCALL_GETRANDOM", "-DXML_DEV_URANDOM" ]',
-        "extra_ldflags = []",
+        f"extra_asmflags = {format_gn_list(extra_asmflags)}",
+        f"extra_cflags = {format_gn_list(extra_cflags)}",
+        f"extra_ldflags = {format_gn_list(toolchain_ldflags)}",
     ]
     if args.version != "2.88.9":
         lines.append("skia_enable_ganesh = true")
@@ -257,6 +310,7 @@ def write_linux_skia_args_gn(target: Path):
 
 def write_linux_harfbuzz_args_gn(target: Path):
     cpu = GN_CPU[args.arch]
+    extra_asmflags, extra_cflags, extra_ldflags = linux_toolchain_flags_gn()
     lines = [
         'target_os = "linux"',
         f'target_cpu = "{cpu}"',
@@ -264,9 +318,9 @@ def write_linux_harfbuzz_args_gn(target: Path):
         "is_static_skiasharp = true",
         "skia_enable_tools = false",
         "visibility_hidden = false",
-        "extra_asmflags = []",
-        "extra_cflags = []",
-        "extra_ldflags = []",
+        f"extra_asmflags = {format_gn_list(extra_asmflags)}",
+        f"extra_cflags = {format_gn_list(extra_cflags)}",
+        f"extra_ldflags = {format_gn_list(extra_ldflags)}",
     ]
     lines.extend(compiler_args_gn())
     target.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -366,7 +420,11 @@ def parse_args():
     VC_COMPILER_VER:\t(default: 14.5)
     VC_TOOLSET_VER :\t(default: v145)
     WINDOWS_SDK_VER:\t(default: 10.0.26100.0)
-    CC/CXX/AR      :\t(optional Linux toolchain overrides)""",
+    CC/CXX/AR      :\t(optional Linux toolchain overrides)
+    ROOTFS_DIR     :\t(optional sysroot path for --sysroot)
+    TOOLCHAIN_ARCH :\t(optional toolchain root under /usr/<arch>)
+    TOOLCHAIN_ARCH_TARGET:\t(optional clang --target triple)
+    BUILD_VARIANT  :\t(alpine/alpinenodeps enables lld, default sysroot=/alpine)""",
         formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.set_defaults(func=build_all)

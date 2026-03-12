@@ -12,6 +12,9 @@
   - `AvaloniaNativeLibsRoot`
   - `AvaloniaAppHostTarget`
 
+  Optional inputs:
+  - `Sysroot`
+
   This file intentionally does not pack anything. `AvaloniaAppHost.csproj` is the package orchestrator.
 -->
 <Project>
@@ -23,6 +26,9 @@
 
     <AvaloniaTemplateTfm Condition="'$(AvaloniaTemplateTfm)' == ''">net10.0</AvaloniaTemplateTfm>
     <AvaloniaAppHostArtifactRoot>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/avalonia-host/$(TargetAvaloniaVersion)'))</AvaloniaAppHostArtifactRoot>
+    <_ResolvedSysroot Condition="'$(Sysroot)' != ''">$([MSBuild]::NormalizePath('$(RepoRoot)', '$(Sysroot)'))</_ResolvedSysroot>
+    <_AvaloniaAppHostExportsFile>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', 'apphost.exports'))</_AvaloniaAppHostExportsFile>
+    <_AvaloniaSingleFileHostExportsFile>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', 'singlefilehost.exports'))</_AvaloniaSingleFileHostExportsFile>
 
     <StaticHostRid>$(AvaloniaHostRid)</StaticHostRid>
     <ComputeNETCoreBuildOutputFiles>true</ComputeNETCoreBuildOutputFiles>
@@ -86,19 +92,30 @@
       </NativeLibrary>
       <LinkerArg Include="FontSub.lib;opengl32.lib;advapi32.lib;gdi32.lib"
                  Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'" />
-      <LinkerArg Include="-lfontconfig -Wl,--version-script=$([MSBuild]::NormalizePath('singlefilehost.exports'))"
+      <LinkerArg Include="--sysroot=&quot;$(_ResolvedSysroot)&quot;"
+                 Condition="'$(_AvaloniaHostRidIsWindows)' != 'True' and '$(_ResolvedSysroot)' != ''" />
+      <LinkerArg Include="-lfontconfig"
                  Condition="'$(_AvaloniaHostRidIsWindows)' != 'True'" />
+      <LinkerArg Include="-Wl,--version-script=$(AvaloniaExportsFile)"
+                 Condition="'$(_AvaloniaHostRidIsWindows)' != 'True' and '$(AvaloniaExportsFile)' != ''" />
     </ItemGroup>
   </Target>
 
-  <Target Name="_LinkAvaloniaHostsForRid"
-          DependsOnTargets="_ResolveAvaloniaLinkInputs;LinkAppHost;LinkSingleFileHost" />
+  <Target Name="_LinkAvaloniaAppHostForRid"
+          DependsOnTargets="_ResolveAvaloniaLinkInputs;LinkAppHost" />
+
+  <Target Name="_LinkAvaloniaSingleFileHostForRid"
+          DependsOnTargets="_ResolveAvaloniaLinkInputs;LinkSingleFileHost" />
 
   <Target Name="LinkAvaloniaHosts"
           DependsOnTargets="_ResolveAvaloniaTargetRids">
     <MSBuild Projects="$(MSBuildProjectFullPath)"
-             Targets="_LinkAvaloniaHostsForRid"
+             Targets="_LinkAvaloniaAppHostForRid"
              BuildInParallel="false"
-             Properties="Configuration=$(Configuration);TargetAvaloniaVersion=$(TargetAvaloniaVersion);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);AvaloniaHostRid=%(_AvaloniaTargetRid.Identity)" />
+             Properties="Configuration=$(Configuration);TargetAvaloniaVersion=$(TargetAvaloniaVersion);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);AvaloniaHostRid=%(_AvaloniaTargetRid.Identity);Sysroot=$(_ResolvedSysroot);AvaloniaExportsFile=$(_AvaloniaAppHostExportsFile)" />
+    <MSBuild Projects="$(MSBuildProjectFullPath)"
+             Targets="_LinkAvaloniaSingleFileHostForRid"
+             BuildInParallel="false"
+             Properties="Configuration=$(Configuration);TargetAvaloniaVersion=$(TargetAvaloniaVersion);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);AvaloniaHostRid=%(_AvaloniaTargetRid.Identity);Sysroot=$(_ResolvedSysroot);AvaloniaExportsFile=$(_AvaloniaSingleFileHostExportsFile)" />
   </Target>
 </Project>

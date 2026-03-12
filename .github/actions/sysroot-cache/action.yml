@@ -1,0 +1,100 @@
+name: cache-sysroot
+description: Build and cache a Linux sysroot tarball
+inputs:
+  cache-key:
+    description: Cache key for the packed sysroot tarball
+    required: false
+    default: linux-sysroot-bionic-amd64
+  sysroot-path:
+    description: Directory to create with debootstrap
+    required: false
+    default: repo/rootfs/x64
+  release:
+    description: Ubuntu release passed to debootstrap
+    required: false
+    default: bionic
+  arch:
+    description: Debian architecture passed to debootstrap
+    required: false
+    default: amd64
+  variant:
+    description: debootstrap variant
+    required: false
+    default: minbase
+  include-packages:
+    description: Comma-separated package list for debootstrap --include
+    required: false
+    default: build-essential,symlinks,libicu-dev,liblttng-ust-dev,libunwind-dev,libcurl4-openssl-dev,libkrb5-dev,libssl-dev,zlib1g-dev,libbrotli-dev,libfontconfig1-dev,gcc,libstdc++-7-dev
+  mirror:
+    description: Ubuntu mirror URL passed to debootstrap
+    required: false
+    default: http://archive.ubuntu.com/ubuntu/
+outputs:
+  cache-hit:
+    description: Whether the sysroot tarball cache was restored
+    value: ${{ steps.cache_sysroot.outputs.cache-hit }}
+  sysroot-path:
+    description: Sysroot directory path
+    value: ${{ steps.paths.outputs.sysroot-path }}
+  tar-path:
+    description: Packed sysroot tarball path
+    value: ${{ steps.paths.outputs.tar-path }}
+runs:
+  using: composite
+  steps:
+    - name: Resolve sysroot paths
+      id: paths
+      shell: bash
+      run: |
+        set -euo pipefail
+        sysroot_path='${{ inputs.sysroot-path }}'
+        tar_path="${sysroot_path}.tar.xz"
+        echo "sysroot-path=$sysroot_path" >> "$GITHUB_OUTPUT"
+        echo "tar-path=$tar_path" >> "$GITHUB_OUTPUT"
+
+    - name: Cache sysroot tarball
+      id: cache_sysroot
+      uses: actions/cache@v5
+      with:
+        path: ${{ steps.paths.outputs.tar-path }}
+        key: ${{ inputs.cache-key }}
+
+    - name: Install debootstrap
+      if: steps.cache_sysroot.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if command -v debootstrap >/dev/null 2>&1; then
+          exit 0
+        fi
+        sudo apt-get update
+        sudo apt-get install -y debootstrap xz-utils
+
+    - name: Create sysroot and pack tarball
+      if: steps.cache_sysroot.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        sysroot_path='${{ steps.paths.outputs.sysroot-path }}'
+
+        if [[ -e "$sysroot_path" ]]; then
+          echo "error: sysroot path already exists: $sysroot_path" >&2
+          exit 1
+        fi
+
+        mkdir -p "$(dirname "$sysroot_path")"
+
+        sudo debootstrap \
+          --variant='${{ inputs.variant }}' \
+          --force-check-gpg \
+          --include='${{ inputs.include-packages }}' \
+          --arch '${{ inputs.arch }}' \
+          --components='main,universe' \
+          --extra-suites='${{ inputs.release }}-updates,${{ inputs.release }}-security,${{ inputs.release }}-backports' \
+          '${{ inputs.release }}' \
+          "$sysroot_path" \
+          '${{ inputs.mirror }}'
+
+        sudo chroot "$sysroot_path" symlinks -cr /usr
+
+        bash ./scripts/sysroot-util.sh pack "$sysroot_path"
