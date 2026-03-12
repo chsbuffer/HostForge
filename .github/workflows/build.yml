@@ -296,6 +296,11 @@ jobs:
           fetch-depth: 1
           submodules: false
 
+      - name: Install LLVM
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm
+
       - name: Compute hostlibs cache key (10.0 linux-x64)
         id: hostlibs_key
         run: |
@@ -330,11 +335,6 @@ jobs:
         with:
           fetch-depth: 1
           submodules: false
-
-      - name: Install libfontconfig1-dev
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfontconfig1-dev
 
       - name: Compute skia cache key
         id: skia_key
@@ -385,11 +385,6 @@ jobs:
         with:
           fetch-depth: 1
           submodules: false
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfontconfig1-dev build-essential gettext locales cmake llvm clang lld lldb liblldb-dev libunwind8-dev libicu-dev liblttng-ust-dev libssl-dev libkrb5-dev pigz cpio ninja-build
 
       - name: Compute hostlibs cache key
         id: hostlibs_key
