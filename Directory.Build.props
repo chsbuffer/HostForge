@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetAvaloniaVersion Condition="'$(TargetAvaloniaVersion)' == ''">11.0</TargetAvaloniaVersion>
     <AvaloniaAppHostPackageVersionMajor>0</AvaloniaAppHostPackageVersionMajor>
-    <AvaloniaAppHostPackageVersionPrev>preview.2</AvaloniaAppHostPackageVersionPrev>
+    <AvaloniaAppHostPackageVersionPrev>preview.3</AvaloniaAppHostPackageVersionPrev>
   </PropertyGroup>
 
   <Choose>
@@ -36,11 +36,11 @@
     <RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
 
-    <PackagesOutputRoot>$(RepoRoot)artifacts\packages</PackagesOutputRoot>
-    <AvaloniaAppHostPackageOutputDir>$(PackagesOutputRoot)\$(Configuration)</AvaloniaAppHostPackageOutputDir>
+    <PackagesOutputRoot>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/packages'))</PackagesOutputRoot>
+    <AvaloniaAppHostPackageOutputDir>$([MSBuild]::NormalizePath('$(PackagesOutputRoot)', '$(Configuration)'))</AvaloniaAppHostPackageOutputDir>
 
-    <HostLibsRoot>$(RepoRoot)artifacts\hostlibs\$(HostLibsVersion)</HostLibsRoot>
-    <AvaloniaNativeLibsRoot>$(RepoRoot)artifacts\skiasharp\$(SkiaSharpVersion)</AvaloniaNativeLibsRoot>
+    <HostLibsRoot>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/hostlibs/$(HostLibsVersion)'))</HostLibsRoot>
+    <AvaloniaNativeLibsRoot>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/skiasharp/$(SkiaSharpVersion)'))</AvaloniaNativeLibsRoot>
   </PropertyGroup>
 
 </Project>

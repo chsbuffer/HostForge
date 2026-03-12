@@ -7,12 +7,13 @@ Minimal Avalonia desktop sample that consumes `ChsBuffer.Avalonia.AppHost`.
 1. Build/package the local Avalonia apphost package:
 
 ```powershell
-python .\scripts\pipeline.py pack-avalonia -a x64 -c Release
+python .\scripts\pipeline.py link-avalonia -v --target 11.0 --os windows
+python .\scripts\pipeline.py pack-avalonia -v --target 11.0 --mode windows
 ```
 
 2. Ensure the produced nupkg exists under:
 
-`src/package-avalonia-apphost/bin/Release`
+`artifacts/packages/Release`
 
 ## Build and run
 

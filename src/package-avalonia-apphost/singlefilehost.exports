@@ -1,0 +1,26 @@
+V1.0 {
+    global:
+        DotNetRuntimeInfo;
+        g_dacTable;
+        MetaDataGetDispenser;
+        DotNetRuntimeContractDescriptor;
+    local: *;
+};
+
+libSkiaSharp {
+    global:
+        sk_*;
+        gr_*;
+        skottie_*;
+        sksg_*;
+        skresources_*;
+    local:
+        *;
+};
+
+libHarfBuzzSharp {
+    global:
+        hb_*;
+    local:
+        *;
+};

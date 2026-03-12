@@ -1,15 +1,19 @@
 using System.Xml.Linq;
+using System.Runtime.InteropServices;
 using HostForge.TestInfra;
 
 namespace HostForge.StaticAppHost.Tests;
 
 public class StaticAppHostMatrixTests
 {
+    private const string LinkAppHostMessageMarker = "[HostForge.StaticAppHost] LinkAppHost executed";
+    private const string LinkSingleFileHostMessageMarker = "[HostForge.StaticAppHost] LinkSingleFileHost executed";
+
     [Test]
-    public async Task WinX64_Matrix_BuildPublish_IncrementalLinkerBehavior()
+    public async Task CurrentOsX64_Matrix_BuildPublish_IncrementalLinkerBehavior()
     {
         string configuration = "Release";
-        string rid = "win-x64";
+        string rid = GetCurrentOsX64Rid();
 
         bool skipExeRun = ReadFlag("HOSTFORGE_MATRIX_SKIP_EXE_RUN");
         bool noClean = ReadFlag("HOSTFORGE_MATRIX_NO_CLEAN");
@@ -29,7 +33,7 @@ public class StaticAppHostMatrixTests
             DeleteDirectory(Path.Combine(consumerDir, "obj"));
         }
 
-        var steps = new (string Name, string Arguments, bool? ExpectIncrementalLinker)[]
+        var steps = new (string Name, string Arguments, bool? ExpectUpToDate)[]
         {
             ("01-build-no-rid-first", $"build \"{consumerProject}\" -c {configuration} -v:minimal", true),
             ("02-build-no-rid-second", $"build \"{consumerProject}\" -c {configuration} -v:minimal", false),
@@ -39,7 +43,7 @@ public class StaticAppHostMatrixTests
             ("06-publish-second", $"publish \"{consumerProject}\" -c {configuration} -r {rid} /p:PublishSingleFile=true -v:minimal", false)
         };
 
-        foreach ((string name, string arguments, bool? expectedIncrementalLinker) in steps)
+        foreach ((string name, string arguments, bool? expectedUpToDate) in steps)
         {
             CommandResult result = await CommandRunner.RunAsync(
                 "dotnet",
@@ -48,39 +52,67 @@ public class StaticAppHostMatrixTests
 
             AssertEx.Success(result, name);
 
-            if (expectedIncrementalLinker is not null)
+            if (expectedUpToDate is not null)
             {
-                bool actual = result.CombinedOutput.Contains("Incremental Linker", StringComparison.Ordinal);
-                if (actual != expectedIncrementalLinker.Value)
+                bool actual = ContainsStaticHostLinkMessage(result.CombinedOutput);
+                if (actual != expectedUpToDate.Value)
                 {
-                    string expected = expectedIncrementalLinker.Value ? "HIT" : "MISS";
+                    string expected = expectedUpToDate.Value ? "HIT" : "MISS";
                     string value = actual ? "HIT" : "MISS";
                     throw new InvalidOperationException(
-                        $"Step {name} incremental linker validation failed. Expected {expected}, actual {value}.{Environment.NewLine}{result.CombinedOutput}");
+                        $"Step {name} up-to-date validation failed. Expected {expected}, actual {value}.{Environment.NewLine}{result.CombinedOutput}");
                 }
             }
         }
 
         if (!skipExeRun)
         {
-            string exePath = Path.Combine(
+            string executablePath = Path.Combine(
                 consumerDir,
                 "bin",
                 configuration,
                 targetFramework,
                 rid,
                 "publish",
-                "SimplePInvoke.exe");
+                GetPublishedExecutableFileName());
 
-            AssertEx.FileExists(exePath);
+            AssertEx.FileExists(executablePath);
 
             CommandResult runResult = await CommandRunner.RunAsync(
-                exePath,
+                executablePath,
                 string.Empty,
-                Path.GetDirectoryName(exePath)!);
+                Path.GetDirectoryName(executablePath)!);
 
             AssertEx.Success(runResult, "07-run-exe");
         }
+    }
+
+    private static string GetCurrentOsX64Rid()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return "win-x64";
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            return "linux-x64";
+        }
+
+        throw new PlatformNotSupportedException("StaticAppHostMatrixTests currently supports only Windows and Linux runners.");
+    }
+
+    private static string GetPublishedExecutableFileName()
+    {
+        return RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            ? "SimplePInvoke.exe"
+            : "SimplePInvoke";
+    }
+
+    private static bool ContainsStaticHostLinkMessage(string output)
+    {
+        return output.Contains(LinkAppHostMessageMarker, StringComparison.Ordinal) ||
+               output.Contains(LinkSingleFileHostMessageMarker, StringComparison.Ordinal);
     }
 
     private static bool ReadFlag(string name)

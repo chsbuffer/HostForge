@@ -14,6 +14,55 @@
 
 当前重点是 `win-x64`，并配套可验证的构建、打包与测试流水线。
 
+## CI 工作流
+
+<!-- Keep this Mermaid workflow diagram in sync with .github/workflows/build.yml. -->
+```mermaid
+flowchart LR
+    subgraph W["Windows lane"]
+        direction LR
+        WH["windows-hostlibs<br/>matrix: win-x64, win-arm64"]
+        WS["windows-skia<br/>matrix: 11.0/12.0 x win-x64/win-arm64"]
+        WLA["windows-link-avalonia<br/>matrix: 11.0, 12.0<br/>link-avalonia + avalonia-test"]
+        WM["windows-matrix-test<br/>pipeline.py matrix"]
+
+        WH --> WLA
+        WS --> WLA
+        WH --> WM
+    end
+
+    subgraph L["Linux lane"]
+        direction LR
+        LH["linux-hostlibs<br/>matrix: linux-x64"]
+        LS["linux-skia<br/>matrix: 11.0, 12.0"]
+        LLA["linux-link-avalonia<br/>matrix: 11.0, 12.0<br/>link-avalonia + avalonia-test"]
+        LM["linux-matrix-test<br/>pipeline.py matrix"]
+
+        LH --> LLA
+        LS --> LLA
+        LH --> LM
+    end
+
+    PA["pack-avalonia<br/>matrix: 11.0, 12.0<br/>mode=all"]
+
+    WLA --> PA
+    LLA --> PA
+```
+
+Job summary:
+
+| Job | Platform | Matrix | Depends on | Main output |
+| --- | --- | --- | --- | --- |
+| `windows-hostlibs` | Windows | `win-x64`, `win-arm64` | - | hostlibs cache / artifact |
+| `windows-matrix-test` | Windows | none | `windows-hostlibs` | StaticAppHost matrix verification |
+| `windows-skia` | Windows | `11.0/12.0` × `win-x64/win-arm64` | - | skia cache / artifact |
+| `windows-link-avalonia` | Windows | `11.0`, `12.0` | `windows-hostlibs`, `windows-skia` | linked Avalonia hosts + `avalonia-test` |
+| `linux-hostlibs` | Linux | `linux-x64` | - | hostlibs cache / artifact |
+| `linux-matrix-test` | Linux | none | `linux-hostlibs` | StaticAppHost matrix verification |
+| `linux-skia` | Linux | `11.0`, `12.0` | - | skia cache / artifact |
+| `linux-link-avalonia` | Linux | `11.0`, `12.0` | `linux-hostlibs`, `linux-skia` | linked Avalonia hosts + `avalonia-test` |
+| `pack-avalonia` | Windows | `11.0`, `12.0` | `windows-link-avalonia`, `linux-link-avalonia` | aggregate `all` NuGet package |
+
 ## 核心目标
 
 - 基于 runtime 源码产出可复用的 Host 静态库（apphost/singlefilehost）。
@@ -124,7 +173,8 @@ python .\scripts\build-skia-harfbuzz.py -v -a arm64 --version 3.119.2
 - 打包 Avalonia Host 包：
 
 ```powershell
-python .\scripts\pipeline.py pack-avalonia -v --target 12.0
+python .\scripts\pipeline.py link-avalonia -v --target 12.0 --os windows
+python .\scripts\pipeline.py pack-avalonia -v --target 12.0 --mode windows
 ```
 
 - 运行 Avalonia AppHost 集成测试：
@@ -151,7 +201,12 @@ python scripts/build-hostlibs.py -v --os linux --arch x64
 
 ```bash
 python scripts/build-skia-harfbuzz.py -v --os linux --arch x64
-python scripts/build-skia-harfbuzz.py -v --os linux --arch arm64
+```
+
+- 生成 Linux Avalonia AppHost 模板：
+
+```bash
+python scripts/pipeline.py link-avalonia -v --target 12.0 --os linux
 ```
 
 - 运行构建集成矩阵测试：

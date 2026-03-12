@@ -1,0 +1,104 @@
+<!--
+  Dedicated linking project for Avalonia apphost templates.
+
+  Responsibilities:
+  - Resolve the RID set for one OS at a time (`AvaloniaAppHostTarget=windows|linux`).
+  - Link `apphost` and `singlefilehost` into `artifacts/avalonia-host/<TargetAvaloniaVersion>/<rid>/`.
+  - Produce artifact folders that can be consumed either by local OS-specific packing or by CI's aggregate `all` pack job.
+
+  Required inputs:
+  - `TargetAvaloniaVersion`
+  - `HostLibsRoot`
+  - `AvaloniaNativeLibsRoot`
+  - `AvaloniaAppHostTarget`
+
+  This file intentionally does not pack anything. `AvaloniaAppHost.csproj` is the package orchestrator.
+-->
+<Project>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <NoBuild>true</NoBuild>
+
+    <AvaloniaTemplateTfm Condition="'$(AvaloniaTemplateTfm)' == ''">net10.0</AvaloniaTemplateTfm>
+    <AvaloniaAppHostArtifactRoot>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/avalonia-host/$(TargetAvaloniaVersion)'))</AvaloniaAppHostArtifactRoot>
+
+    <StaticHostRid>$(AvaloniaHostRid)</StaticHostRid>
+    <ComputeNETCoreBuildOutputFiles>true</ComputeNETCoreBuildOutputFiles>
+    <_UseSingleFileHostForPublish>true</_UseSingleFileHostForPublish>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(AvaloniaHostRid)' != ''">
+    <_AvaloniaHostRidIsWindows>$(AvaloniaHostRid.StartsWith('win'))</_AvaloniaHostRidIsWindows>
+    <_AvaloniaHostExecutableExtension Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'">.exe</_AvaloniaHostExecutableExtension>
+    <_AvaloniaHostExecutableExtension Condition="'$(_AvaloniaHostExecutableExtension)' == ''"></_AvaloniaHostExecutableExtension>
+
+    <PackageAssetsDir>$([MSBuild]::NormalizePath('$(HostLibsRoot)', '$(AvaloniaHostRid)'))</PackageAssetsDir>
+    <AvaloniaNativeLibsDir>$([MSBuild]::NormalizePath('$(AvaloniaNativeLibsRoot)', '$(AvaloniaHostRid)'))</AvaloniaNativeLibsDir>
+
+    <StaticHostAssetsBaseDir>$(HostLibsRoot)</StaticHostAssetsBaseDir>
+    <AvaloniaHostOutputDir>$([MSBuild]::NormalizePath('$(AvaloniaAppHostArtifactRoot)', '$(AvaloniaHostRid)'))</AvaloniaHostOutputDir>
+    <AppHostLinkPath>$([MSBuild]::NormalizePath('$(AvaloniaHostOutputDir)', 'apphost$(_AvaloniaHostExecutableExtension)'))</AppHostLinkPath>
+    <SingleFileHostLinkPath>$([MSBuild]::NormalizePath('$(AvaloniaHostOutputDir)', 'singlefilehost$(_AvaloniaHostExecutableExtension)'))</SingleFileHostLinkPath>
+  </PropertyGroup>
+
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+  <Import Project="$(MSBuildProjectDirectory)\AvaloniaAppHost.Rids.targets" />
+  <Import Project="$(MSBuildProjectDirectory)\..\StaticAppHost.targets" />
+
+  <Target Name="_ValidateAvaloniaAppHostTarget">
+    <Error Condition="'$(AvaloniaAppHostTarget)' == ''"
+           Text="AvaloniaAppHostTarget is required. Use 'windows' or 'linux'." />
+    <Error Condition="'$(AvaloniaAppHostTarget)' != 'windows' and '$(AvaloniaAppHostTarget)' != 'linux'"
+           Text="AvaloniaAppHostTarget='$(AvaloniaAppHostTarget)' is invalid. Use 'windows' or 'linux'." />
+  </Target>
+
+  <Target Name="_ResolveAvaloniaLinkInputs">
+    <PropertyGroup>
+      <_AvaloniaHostRidIsWindows>$(AvaloniaHostRid.StartsWith('win'))</_AvaloniaHostRidIsWindows>
+      <_AvaloniaNativeLibExtension Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'">.lib</_AvaloniaNativeLibExtension>
+      <_AvaloniaNativeLibExtension Condition="'$(_AvaloniaHostRidIsWindows)' != 'True'">.a</_AvaloniaNativeLibExtension>
+    </PropertyGroup>
+
+    <Error Condition="'$(AvaloniaHostRid)' == ''"
+           Text="AvaloniaHostRid is required for _ResolveAvaloniaLinkInputs." />
+    <Error Condition="!Exists('$(PackageAssetsDir)')" Text="Host libs directory not found: $(PackageAssetsDir)" />
+    <Error Condition="!Exists('$(AvaloniaNativeLibsDir)')" Text="Avalonia native libs directory not found: $(AvaloniaNativeLibsDir)" />
+
+    <ItemGroup>
+      <_AvaloniaNativeLib Include="$(AvaloniaNativeLibsDir)/*$(_AvaloniaNativeLibExtension)" />
+    </ItemGroup>
+
+    <Error Condition="'@(_AvaloniaNativeLib)' == ''"
+           Text="No $(_AvaloniaNativeLibExtension) files were found in $(AvaloniaNativeLibsDir)." />
+
+    <ItemGroup>
+      <NativeLibrary Include="@(_AvaloniaNativeLib)" />
+      <NativeLibrary Update="@(NativeLibrary)" Condition="'%(NativeLibrary.Filename)' == 'libHarfBuzzSharp'">
+       <WholeArchive>true</WholeArchive>
+      </NativeLibrary>
+      <NativeLibrary Update="@(NativeLibrary)" Condition="'%(NativeLibrary.Filename)' == 'SkiaSharp'">
+       <WholeArchive>true</WholeArchive>
+      </NativeLibrary>
+      <NativeLibrary Update="@(NativeLibrary)" Condition="'%(NativeLibrary.Filename)' == 'libSkiaSharp'">
+       <WholeArchive>true</WholeArchive>
+      </NativeLibrary>
+      <LinkerArg Include="FontSub.lib;opengl32.lib;advapi32.lib;gdi32.lib"
+                 Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'" />
+      <LinkerArg Include="-lfontconfig -Wl,--version-script=$([MSBuild]::NormalizePath('singlefilehost.exports'))"
+                 Condition="'$(_AvaloniaHostRidIsWindows)' != 'True'" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="_LinkAvaloniaHostsForRid"
+          DependsOnTargets="_ResolveAvaloniaLinkInputs;LinkAppHost;LinkSingleFileHost" />
+
+  <Target Name="LinkAvaloniaHosts"
+          DependsOnTargets="_ResolveAvaloniaTargetRids">
+    <MSBuild Projects="$(MSBuildProjectFullPath)"
+             Targets="_LinkAvaloniaHostsForRid"
+             BuildInParallel="false"
+             Properties="Configuration=$(Configuration);TargetAvaloniaVersion=$(TargetAvaloniaVersion);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);AvaloniaHostRid=%(_AvaloniaTargetRid.Identity)" />
+  </Target>
+</Project>

@@ -1,14 +1,20 @@
 # ChsBuffer.Avalonia.AppHost
 
-Prelinked **Avalonia 11** apphost/singlefilehost template package for **.NET 10.0** on **Windows `win-x64` + `win-arm64`**.
+Prelinked Avalonia apphost and single-file host templates for **.NET 10.0**.
 
-## Important first
+This package replaces the SDK apphost templates for supported Avalonia publish targets and suppresses redundant SkiaSharp/HarfBuzz native runtime copy by default.
 
-- `AngleEgl` is not statically linked by this package.
-- Avalonia 11 Win32 default rendering mode is typically `AngleEgl, Software`.
-- If `av_libglesv2.dll` is not present, default behavior may leave only software rendering available.
+Supported template RIDs:
 
-To avoid software-only fallback, explicitly include additional rendering backends:
+- `win-x64`
+- `win-arm64`
+- `linux-x64`
+
+## Windows rendering note
+
+`AngleEgl` is not statically linked by this package. Avalonia 11 Win32 commonly defaults to `AngleEgl, Software`, so removing `av_libglesv2.dll` may leave only software rendering available.
+
+If you want to allow non-ANGLE backends instead of shipping `av_libglesv2.dll`, configure explicit rendering fallback order:
 
 ```csharp
 private static AppBuilder BuildAvaloniaApp()
@@ -29,28 +35,23 @@ private static AppBuilder BuildAvaloniaApp()
 }
 ```
 
-With this configuration, `av_libglesv2.dll` can be removed when a non-ANGLE backend is available on target machines.
+## Default behavior
 
-## What this package provides
+When a matching template exists for the consuming project's `TargetFramework` and `RuntimeIdentifier`, the package:
 
-- `template/net10.0/win-x64/apphost.exe`
-- `template/net10.0/win-x64/singlefilehost.exe`
-- `template/net10.0/win-arm64/apphost.exe`
-- `template/net10.0/win-arm64/singlefilehost.exe`
-- `buildTransitive/ChsBuffer.Avalonia.AppHost.targets`
-  - sets `AppHostSourcePath` and `SingleFileHostSourcePath` from the package template path
-  - suppress SkiaSharp/HarfBuzz native runtime copy
-- `contentFiles/cs/net10.0/ModuleInitializer.cs`
-  - maps Avalonia native DLL names to the main program handle
+- sets `AppHostSourcePath`
+- sets `SingleFileHostSourcePath`
+- injects the Avalonia native-library resolver module initializer
+- suppresses SkiaSharp/HarfBuzz native runtime copy
 
-## NativeAssets behavior
-
-By default this package removes these files from build/publish output:
+By default this package removes these native runtime files from build/publish output when active:
 
 - `libSkiaSharp.dll`
 - `libHarfBuzzSharp.dll`
+- `libSkiaSharp.so`
+- `libHarfBuzzSharp.so`
 
-You can switch back to default SDK copy behavior by set this in your app project:
+You can restore default SDK copy behavior with:
 
 ```xml
 <PropertyGroup>
@@ -58,7 +59,7 @@ You can switch back to default SDK copy behavior by set this in your app project
 </PropertyGroup>
 ```
 
-### Alternative: explicitly exclude runtime/native assets yourself
+## Alternative: explicit package-level exclusion
 
 If you prefer explicit package-level control, disable the package switch above and add:
 

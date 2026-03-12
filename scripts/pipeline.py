@@ -75,6 +75,9 @@ SCRIPT_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_ROOT.parent
 BUILD_HOSTLIBS_SCRIPT = SCRIPT_ROOT / "build-hostlibs.py"
 BUILD_SKIA_HARFBUZZ_SCRIPT = SCRIPT_ROOT / "build-skia-harfbuzz.py"
+AVALONIA_APPHOST_LINK_PROJ = (
+    REPO_ROOT / "src" / "package-avalonia-apphost" / "AvaloniaAppHost.Link.proj"
+)
 AVALONIA_APPHOST_CSPROJ = (
     REPO_ROOT / "src" / "package-avalonia-apphost" / "AvaloniaAppHost.csproj"
 )
@@ -134,11 +137,29 @@ def run_avalonia_test():
     execv(cmd, env=env)
 
 
+def link_avalonia_apphost():
+    header("Link avalonia apphost templates")
+    target = [f"-p:TargetAvaloniaVersion={args.target}"]
+    os_arg = [f"-p:AvaloniaAppHostTarget={args.os}"]
+    execv(
+        [
+            "dotnet",
+            "msbuild",
+            AVALONIA_APPHOST_LINK_PROJ,
+            "/t:LinkAvaloniaHosts",
+            *target,
+            *os_arg,
+            f"-v:{dotnet_verbosity()}",
+        ]
+    )
+
+
 def pack_avalonia_apphost():
     header("Pack avalonia apphost nuget")
     target = [f"-p:TargetAvaloniaVersion={args.target}"]
+    mode = [f"-p:AvaloniaAppHostPackageMode={args.mode}"]
     execv(
-        ["dotnet", "pack", AVALONIA_APPHOST_CSPROJ, *target, f"-v:{dotnet_verbosity()}"]
+        ["dotnet", "pack", AVALONIA_APPHOST_CSPROJ, *target, *mode, f"-v:{dotnet_verbosity()}"]
     )
 
 
@@ -193,6 +214,26 @@ def parse_args():
     )
     avalonia_test_parser.set_defaults(func=run_avalonia_test)
 
+    link_avalonia_parser = subparsers.add_parser(
+        "link-avalonia", help="link avalonia apphost templates only"
+    )
+    link_avalonia_parser.add_argument(
+        "--target",
+        choices=["11.0", "12.0"],
+        default="11.0",
+        help="Target Avalonia version. This decides skiasharp version and changes output package version",
+    )
+    link_avalonia_parser.add_argument(
+        "--os",
+        choices=["windows", "linux"],
+        required=True,
+        help="target OS for generated apphost templates",
+    )
+    link_avalonia_parser.add_argument(
+        "-v", "--verbose", action="count", default=0, help="verbose output"
+    )
+    link_avalonia_parser.set_defaults(func=link_avalonia_apphost)
+
     skia_parser = subparsers.add_parser("skia", help="build SkiaSharp only")
     skia_parser.add_argument(
         "-v", "--verbose", action="count", default=0, help="verbose output"
@@ -207,6 +248,12 @@ def parse_args():
         choices=["11.0", "12.0"],
         default="11.0",
         help="Target Avalonia version. This decides skiasharp version and changes output package version",
+    )
+    pack_avalonia_parser.add_argument(
+        "--mode",
+        choices=["windows", "linux", "all"],
+        required=True,
+        help="package only one OS or aggregate all prelinked outputs",
     )
     pack_avalonia_parser.add_argument(
         "-v", "--verbose", action="count", default=0, help="verbose output"

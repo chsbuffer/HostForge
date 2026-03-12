@@ -3,11 +3,13 @@ namespace HostForge.TestInfra;
 public static class AvaloniaPackageBuilder
 {
     private static readonly SemaphoreSlim Lock = new(1, 1);
-    private static bool _packed;
+    private static readonly HashSet<string> PackedModes = new(StringComparer.Ordinal);
 
-    public static async Task EnsurePackedAsync(CancellationToken cancellationToken = default)
+    public static async Task EnsurePackedAsync(
+        string packageMode = "windows",
+        CancellationToken cancellationToken = default)
     {
-        if (_packed)
+        if (PackedModes.Contains(packageMode))
         {
             return;
         }
@@ -15,7 +17,7 @@ public static class AvaloniaPackageBuilder
         await Lock.WaitAsync(cancellationToken);
         try
         {
-            if (_packed)
+            if (PackedModes.Contains(packageMode))
             {
                 return;
             }
@@ -31,7 +33,7 @@ public static class AvaloniaPackageBuilder
                 "tmp",
                 "nuget",
                 "packages",
-                "chsbuffer.avalonia.apphost");
+                RepoContext.GetAvaloniaPackageId(packageMode).ToLowerInvariant());
 
             if (Directory.Exists(packageCacheDir))
             {
@@ -40,17 +42,17 @@ public static class AvaloniaPackageBuilder
 
             CommandResult result = await CommandRunner.RunAsync(
                 "dotnet",
-                RepoContext.AppendTargetAvaloniaVersionProperty($"pack \"{project}\" -c Release -v:minimal"),
+                RepoContext.AppendTargetAvaloniaVersionProperty($"pack \"{project}\" -c Release -v:minimal -p:AvaloniaAppHostPackageMode={packageMode}"),
                 RepoContext.RepoRoot,
                 cancellationToken);
 
             if (result.ExitCode != 0)
             {
                 throw new InvalidOperationException(
-                    $"Failed to pack Avalonia package.{Environment.NewLine}{result.CombinedOutput}");
+                    $"Failed to pack Avalonia package for mode '{packageMode}'.{Environment.NewLine}{result.CombinedOutput}");
             }
 
-            _packed = true;
+            PackedModes.Add(packageMode);
         }
         finally
         {

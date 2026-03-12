@@ -3,12 +3,13 @@ using HostForge.TestInfra;
 
 namespace HostForge.AvaloniaAppHost.Tests;
 
+[WindowsOnly]
 public class AvaloniaAppHostTests
 {
     [Before(Class)]
     public static async Task PackAvaloniaPackage()
     {
-        await AvaloniaPackageBuilder.EnsurePackedAsync();
+        await AvaloniaPackageBuilder.EnsurePackedAsync("windows");
     }
 
     [Test]
@@ -20,13 +21,13 @@ public class AvaloniaAppHostTests
             "package-avalonia-apphost",
             "obj",
             "Release",
-            $"ChsBuffer.Avalonia.AppHost.{RepoContext.AvaloniaPackageIdentityVersion}.nuspec");
+            $"{RepoContext.GetAvaloniaPackageId("windows")}.{RepoContext.AvaloniaPackageIdentityVersion}.nuspec");
 
         AssertEx.FileExists(nuspecPath);
 
         string nupkgPath = Path.Combine(
             RepoContext.AvaloniaPackageOutputDir,
-            $"ChsBuffer.Avalonia.AppHost.{RepoContext.AvaloniaPackageIdentityVersion}.nupkg");
+            $"{RepoContext.GetAvaloniaPackageId("windows")}.{RepoContext.AvaloniaPackageIdentityVersion}.nupkg");
 
         AssertEx.FileExists(nupkgPath);
 

@@ -112,10 +112,6 @@ HARFBUZZ_PROJECT_FILE: Path
 
 OUTDIR: Path
 
-LINUX_MAP_DIR = SCRIPT_ROOT / "linux"
-LINUX_SKIA_MAP = LINUX_MAP_DIR / "libSkiaSharp.map"
-LINUX_HARFBUZZ_MAP = LINUX_MAP_DIR / "libHarfBuzzSharp.map"
-
 SKIA_OUTPUT_LIBS = [
     "SkiaSharp",
     "skia",
@@ -419,11 +415,6 @@ def main():
 
     if not SKIA_ROOT.exists():
         error("source code not found; checkout-deps first.")
-
-    if args.os == "linux":
-        for path in (LINUX_SKIA_MAP, LINUX_HARFBUZZ_MAP):
-            if not path.exists():
-                error(f"Linux map file not found: {path}")
 
     args.func()
 

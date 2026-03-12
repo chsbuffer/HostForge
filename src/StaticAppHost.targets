@@ -39,6 +39,8 @@
           Condition="'@(NativeLibrary)' != '' and ('$(ComputeNETCoreBuildOutputFiles)' == 'true' or '$(_UpdateAppHostForPublish)' == 'true')">
 
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(AppHostLinkFullPath)'))" />
+    <Message Importance="high"
+             Text="[HostForge.StaticAppHost] LinkAppHost executed for $(StaticHostRid): $(AppHostLinkFullPath)" />
     <Exec Command="&quot;$(CppLinker)&quot; @(_AppHostLinkerArg, ' ')"
           WorkingDirectory="$(StaticHostAssetsDir)" />
 
@@ -55,6 +57,8 @@
           Condition="'@(NativeLibrary)' != '' and '$(_UseSingleFileHostForPublish)' == 'true'">
 
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(SingleFileHostLinkFullPath)'))" />
+    <Message Importance="high"
+             Text="[HostForge.StaticAppHost] LinkSingleFileHost executed for $(StaticHostRid): $(SingleFileHostLinkFullPath)" />
     <Exec Command="&quot;$(CppLinker)&quot; @(_SingleFileHostLinkerArg, ' ')"
           WorkingDirectory="$(StaticHostAssetsDir)" />
 

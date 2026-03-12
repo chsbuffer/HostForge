@@ -41,17 +41,21 @@
   <PropertyGroup>
     <StaticHostAssetsBaseDir Condition="'$(StaticHostAssetsBaseDir)' == ''">$(MSBuildThisFileDirectory)</StaticHostAssetsBaseDir>
     <StaticHostAssetsDir Condition="'$(StaticHostAssetsDir)' == ''">$([MSBuild]::NormalizePath('$(StaticHostAssetsBaseDir)', '$(StaticHostRid)'))</StaticHostAssetsDir>
-    <_AppHostRspPath>$(StaticHostAssetsDir)\apphost.rsp</_AppHostRspPath>
-    <_SingleFileHostRspPath>$(StaticHostAssetsDir)\singlefilehost.rsp</_SingleFileHostRspPath>
+    <_AppHostRspPath>$([MSBuild]::NormalizePath('$(StaticHostAssetsDir)', 'apphost.rsp'))</_AppHostRspPath>
+    <_SingleFileHostRspPath>$([MSBuild]::NormalizePath('$(StaticHostAssetsDir)', 'singlefilehost.rsp'))</_SingleFileHostRspPath>
   </PropertyGroup>
 
   <PropertyGroup>
-    <AppHostLinkPath Condition="'$(AppHostLinkPath)' == ''">$(IntermediateOutputPath)apphost.static.exe</AppHostLinkPath>
+    <_StaticHostRidIsWindows Condition="'$(StaticHostRid)' != ''">$(StaticHostRid.StartsWith('win'))</_StaticHostRidIsWindows>
+    <StaticHostExecutableExtension Condition="'$(StaticHostExecutableExtension)' == '' and '$(_StaticHostRidIsWindows)' == 'True'">.exe</StaticHostExecutableExtension>
+    <StaticHostExecutableExtension Condition="'$(StaticHostExecutableExtension)' == ''"></StaticHostExecutableExtension>
+
+    <AppHostLinkPath Condition="'$(AppHostLinkPath)' == ''">$(IntermediateOutputPath)apphost.static$(StaticHostExecutableExtension)</AppHostLinkPath>
     <AppHostStampPath Condition="'$(AppHostStampPath)' == ''">$([System.IO.Path]::ChangeExtension('$(AppHostLinkPath)', '.inputs.stamp'))</AppHostStampPath>
     <AppHostLinkFullPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AppHostLinkPath)'))</AppHostLinkFullPath>
     <AppHostStampFullPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AppHostStampPath)'))</AppHostStampFullPath>
 
-    <SingleFileHostLinkPath Condition="'$(SingleFileHostLinkPath)' == ''">$(IntermediateOutputPath)singlefilehost.static.exe</SingleFileHostLinkPath>
+    <SingleFileHostLinkPath Condition="'$(SingleFileHostLinkPath)' == ''">$(IntermediateOutputPath)singlefilehost.static$(StaticHostExecutableExtension)</SingleFileHostLinkPath>
     <SingleFileHostStampPath Condition="'$(SingleFileHostStampPath)' == ''">$([System.IO.Path]::ChangeExtension('$(SingleFileHostLinkPath)', '.inputs.stamp'))</SingleFileHostStampPath>
     <SingleFileHostLinkFullPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(SingleFileHostLinkPath)'))</SingleFileHostLinkFullPath>
     <SingleFileHostStampFullPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(SingleFileHostStampPath)'))</SingleFileHostStampFullPath>

@@ -23,6 +23,7 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         string runtimeIdentifier,
         bool includeNativeAssetsPackages,
         bool? disableSkiaHarfBuzzRuntimeCopy = null,
+        string avaloniaAppHostPackageMode = "windows",
         CancellationToken cancellationToken = default)
     {
         string guid = Guid.NewGuid().ToString("N");
@@ -44,7 +45,8 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
             targetFramework,
             runtimeIdentifier,
             includeNativeAssetsPackages,
-            disableSkiaHarfBuzzRuntimeCopy);
+            disableSkiaHarfBuzzRuntimeCopy,
+            avaloniaAppHostPackageMode);
 
         return new TestProjectWorkspace(rootDirectory, projectDirectory, projectFilePath, projectName);
     }
@@ -82,7 +84,8 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         string targetFramework,
         string runtimeIdentifier,
         bool includeNativeAssetsPackages,
-        bool? disableSkiaHarfBuzzRuntimeCopy)
+        bool? disableSkiaHarfBuzzRuntimeCopy,
+        string avaloniaAppHostPackageMode)
     {
         ProjectRootElement project = ProjectRootElement.Create();
         project.Sdk = "Microsoft.NET.Sdk";
@@ -105,14 +108,16 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         }
 
         ProjectItemGroupElement itemGroup = project.AddItemGroup();
-        AddPackageReference(itemGroup, "ChsBuffer.Avalonia.AppHost", "$(AvaloniaAppHostPackageVersion)");
+        AddPackageReference(itemGroup, RepoContext.GetAvaloniaPackageId(avaloniaAppHostPackageMode), "$(AvaloniaAppHostPackageVersion)");
         AddPackageReference(itemGroup, "SkiaSharp", "$(SkiaSharpVersion)");
         AddPackageReference(itemGroup, "HarfBuzzSharp", "$(HarfBuzzVersion)");
 
         if (includeNativeAssetsPackages)
         {
-            AddPackageReference(itemGroup, "SkiaSharp.NativeAssets.Win32", "$(SkiaSharpVersion)");
-            AddPackageReference(itemGroup, "HarfBuzzSharp.NativeAssets.Win32", "$(HarfBuzzVersion)");
+            foreach ((string packageId, string versionProperty) in GetNativeAssetsPackageReferences(runtimeIdentifier))
+            {
+                AddPackageReference(itemGroup, packageId, versionProperty);
+            }
         }
 
         project.Save(projectFilePath);
@@ -122,6 +127,26 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
     {
         ProjectItemElement packageReference = itemGroup.AddItem("PackageReference", include);
         packageReference.AddMetadata("Version", version, expressAsAttribute: true);
+    }
+
+    private static IEnumerable<(string PackageId, string VersionProperty)> GetNativeAssetsPackageReferences(string runtimeIdentifier)
+    {
+        if (runtimeIdentifier.StartsWith("win", StringComparison.Ordinal))
+        {
+            yield return ("SkiaSharp.NativeAssets.Win32", "$(SkiaSharpVersion)");
+            yield return ("HarfBuzzSharp.NativeAssets.Win32", "$(HarfBuzzVersion)");
+            yield break;
+        }
+
+        if (runtimeIdentifier.StartsWith("linux", StringComparison.Ordinal))
+        {
+            yield return ("SkiaSharp.NativeAssets.Linux.NoDependencies", "$(SkiaSharpVersion)");
+            yield return ("HarfBuzzSharp.NativeAssets.Linux", "$(HarfBuzzVersion)");
+            yield break;
+        }
+
+        throw new InvalidOperationException(
+            $"Unsupported runtime identifier '{runtimeIdentifier}' for native assets package selection.");
     }
 
     private static string BuildProgramSource()

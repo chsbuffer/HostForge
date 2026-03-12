@@ -16,6 +16,7 @@ static class InitMsBuild {
 public static class RepoContext
 {
     public const string TargetAvaloniaVersionEnvironmentVariableName = "TargetAvaloniaVersion";
+    public const string AvaloniaAppHostBasePackageId = "ChsBuffer.Avalonia.AppHost";
 
     public static string RepoRoot { get; } = LocateRepoRoot();
 
@@ -45,6 +46,18 @@ public static class RepoContext
         }
 
         return $"{arguments} -p:TargetAvaloniaVersion={TargetAvaloniaVersion}";
+    }
+
+    public static string GetAvaloniaPackageId(string packageMode)
+    {
+        return packageMode switch
+        {
+            "all" => AvaloniaAppHostBasePackageId,
+            "windows" => $"{AvaloniaAppHostBasePackageId}.Windows",
+            "linux" => $"{AvaloniaAppHostBasePackageId}.Linux",
+            _ => throw new InvalidOperationException(
+                $"Unsupported Avalonia package mode '{packageMode}'. Expected 'windows', 'linux', or 'all'.")
+        };
     }
 
     private static string LocateRepoRoot()
