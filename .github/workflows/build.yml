@@ -173,6 +173,9 @@ jobs:
           fetch-depth: 1
           submodules: false
 
+      - name: Install LLVM
+        uses: ./.github/actions/install-llvm
+
       - name: Compute hostlibs cache keys
         id: hostlibs_keys
         shell: powershell
@@ -237,7 +240,7 @@ jobs:
         run: python .\scripts\pipeline.py avalonia-test -v --target ${{ matrix.avalonia_target }}
 
   linux-hostlibs:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout repository
@@ -282,7 +285,7 @@ jobs:
           if-no-files-found: error
 
   linux-matrix-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs:
       - linux-hostlibs
 
@@ -310,7 +313,7 @@ jobs:
         run: python ./scripts/pipeline.py matrix -v
 
   linux-skia:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         include:
@@ -364,7 +367,7 @@ jobs:
           if-no-files-found: error
 
   linux-link-avalonia:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs:
       - linux-hostlibs
       - linux-skia
