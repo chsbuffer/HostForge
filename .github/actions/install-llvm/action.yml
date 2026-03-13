@@ -12,7 +12,7 @@ runs:
     - name: Cache LLVM installer
       uses: actions/cache@v5
       with:
-        path: ${{ env.USERPROFILE }}\\llvm-temp
+        path: ${{ runner.temp }}/llvm-temp
         key: llvm-21.1.8-win64
 
     - name: Download and install LLVM
@@ -21,12 +21,10 @@ runs:
         $ErrorActionPreference = 'Stop'
 
         $Version = '21.1.8'
-        $HOME_DIR = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
-
         $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-${Version}/LLVM-${Version}-win64.exe"
 
-        $llvmTemp = "$HOME_DIR/llvm-temp"
-        $install = "$llvmTemp/llvm.exe"
+        $llvmTemp = Join-Path $env:RUNNER_TEMP 'llvm-temp'
+        $install = Join-Path $llvmTemp 'llvm.exe'
 
         # download
         Write-Host "Downloading LLVM..."
