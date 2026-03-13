@@ -48,6 +48,10 @@ runs:
       run: |
         set -euo pipefail
         sysroot_path='${{ inputs.sysroot-path }}'
+        if [[ "$sysroot_path" != /* ]]; then
+          sysroot_path="$GITHUB_WORKSPACE/$sysroot_path"
+        fi
+        sysroot_path="$(realpath -m "$sysroot_path")"
         tar_path="${sysroot_path}.tar.xz"
         echo "sysroot-path=$sysroot_path" >> "$GITHUB_OUTPUT"
         echo "tar-path=$tar_path" >> "$GITHUB_OUTPUT"
@@ -56,6 +60,7 @@ runs:
       id: cache_sysroot
       uses: actions/cache@v5
       with:
+        lookup-only: true
         path: ${{ steps.paths.outputs.tar-path }}
         key: ${{ inputs.cache-key }}
 
@@ -76,6 +81,15 @@ runs:
       run: |
         set -euo pipefail
         sysroot_path='${{ steps.paths.outputs.sysroot-path }}'
+        release='${{ inputs.release }}'
+        arch='${{ inputs.arch }}'
+        variant='${{ inputs.variant }}'
+        mirror='${{ inputs.mirror }}'
+        packages_csv='${{ inputs.include-packages }}'
+        packages="${packages_csv//,/ }"
+        suites="$release $release-updates $release-security $release-backports"
+        keyring_file='/usr/share/keyrings/ubuntu-archive-keyring.gpg'
+        LOG_FILE="${sysroot_path}/debootstrap/debootstrap.log"
 
         if [[ -e "$sysroot_path" ]]; then
           echo "error: sysroot path already exists: $sysroot_path" >&2
@@ -84,17 +98,34 @@ runs:
 
         mkdir -p "$(dirname "$sysroot_path")"
 
-        sudo debootstrap \
-          --variant='${{ inputs.variant }}' \
+        if ! sudo debootstrap \
+          --variant="$variant" \
           --force-check-gpg \
-          --include='${{ inputs.include-packages }}' \
-          --arch '${{ inputs.arch }}' \
-          --components='main,universe' \
-          --extra-suites='${{ inputs.release }}-updates,${{ inputs.release }}-security,${{ inputs.release }}-backports' \
-          '${{ inputs.release }}' \
+          --arch "$arch" \
+          "$release" \
           "$sysroot_path" \
-          '${{ inputs.mirror }}'
+          "$mirror"; then
+          echo "debootstrap failed! dumping debootstrap.log"
+          sudo cat "$LOG_FILE"
+          exit 1
+        fi
+
+        sudo rm -f "$sysroot_path"/etc/apt/*.sources "$sysroot_path"/etc/apt/*.list
+        sudo rm -rf "$sysroot_path"/etc/apt/sources.list.d
+        sudo mkdir -p "$sysroot_path/etc/apt/sources.list.d"
+        cat <<EOF | sudo tee "$sysroot_path/etc/apt/sources.list.d/$release.sources" >/dev/null
+        Types: deb
+        URIs: $mirror
+        Suites: $suites
+        Components: main universe
+        Signed-By: $keyring_file
+        EOF
+
+        sudo chroot "$sysroot_path" apt-get update
+        sudo chroot "$sysroot_path" apt-get -f -y install
+        sudo chroot "$sysroot_path" apt-get -y install $packages
 
         sudo chroot "$sysroot_path" symlinks -cr /usr
+        sudo chroot "$sysroot_path" apt-get clean
 
-        bash ./scripts/sysroot-util.sh pack "$sysroot_path"
+        sudo bash ./scripts/sysroot-util.sh pack "$sysroot_path"

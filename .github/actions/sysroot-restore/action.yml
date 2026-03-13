@@ -25,6 +25,10 @@ runs:
       run: |
         set -euo pipefail
         sysroot_path='${{ inputs.sysroot-path }}'
+        if [[ "$sysroot_path" != /* ]]; then
+          sysroot_path="$GITHUB_WORKSPACE/$sysroot_path"
+        fi
+        sysroot_path="$(realpath -m "$sysroot_path")"
         tar_path="${sysroot_path}.tar.xz"
         echo "sysroot-path=$sysroot_path" >> "$GITHUB_OUTPUT"
         echo "tar-path=$tar_path" >> "$GITHUB_OUTPUT"
@@ -42,4 +46,4 @@ runs:
         set -euo pipefail
         sysroot_path='${{ steps.paths.outputs.sysroot-path }}'
         tar_path='${{ steps.paths.outputs.tar-path }}'
-        bash ./scripts/sysroot-util.sh unpack "$tar_path" "$sysroot_path"
+        sudo bash ./scripts/sysroot-util.sh unpack "$tar_path" "$sysroot_path"
