@@ -1,6 +1,6 @@
 # ChsBuffer.Avalonia.AppHost
 
-Prelinked Avalonia apphost and single-file host templates for **.NET 10.0**.
+Apphost and single-file host templates for Avalonia, prelinked against SkiaSharp and HarfBuzz native libraries, for **.NET 10.0** on Windows and Linux.
 
 This package replaces the SDK apphost templates for supported Avalonia publish targets and suppresses redundant SkiaSharp/HarfBuzz native runtime copy by default.
 
@@ -9,6 +9,11 @@ Supported template RIDs:
 - `win-x64`
 - `win-arm64`
 - `linux-x64`
+
+## Package version compatibility
+
+- `11.0.0`: supports Avalonia 11 and is prelinked against `SkiaSharp 2.88.9` + `HarfBuzz 7.3.0`
+- `12.0.0`: supports Avalonia 12 and is prelinked against `SkiaSharp 3.119.2` + `HarfBuzz 8.3.1`
 
 ## Windows rendering note
 
@@ -58,16 +63,3 @@ You can restore default SDK copy behavior with:
   <DisableSkiaHarfBuzzRuntimeCopy>false</DisableSkiaHarfBuzzRuntimeCopy>
 </PropertyGroup>
 ```
-
-## Alternative: explicit package-level exclusion
-
-If you prefer explicit package-level control, disable the package switch above and add:
-
-```xml
-<ItemGroup>
-  <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9" ExcludeAssets="runtime;native" />
-  <PackageReference Include="HarfBuzzSharp.NativeAssets.Win32" Version="8.3.1.1" ExcludeAssets="runtime;native" />
-</ItemGroup>
-```
-
-`IncludeAssets="none"` can also be used if you want to exclude all assets from those packages.

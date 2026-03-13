@@ -1,15 +1,23 @@
 ChsBuffer.Avalonia.AppHost
 ==========================
 
-Prelinked Avalonia 11 apphost and singlefilehost templates for .NET 10.0 on Windows.
+Apphost and single-file host templates for Avalonia, prelinked against SkiaSharp and HarfBuzz native libraries, for .NET 10.0 on Windows and Linux.
 
 Supported template targets
 --------------------------
 
 - Avalonia 11
+- Avalonia 12
 - .NET 10.0
 - win-x64
 - win-arm64
+- linux-x64
+
+Package version compatibility
+-----------------------------
+
+- 11.0.0: supports Avalonia 11 and is prelinked against SkiaSharp 2.88.9 + HarfBuzz 7.3.0
+- 12.0.0: supports Avalonia 12 and is prelinked against SkiaSharp 3.119.2 + HarfBuzz 8.3.1
 
 Render mode notes
 -----------------
@@ -53,6 +61,7 @@ Compatibility and fallback
 
 - net10.0 + win-x64: active
 - net10.0 + win-arm64: active
+- net10.0 + linux-x64: active
 - unsupported target framework & runtime identifier combinations: inactive fallback
 
 Learn more
