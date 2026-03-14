@@ -221,3 +221,7 @@ python scripts/pipeline.py link-avalonia -v --target 12.0 --os linux --sysroot r
 dotnet run --project samples/simple-pinvoke/SimplePInvoke.csproj
 dotnet publish samples/simple-pinvoke/SimplePInvoke.csproj -p:"PublishTrimmed=true"
 ```
+
+## 和构建系统打交道谨记
+
+[Useful Code Is Ugly | Tsoding](https://www.youtube.com/watch?v=gUDtmNF0ktk)
