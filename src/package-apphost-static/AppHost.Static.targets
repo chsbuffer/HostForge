@@ -1,0 +1,12 @@
+<Project>
+
+  <PropertyGroup>
+    <_StaticHostRid></_StaticHostRid>
+    <_StaticHostRid Condition="'$(_StaticHostRid)' == '' and '$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</_StaticHostRid>
+    <_StaticHostRid Condition="'$(_StaticHostRid)' == '' and '$(AppHostRuntimeIdentifier)' != ''">$(AppHostRuntimeIdentifier)</_StaticHostRid>
+    <_StaticHostRid Condition="'$(_StaticHostRid)' == '' and '$(DefaultAppHostRuntimeIdentifier)' != ''">$(DefaultAppHostRuntimeIdentifier)</_StaticHostRid>
+  </PropertyGroup>
+
+  <Import Condition="$(TargetFramework.StartsWith('net10.0')) and '$(_StaticHostRid)' == 'win-x64' and '$(PublishAot)' != 'true'" Project="$(MSBuildThisFileDirectory)StaticAppHost.targets" />
+
+</Project>

@@ -1,0 +1,22 @@
+<Project>
+
+  <PropertyGroup>
+    <_StaticHostRid></_StaticHostRid>
+    <_StaticHostRid Condition="'$(_StaticHostRid)' == '' and '$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</_StaticHostRid>
+    <_StaticHostRid Condition="'$(_StaticHostRid)' == '' and '$(AppHostRuntimeIdentifier)' != ''">$(AppHostRuntimeIdentifier)</_StaticHostRid>
+    <_StaticHostRid Condition="'$(_StaticHostRid)' == '' and '$(DefaultAppHostRuntimeIdentifier)' != ''">$(DefaultAppHostRuntimeIdentifier)</_StaticHostRid>
+    <_NativeLibsDir>$(MSBuildThisFileDirectory)../build/native/x64/</_NativeLibsDir>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(_StaticHostRid)' == 'win-x64'">
+    <NativeLibrary Include="$(_NativeLibsDir)/*.lib" />
+    <NativeLibrary Update="$(_NativeLibsDir)libHarfBuzzSharp.lib">
+     <WholeArchive>true</WholeArchive>
+    </NativeLibrary>
+    <NativeLibrary Update="$(_NativeLibsDir)SkiaSharp.lib">
+     <WholeArchive>true</WholeArchive>
+    </NativeLibrary>
+    <LinkerArg Include="FontSub.lib;opengl32.lib;advapi32.lib;gdi32.lib" />
+  </ItemGroup>
+
+</Project>
