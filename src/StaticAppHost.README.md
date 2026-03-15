@@ -19,6 +19,8 @@ Directly import:
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
 
   <PropertyGroup>
+    <HostLibsFlavor Condition="'$(OS)' == 'Windows_NT'">no-pgo</HostLibsFlavor>
+    <HostLibsRoot>$([MSBuild]::NormalizePath('$(HostLibsBaseRoot)', '$(HostLibsFlavor)'))</HostLibsRoot>
     <StaticHostAssetsBaseDir>$(HostLibsRoot)</StaticHostAssetsBaseDir>
   </PropertyGroup>
 

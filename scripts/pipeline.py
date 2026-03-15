@@ -81,6 +81,12 @@ AVALONIA_APPHOST_LINK_PROJ = (
 AVALONIA_APPHOST_CSPROJ = (
     REPO_ROOT / "src" / "package-avalonia-apphost" / "AvaloniaAppHost.csproj"
 )
+APPHOST_STATIC_CSPROJ = (
+    REPO_ROOT / "src" / "package-apphost-static" / "AppHostStatic.csproj"
+)
+SKIASHARP_STATIC_CSPROJ = (
+    REPO_ROOT / "src" / "package-skiasharp-static" / "SkiaSharp.Static.csproj"
+)
 MATRIX_TEST_CSPROJ = (
     REPO_ROOT
     / "tests"
@@ -102,8 +108,19 @@ def dotnet_verbosity() -> str:
 def build_hostlibs():
     header("Build host libs")
     verbose = ["-v"] if args.verbose > 0 else []
-    execv([python(), BUILD_HOSTLIBS_SCRIPT, *verbose, "all", "-a", "x64"])
-    execv([python(), BUILD_HOSTLIBS_SCRIPT, *verbose, "all", "-a", "arm64"])
+    if is_windows:
+        builds = [
+            ("x64", False),
+            ("arm64", False),
+            ("x64", True),
+            ("arm64", True),
+        ]
+    else:
+        builds = [("x64", False)]
+
+    for arch, no_pgo in builds:
+        extra = ["--no-pgo"] if no_pgo else []
+        execv([python(), BUILD_HOSTLIBS_SCRIPT, *verbose, "all", "-a", arch, *extra])
 
 
 def build_skia_harfbuzz():
@@ -143,6 +160,7 @@ def link_avalonia_apphost():
     header("Link avalonia apphost templates")
     target = [f"-p:TargetAvaloniaVersion={args.target}"]
     os_arg = [f"-p:AvaloniaAppHostTarget={args.os}"]
+    hostlibs_flavor = ["-p:HostLibsFlavor=default"]
     sysroot = [f"-p:Sysroot={args.sysroot}"] if args.sysroot else []
     execv(
         [
@@ -152,6 +170,7 @@ def link_avalonia_apphost():
             "/t:LinkAvaloniaHosts",
             *target,
             *os_arg,
+            *hostlibs_flavor,
             *sysroot,
             f"-v:{dotnet_verbosity()}",
         ]
@@ -162,8 +181,49 @@ def pack_avalonia_apphost():
     header("Pack avalonia apphost nuget")
     target = [f"-p:TargetAvaloniaVersion={args.target}"]
     mode = [f"-p:AvaloniaAppHostPackageMode={args.mode}"]
+    hostlibs_flavor = ["-p:HostLibsFlavor=default"]
     execv(
-        ["dotnet", "pack", AVALONIA_APPHOST_CSPROJ, *target, *mode, f"-v:{dotnet_verbosity()}"]
+        [
+            "dotnet",
+            "pack",
+            AVALONIA_APPHOST_CSPROJ,
+            *target,
+            *mode,
+            *hostlibs_flavor,
+            f"-v:{dotnet_verbosity()}",
+        ]
+    )
+
+
+def pack_static_apphost():
+    header("Pack static apphost nuget")
+    rid = [f"-p:StaticAppHostRid={args.rid}"]
+    hostlibs_flavor = ["-p:HostLibsFlavor=no-pgo"]
+    execv(
+        [
+            "dotnet",
+            "pack",
+            APPHOST_STATIC_CSPROJ,
+            *rid,
+            *hostlibs_flavor,
+            f"-v:{dotnet_verbosity()}",
+        ]
+    )
+
+
+def pack_skiasharp_static():
+    header("Pack skiasharp static nuget")
+    target = [f"-p:TargetAvaloniaVersion={args.target}"]
+    rid = [f"-p:AvaloniaHostRid={args.rid}"]
+    execv(
+        [
+            "dotnet",
+            "pack",
+            SKIASHARP_STATIC_CSPROJ,
+            *target,
+            *rid,
+            f"-v:{dotnet_verbosity()}",
+        ]
     )
 
 
@@ -271,6 +331,40 @@ def parse_args():
         "-v", "--verbose", action="count", default=0, help="verbose output"
     )
     pack_avalonia_parser.set_defaults(func=pack_avalonia_apphost)
+
+    pack_static_parser = subparsers.add_parser(
+        "pack-static-apphost", help="pack static apphost only"
+    )
+    pack_static_parser.add_argument(
+        "--rid",
+        choices=["win-x64"],
+        default="win-x64",
+        help="StaticAppHost package RID",
+    )
+    pack_static_parser.add_argument(
+        "-v", "--verbose", action="count", default=0, help="verbose output"
+    )
+    pack_static_parser.set_defaults(func=pack_static_apphost)
+
+    pack_skiasharp_parser = subparsers.add_parser(
+        "pack-skia-static", help="pack skiasharp static only"
+    )
+    pack_skiasharp_parser.add_argument(
+        "--target",
+        choices=["11.0", "12.0"],
+        default="11.0",
+        help="Target Avalonia version. This decides the bundled SkiaSharp version.",
+    )
+    pack_skiasharp_parser.add_argument(
+        "--rid",
+        choices=["win-x64"],
+        default="win-x64",
+        help="SkiaSharp static package RID",
+    )
+    pack_skiasharp_parser.add_argument(
+        "-v", "--verbose", action="count", default=0, help="verbose output"
+    )
+    pack_skiasharp_parser.set_defaults(func=pack_skiasharp_static)
 
     return parser.parse_args()
 

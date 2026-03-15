@@ -10,16 +10,15 @@
   </PropertyGroup>
 
   <PropertyGroup>
+    <RidOrDefault>$(RuntimeIdentifier)</RidOrDefault>
+    <RidOrDefault Condition="'$(RidOrDefault)' == ''">$(DefaultAppHostRuntimeIdentifier)</RidOrDefault>
+    <HostLibsFlavor Condition="'$(RidOrDefault)' != '' and $(RidOrDefault.StartsWith('win'))">no-pgo</HostLibsFlavor>
+    <HostLibsRoot>$([MSBuild]::NormalizePath('$(HostLibsBaseRoot)', '$(HostLibsFlavor)'))</HostLibsRoot>
     <StaticHostAssetsBaseDir>$(HostLibsRoot)</StaticHostAssetsBaseDir>
   </PropertyGroup>
 
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
   <Import Project="$(MSBuildProjectDirectory)\..\..\src\StaticAppHost.targets" />
-
-  <PropertyGroup>
-    <RidOrDefault>$(RuntimeIdentifier)</RidOrDefault>
-    <RidOrDefault Condition="'$(RidOrDefault)' == ''">$(DefaultAppHostRuntimeIdentifier)</RidOrDefault>
-  </PropertyGroup>
 
   <ItemGroup>
     <NativeLibrary Include="$(MSBuildProjectDirectory)\NativeLib\dll.lib" Condition="$(RidOrDefault.StartsWith('win'))">

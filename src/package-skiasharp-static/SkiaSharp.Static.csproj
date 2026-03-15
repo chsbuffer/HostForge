@@ -4,6 +4,7 @@
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <NoBuild>true</NoBuild>
     <NoWarn>$(NoWarn);NU5128;NU5129</NoWarn>
+    <AvaloniaHostRid Condition="'$(AvaloniaHostRid)' == ''">win-x64</AvaloniaHostRid>
     <PackageId>ChsBuffer.SkiaSharp.Static.win-x64</PackageId>
     <Version>$(SkiaSharpVersion)-alpha.1</Version>
     <Authors>ChsBuffer</Authors>
@@ -23,6 +24,11 @@
     <AvaloniaNativeLibsDir>$([MSBuild]::NormalizePath('$(AvaloniaNativeLibsRoot)', '$(AvaloniaHostRid)'))</AvaloniaNativeLibsDir>
   </PropertyGroup>
 
+  <Target Name="_ValidateAvaloniaHostRid">
+    <Error Condition="'$(AvaloniaHostRid)' != 'win-x64'"
+           Text="AvaloniaHostRid='$(AvaloniaHostRid)' is invalid. Use 'win-x64'." />
+  </Target>
+
   <ItemGroup>
     <None Include="buildTransitive/SkiaSharp.Static.props" Pack="true" PackagePath="buildTransitive/$(PackageId).props" />
     <None Include="README.md" Pack="true" PackagePath="" />
@@ -33,5 +39,12 @@
       Pack="true"
       PackagePath="build/native/x64/%(FileName)%(Extension)" />
   </ItemGroup>
+
+  <Target Name="_ValidateAvaloniaNativeLibsDir"
+          BeforeTargets="_GetPackageFiles"
+          DependsOnTargets="_ValidateAvaloniaHostRid">
+    <Error Condition="!Exists('$(AvaloniaNativeLibsDir)')"
+           Text="Avalonia native libs directory not found: $(AvaloniaNativeLibsDir)" />
+  </Target>
 
 </Project>

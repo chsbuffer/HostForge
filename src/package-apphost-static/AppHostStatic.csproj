@@ -7,6 +7,8 @@
     <NoBuild>true</NoBuild>
     <NoWarn>$(NoWarn);NU5128;NU5129</NoWarn>
     <StaticAppHostRid Condition="'$(StaticAppHostRid)' == ''">win-x64</StaticAppHostRid>
+    <HostLibsFlavor>no-pgo</HostLibsFlavor>
+    <HostLibsRoot>$([MSBuild]::NormalizePath('$(HostLibsBaseRoot)', '$(HostLibsFlavor)'))</HostLibsRoot>
     <PackageId>ChsBuffer.AppHost.Static.$(StaticAppHostRid)</PackageId>
     <Version>$(HostLibsVersion)-alpha.1</Version>
     <Authors>ChsBuffer</Authors>

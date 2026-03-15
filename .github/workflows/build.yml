@@ -19,9 +19,23 @@ jobs:
           - arch: x64
             rid: win-x64
             runtime_version: "10.0"
+            hostlibs_flavor: default
+            build_args: ""
           - arch: arm64
             rid: win-arm64
             runtime_version: "10.0"
+            hostlibs_flavor: default
+            build_args: ""
+          - arch: x64
+            rid: win-x64
+            runtime_version: "10.0"
+            hostlibs_flavor: no-pgo
+            build_args: "--no-pgo"
+          - arch: arm64
+            rid: win-arm64
+            runtime_version: "10.0"
+            hostlibs_flavor: no-pgo
+            build_args: "--no-pgo"
 
     steps:
       - name: Checkout repository
@@ -34,7 +48,7 @@ jobs:
         id: hostlibs_key
         shell: powershell
         run: |
-          $key = python .\scripts\cache_key.py --kind hostlibs --arch ${{ matrix.arch }} --os windows --runtime-version ${{ matrix.runtime_version }}
+          $key = python .\scripts\cache_key.py --kind hostlibs --arch ${{ matrix.arch }} --os windows --runtime-version ${{ matrix.runtime_version }} --hostlibs-flavor ${{ matrix.hostlibs_flavor }}
           "key=$key" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       # `lookup-only` is intentional here: `actions/cache` still runs its post step,
@@ -44,7 +58,7 @@ jobs:
         uses: actions/cache@v5
         with:
           lookup-only: true
-          path: artifacts\hostlibs\${{ matrix.runtime_version }}\${{ matrix.rid }}
+          path: artifacts\hostlibs\${{ matrix.runtime_version }}\${{ matrix.hostlibs_flavor }}\${{ matrix.rid }}
           key: ${{ steps.hostlibs_key.outputs.key }}
 
       - name: Checkout runtime deps
@@ -55,13 +69,13 @@ jobs:
       - name: Build hostlibs for Windows
         shell: powershell
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
-        run: python .\scripts\build-hostlibs.py all -v --arch ${{ matrix.arch }} --version ${{ matrix.runtime_version }}
+        run: python .\scripts\build-hostlibs.py all -v --arch ${{ matrix.arch }} --version ${{ matrix.runtime_version }} ${{ matrix.build_args }}
 
       - name: Upload hostlibs artifact
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v6
         with:
-          name: hostlibs-${{ matrix.runtime_version }}-${{ matrix.rid }}
+          name: hostlibs-${{ matrix.runtime_version }}-${{ matrix.hostlibs_flavor }}-${{ matrix.rid }}
           path: artifacts\hostlibs
           if-no-files-found: error
 
@@ -81,19 +95,100 @@ jobs:
         id: hostlibs_key
         shell: powershell
         run: |
-          $key = python .\scripts\cache_key.py --kind hostlibs --arch x64 --os windows --runtime-version 10.0
+          $key = python .\scripts\cache_key.py --kind hostlibs --arch x64 --os windows --runtime-version 10.0 --hostlibs-flavor no-pgo
           "key=$key" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Restore hostlibs cache (10.0 win-x64)
         uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
-          path: artifacts\hostlibs\10.0\win-x64
+          path: artifacts\hostlibs\10.0\no-pgo\win-x64
           key: ${{ steps.hostlibs_key.outputs.key }}
 
       - name: Run matrix integration build
         shell: powershell
         run: python .\scripts\pipeline.py matrix -v
+
+  pack-static-apphost:
+    runs-on: windows-2025-vs2026
+    needs:
+      - windows-matrix-test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Compute hostlibs cache key (10.0 no-pgo win-x64)
+        id: hostlibs_key
+        shell: powershell
+        run: |
+          $key = python .\scripts\cache_key.py --kind hostlibs --arch x64 --os windows --runtime-version 10.0 --hostlibs-flavor no-pgo
+          "key=$key" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Restore hostlibs cache (10.0 no-pgo win-x64)
+        uses: actions/cache@v5
+        with:
+          fail-on-cache-miss: true
+          path: artifacts\hostlibs\10.0\no-pgo\win-x64
+          key: ${{ steps.hostlibs_key.outputs.key }}
+
+      - name: Pack static apphost
+        shell: powershell
+        run: python .\scripts\pipeline.py pack-static-apphost -v --rid win-x64
+
+      - name: Upload static apphost package
+        uses: actions/upload-artifact@v6
+        with:
+          name: nuget-packages-static-apphost-win-x64
+          path: artifacts\packages\Release
+          if-no-files-found: error
+
+  pack-skia-static:
+    runs-on: windows-2025-vs2026
+    needs:
+      - windows-skia
+    strategy:
+      matrix:
+        include:
+          - avalonia_target: "11.0"
+            skiasharp_version: "2.88.9"
+          - avalonia_target: "12.0"
+            skiasharp_version: "3.119.2"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Compute skia cache key
+        id: skia_key
+        shell: powershell
+        run: |
+          $key = python .\scripts\cache_key.py --kind skiasharp --skiasharp-version ${{ matrix.skiasharp_version }} --arch x64 --os windows
+          "key=$key" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Restore skia cache (win-x64)
+        uses: actions/cache@v5
+        with:
+          fail-on-cache-miss: true
+          path: artifacts\skiasharp\${{ matrix.skiasharp_version }}\win-x64
+          key: ${{ steps.skia_key.outputs.key }}
+
+      - name: Pack skia static
+        shell: powershell
+        run: python .\scripts\pipeline.py pack-skia-static -v --target ${{ matrix.avalonia_target }} --rid win-x64
+
+      - name: Upload skia static package
+        uses: actions/upload-artifact@v6
+        with:
+          name: nuget-packages-skia-static-${{ matrix.avalonia_target }}-win-x64
+          path: artifacts\packages\Release
+          if-no-files-found: error
 
   windows-skia:
     runs-on: windows-2025-vs2026
@@ -183,24 +278,24 @@ jobs:
         id: hostlibs_keys
         shell: powershell
         run: |
-          $keyX64 = python .\scripts\cache_key.py --kind hostlibs --arch x64 --os windows --runtime-version 10.0
+          $keyX64 = python .\scripts\cache_key.py --kind hostlibs --arch x64 --os windows --runtime-version 10.0 --hostlibs-flavor default
           "key_x64=$keyX64" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-          $keyArm64 = python .\scripts\cache_key.py --kind hostlibs --arch arm64 --os windows --runtime-version 10.0
+          $keyArm64 = python .\scripts\cache_key.py --kind hostlibs --arch arm64 --os windows --runtime-version 10.0 --hostlibs-flavor default
           "key_arm64=$keyArm64" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Restore hostlibs cache (10.0 win-x64)
         uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
-          path: artifacts\hostlibs\10.0\win-x64
+          path: artifacts\hostlibs\10.0\default\win-x64
           key: ${{ steps.hostlibs_keys.outputs.key_x64 }}
 
       - name: Restore hostlibs cache (10.0 win-arm64)
         uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
-          path: artifacts\hostlibs\10.0\win-arm64
+          path: artifacts\hostlibs\10.0\default\win-arm64
           key: ${{ steps.hostlibs_keys.outputs.key_arm64 }}
 
       - name: Compute skia cache keys
@@ -278,7 +373,7 @@ jobs:
       - name: Compute hostlibs cache key
         id: hostlibs_key
         run: |
-          key=$(python ./scripts/cache_key.py --kind hostlibs --arch x64 --os linux --runtime-version 10.0)
+          key=$(python ./scripts/cache_key.py --kind hostlibs --arch x64 --os linux --runtime-version 10.0 --hostlibs-flavor default)
           echo "key=$key" >> "$GITHUB_OUTPUT"
 
       - name: Lookup hostlibs cache
@@ -286,7 +381,7 @@ jobs:
         uses: actions/cache@v5
         with:
           lookup-only: true
-          path: artifacts/hostlibs/10.0/linux-x64
+          path: artifacts/hostlibs/10.0/default/linux-x64
           key: ${{ steps.hostlibs_key.outputs.key }}
 
       - name: Checkout runtime deps
@@ -308,7 +403,7 @@ jobs:
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v6
         with:
-          name: hostlibs-10.0-linux-x64
+          name: hostlibs-10.0-default-linux-x64
           path: artifacts/hostlibs
           if-no-files-found: error
 
@@ -338,14 +433,14 @@ jobs:
       - name: Compute hostlibs cache key (10.0 linux-x64)
         id: hostlibs_key
         run: |
-          key=$(python ./scripts/cache_key.py --kind hostlibs --arch x64 --os linux --runtime-version 10.0)
+          key=$(python ./scripts/cache_key.py --kind hostlibs --arch x64 --os linux --runtime-version 10.0 --hostlibs-flavor default)
           echo "key=$key" >> "$GITHUB_OUTPUT"
 
       - name: Restore hostlibs cache (10.0 linux-x64)
         uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
-          path: artifacts/hostlibs/10.0/linux-x64
+          path: artifacts/hostlibs/10.0/default/linux-x64
           key: ${{ steps.hostlibs_key.outputs.key }}
 
       - name: Run matrix integration build
@@ -442,14 +537,14 @@ jobs:
       - name: Compute hostlibs cache key
         id: hostlibs_key
         run: |
-          key=$(python ./scripts/cache_key.py --kind hostlibs --arch x64 --os linux --runtime-version 10.0)
+          key=$(python ./scripts/cache_key.py --kind hostlibs --arch x64 --os linux --runtime-version 10.0 --hostlibs-flavor default)
           echo "key=$key" >> "$GITHUB_OUTPUT"
 
       - name: Restore hostlibs cache (10.0 linux-x64)
         uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
-          path: artifacts/hostlibs/10.0/linux-x64
+          path: artifacts/hostlibs/10.0/default/linux-x64
           key: ${{ steps.hostlibs_key.outputs.key }}
 
       - name: Compute skia cache key

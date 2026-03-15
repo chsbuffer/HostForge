@@ -17,7 +17,7 @@
 
 ## 当前阻塞
 
-### 1. host 构建仍受全程序优化影响
+### 1. singlefilehost 构建仍受全程序优化影响
 
 `.NET Host` 当前的 Windows 原生构建会启用全程序优化（MSVC 下对应 `/GL`，CMake 侧入口是 `CMAKE_INTERPROCEDURAL_OPTIMIZATION`）。
 
@@ -25,40 +25,46 @@
 
 当前需要一套关闭全程序优化的 host 输入产物。
 
-### 2. 常规 `build.cmd` 流程会被 PGO 检查卡住
-
-目前已确认，可以在 `eng\native\configurecompiler.cmake` 中关闭：
-
-```cmake
-set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+```powershell
+msbuild .\src\coreclr\runtime-prereqs.proj /t:BuildPrereqs /p:TargetOS=windows /p:TargetArchitecture=x64 /p:Configuration=Release
+.\src\coreclr\build-runtime.cmd -x64 -release -os windows -configureonly -cmakeargs "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF" [-subdir singlefilehost]
+ninja -C .\artifacts\obj\coreclr\windows.x64.Release singlefilehost
 ```
 
-从而去掉编译阶段的 `/GL`。
+```powershell
+.\build.cmd -subset clr.runtime -c Release -a x64 /p:ConfigureOnly=true /p:CMakeArgs=-DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF /p:NoPgoOptimize=true [/p:BuildSubdirectory=singlefilehost]
+ninja -C .\artifacts\obj\coreclr\windows.x64.Release singlefilehost
+```
 
-但继续使用 `build.cmd clr.native` 时，流程仍会被 `pgocheck.py` 拦住。失败原因不是 `singlefilehost` 本身编译不过，而是流程仍会检查 `coreclr.dll`、`clrjit.dll` 等运行时组件是否启用了 PGO。
-
-因此，当前问题不仅是关闭 `/GL`，还包括在不触发整条 runtime 校验链路的前提下只构建需要的 host 产物。
-
-## 当前可行但待验证的替代方案
-
-当前有一条可行的构建路径，可以直接生成 `singlefilehost.exe`，且不会触发 `pgocheck.py` 的失败：
+一条命令构建
 
 ```powershell
-msbuild src\native\corehost\corehost.proj /t:GenerateRuntimeVersionFile
-.\src\coreclr\build-runtime.cmd -x64 -release -os windows -configureonly -component runtime
-ninja -C .\artifacts\obj\coreclr\windows.x64.Release singlefilehost.exe
+.\build.cmd -subset clr.runtime -c Release -a x64 /p:CMakeArgs=-DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF /p:NoPgoOptimize=true [/p:BuildSubdirectory=singlefilehost]
 ```
 
 后续需要验证：
 
-1. 这条路径产出的 `singlefilehost.exe` 是否与预期的正式 host 输入一致；
-2. 关闭 `/GL` 后，对应用的运行速度有多少影响；
+预计关闭优化会导致 启动、JIT 本身的编译速度、GC/loader/helper 等热路径发生性能回退，对启动敏感、JIT 密集、runtime 开销占比高的应用影响会更明显。
+
+### 2. apphost 构建仍受全程序优化影响
+
+host.native 这条 Windows 路径里， /p:CMakeArgs=... 基本没传进去：
+corehost.proj:147 -> src/native/corehost/build.cmd Windows 分支没有 $(CMakeArgs) 没把 CMakeArgs 传下去
+
+最直接的无 patch 做法是：先用 canonical 的 build.cmd -subset host.native 只做 configure，然后你自己补一次 CMake cache，再单独编 apphost。
+```
+.\build.cmd -subset host.native -c Release -a x64 /p:ConfigureOnly=true
+
+cmake -S .\src\native\corehost -B .\artifacts\obj\win-x64.Release\corehost `
+  -DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF
+
+ninja -C .\artifacts\obj\win-x64.Release\corehost apphost
+```
 
 ### 3. 已发布的 `ChsBuffer.Avalonia.AppHost` 没有关闭全程序优化
 
 当前已发布的 `ChsBuffer.Avalonia.AppHost` 使用的 host 模板没有关闭全程序优化。
-
-新包如果改为关闭全程序优化，需要明确 `Avalonia AppHost` 和 `StaticAppHost` 是否共用同一套 host 构建产物。
+`Avalonia AppHost` 保持目前开启优化的状态，`StaticAppHost` 包则必须关闭全程序优化，这将增加 workflow 的复杂性。
 
 ### 4. targets 需要按路径分支做行为分析和系统测试
 

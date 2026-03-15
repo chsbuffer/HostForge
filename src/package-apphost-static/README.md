@@ -1,6 +1,7 @@
 # ChsBuffer.AppHost.Static.win-x64
 
 Packages the .NET host relinking targets together with the .NET 10 `win-x64` static libraries for `apphost` and `singlefilehost`.
+The bundled Windows host inputs are built from the `no-pgo` HostForge flavor so they do not depend on whole-program optimization.
 
 Use this package when you want the generated executable to contain native code directly, instead of deploying separate native DLLs alongside it.
 

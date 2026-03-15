@@ -73,6 +73,7 @@ def hostlibs_cache_key(
     os_name: str,
     arch: str,
     runtime_version: str,
+    hostlibs_flavor: str = "default",
     clang_path: str | None = None,
 ) -> tuple[str, list[str]]:
     deps = load_deps(deps_file)
@@ -85,6 +86,7 @@ def hostlibs_cache_key(
         f"os={os_name}",
         f"arch={arch}",
         f"runtime_version={runtime_version}",
+        f"hostlibs_flavor={hostlibs_flavor}",
         f"runtime_commit={runtime_commit}",
     ]
     if os_name == "windows":
@@ -93,7 +95,10 @@ def hostlibs_cache_key(
         clang_exe = resolve_clang_exe(os_name, clang_path)
         inputs.append(f"clang={tool_version(clang_exe)}")
     digest = hashlib.sha256("\n".join(inputs).encode("utf-8")).hexdigest()
-    return f"hostlibs-{os_name}-{arch}-{runtime_version}-{digest[:16]}", inputs
+    return (
+        f"hostlibs-{os_name}-{arch}-{runtime_version}-{hostlibs_flavor}-{digest[:16]}",
+        inputs,
+    )
 
 
 def skiasharp_cache_key(
@@ -144,6 +149,12 @@ def parse_args():
     parser.add_argument("--runtime-version", default=None)
     parser.add_argument("--skiasharp-version", default=None)
     parser.add_argument(
+        "--hostlibs-flavor",
+        choices=["default", "no-pgo"],
+        default="default",
+        help="hostlibs optimization flavor for hostlibs cache keys",
+    )
+    parser.add_argument(
         "--clang",
         default=None,
         help="clang executable path (defaults to system clang on linux)",
@@ -173,6 +184,7 @@ def main():
                 os_name=args.os,
                 arch=args.arch,
                 runtime_version=args.runtime_version,
+                hostlibs_flavor=args.hostlibs_flavor,
                 clang_path=args.clang,
             )
             print("\n".join(inputs) if args.print_inputs else key)

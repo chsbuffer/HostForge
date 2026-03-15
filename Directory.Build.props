@@ -33,13 +33,15 @@
 
   <PropertyGroup>
     <HostLibsVersion>10.0</HostLibsVersion>
+    <HostLibsFlavor Condition="'$(HostLibsFlavor)' == ''">default</HostLibsFlavor>
     <RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
 
     <PackagesOutputRoot>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/packages'))</PackagesOutputRoot>
     <AvaloniaAppHostPackageOutputDir>$([MSBuild]::NormalizePath('$(PackagesOutputRoot)', '$(Configuration)'))</AvaloniaAppHostPackageOutputDir>
 
-    <HostLibsRoot>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/hostlibs/$(HostLibsVersion)'))</HostLibsRoot>
+    <HostLibsBaseRoot>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/hostlibs/$(HostLibsVersion)'))</HostLibsBaseRoot>
+    <HostLibsRoot>$([MSBuild]::NormalizePath('$(HostLibsBaseRoot)', '$(HostLibsFlavor)'))</HostLibsRoot>
     <AvaloniaNativeLibsRoot>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/skiasharp/$(SkiaSharpVersion)'))</AvaloniaNativeLibsRoot>
   </PropertyGroup>
 

@@ -107,6 +107,8 @@ RUNTIME_ROOT: Path
 OUTDIR: Path
 
 DEFAULT_VERSION = "10.0"
+DEFAULT_HOSTLIBS_FLAVOR = "default"
+NO_PGO_HOSTLIBS_FLAVOR = "no-pgo"
 
 
 def get_rid() -> str:
@@ -114,12 +116,23 @@ def get_rid() -> str:
     return f"{os}-{args.arch}"
 
 
+def get_hostlibs_flavor() -> str:
+    return NO_PGO_HOSTLIBS_FLAVOR if args.no_pgo else DEFAULT_HOSTLIBS_FLAVOR
+
+
+def runtime_relative_path(path: Path) -> str:
+    try:
+        relative = path.relative_to(RUNTIME_ROOT)
+    except ValueError:
+        return str(path)
+
+    relative_str = str(relative).replace("/", "\\")
+    return f".\\{relative_str}"
+
+
 def run_in_vs_env(cmd: str, cwd: Path, arch: str):
-    full_cmd = (
-        f"call {RUNTIME_ROOT}\\eng\\native\\init-vs-env.cmd {arch} && "
-        f"cd /d {cwd} && "
-        f"{cmd}"
-    )
+    init_vs_env_cmd = RUNTIME_ROOT / "eng" / "native" / "init-vs-env.cmd"
+    full_cmd = f"call {init_vs_env_cmd} {arch} && cd /d {cwd} && {cmd}"
     execv(full_cmd)
 
 
@@ -290,17 +303,26 @@ def build_singlefilehost():
     os = args.os
     arch = args.arch
 
+    build_root = RUNTIME_ROOT / "artifacts" / "obj" / "coreclr" / f"{os}.{arch}.Release"
+    build_root_cmd = runtime_relative_path(build_root)
+
     if not args.skip_build:
         header("Build runtime")
         check_os()
         build_args = f"clr.runtime -ninja -c release -arch {arch}"
+
         if is_windows:
+            build_args += " /p:ConfigureOnly=true"
+            if args.no_pgo:
+                build_args += " /p:CMakeArgs=-DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF /p:NoPgoOptimize=true"
+
             execv(f"call {RUNTIME_ROOT}\\build.cmd {build_args}")
+            run_in_vs_env(
+                f"ninja -C {build_root_cmd} singlefilehost", RUNTIME_ROOT, arch
+            )
         else:
             build_args = linux_build_args(build_args)
             execv(f"{RUNTIME_ROOT}/build.sh {build_args}")
-
-    build_root = RUNTIME_ROOT / "artifacts" / "obj" / "coreclr" / f"{os}.{arch}.Release"
 
     header("Archive singlefilehost")
     bundle_target("singlefilehost", build_root, OUTDIR, arch)
@@ -327,22 +349,39 @@ def build_apphost():
     os = args.os
     arch = args.arch
 
-    if not args.skip_build:
-        header("Build corehost")
-        check_os()
-        build_args = f"host.native -ninja -c release -arch {arch}"
-        if is_windows:
-            execv(f"call {RUNTIME_ROOT}\\build.cmd {build_args}")
-        else:
-            build_args = linux_build_args(build_args)
-            execv(f"{RUNTIME_ROOT}/build.sh {build_args}")
-
     if os == "windows":
         build_root = (
             RUNTIME_ROOT / "artifacts" / "obj" / f"{get_rid()}.Release" / "corehost"
         )
     else:
         build_root = RUNTIME_ROOT / "artifacts" / "obj" / f"{get_rid()}.Release"
+
+    corehost_src = RUNTIME_ROOT / "src" / "native" / "corehost"
+    build_root_cmd = runtime_relative_path(build_root)
+    corehost_src_cmd = runtime_relative_path(corehost_src)
+
+    if not args.skip_build:
+        header("Build corehost")
+        check_os()
+        if is_windows:
+            build_args = f"host.native -ninja -c release -arch {arch}"
+            if args.no_pgo:
+                execv(
+                    f"call {RUNTIME_ROOT}\\build.cmd {build_args} /p:ConfigureOnly=true"
+                )
+                run_in_vs_env(
+                    f"cmake -S {corehost_src_cmd} -B {build_root_cmd} "
+                    "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF",
+                    RUNTIME_ROOT,
+                    arch,
+                )
+                run_in_vs_env(f"ninja -C {build_root_cmd} apphost", RUNTIME_ROOT, arch)
+            else:
+                execv(f"call {RUNTIME_ROOT}\\build.cmd {build_args}")
+        else:
+            build_args = f"host.native -ninja -c release -arch {arch}"
+            build_args = linux_build_args(build_args)
+            execv(f"{RUNTIME_ROOT}/build.sh {build_args}")
 
     header("Archive corehost")
     bundle_target("apphost", build_root, OUTDIR, arch)
@@ -391,6 +430,11 @@ ROOTFS_DIR:
         help="target os",
     )
     parser.add_argument(
+        "--no-pgo",
+        action="store_true",
+        help="disable whole program optimization and native PGO",
+    )
+    parser.add_argument(
         "--version",
         default=DEFAULT_VERSION,
         help="dotnet/runtime version key in DEPS",
@@ -406,10 +450,20 @@ def main():
 
     global RUNTIME_ROOT, OUTDIR
     RUNTIME_ROOT = REPO_ROOT / "repo" / f"runtime-{args.version}"
-    OUTDIR = REPO_ROOT / "artifacts" / "hostlibs" / args.version / get_rid()
+    OUTDIR = (
+        REPO_ROOT
+        / "artifacts"
+        / "hostlibs"
+        / args.version
+        / get_hostlibs_flavor()
+        / get_rid()
+    )
 
     if not RUNTIME_ROOT.exists():
         error("source code not found; checkout-deps first.")
+
+    if args.no_pgo and args.os != "windows":
+        error("currently only windows build supports disable pgo")
 
     if args.target == "apphost":
         build_apphost()

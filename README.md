@@ -21,20 +21,24 @@
 flowchart LR
     subgraph W["Windows lane"]
         direction LR
-        WH["windows-hostlibs<br/>matrix: win-x64, win-arm64"]
+        WH["windows-hostlibs<br/>matrix: default/no-pgo x win-x64/win-arm64"]
         WS["windows-skia<br/>matrix: 11.0/12.0 x win-x64/win-arm64"]
         WLA["windows-link-avalonia<br/>matrix: 11.0, 12.0<br/>link-avalonia + avalonia-test"]
         WM["windows-matrix-test<br/>pipeline.py matrix"]
+        WPS["pack-static-apphost<br/>win-x64"]
+        WPKS["pack-skia-static<br/>matrix: 11.0, 12.0<br/>win-x64"]
 
         WH --> WLA
         WS --> WLA
         WH --> WM
+        WM --> WPS
+        WS --> WPKS
     end
 
     subgraph L["Linux lane"]
         direction LR
         LSY["linux-sysroot<br/>cache sysroot tar"]
-        LH["linux-hostlibs<br/>matrix: linux-x64"]
+        LH["linux-hostlibs<br/>matrix: default x linux-x64"]
         LS["linux-skia<br/>matrix: 11.0, 12.0"]
         LLA["linux-link-avalonia<br/>matrix: 11.0, 12.0<br/>link-avalonia + avalonia-test"]
         LM["linux-matrix-test<br/>pipeline.py matrix"]
@@ -58,12 +62,14 @@ Job summary:
 
 | Job | Platform | Matrix | Depends on | Main output |
 | --- | --- | --- | --- | --- |
-| `windows-hostlibs` | Windows | `win-x64`, `win-arm64` | - | hostlibs cache / artifact |
+| `windows-hostlibs` | Windows | `default` / `no-pgo` × `win-x64` / `win-arm64` | - | hostlibs cache / artifact |
 | `windows-matrix-test` | Windows | none | `windows-hostlibs` | StaticAppHost matrix verification |
+| `pack-static-apphost` | Windows | `win-x64` | `windows-matrix-test` | `ChsBuffer.AppHost.Static.win-x64` package artifact |
+| `pack-skia-static` | Windows | `11.0`, `12.0` | `windows-skia` | `ChsBuffer.SkiaSharp.Static.win-x64` package artifact |
 | `windows-skia` | Windows | `11.0/12.0` × `win-x64/win-arm64` | - | skia cache / artifact |
 | `windows-link-avalonia` | Windows | `11.0`, `12.0` | `windows-hostlibs`, `windows-skia` | linked Avalonia hosts + `avalonia-test` |
 | `linux-sysroot` | Linux | none | - | sysroot cache / tarball |
-| `linux-hostlibs` | Linux | `linux-x64` | `linux-sysroot` | hostlibs cache / artifact |
+| `linux-hostlibs` | Linux | `default` × `linux-x64` | `linux-sysroot` | hostlibs cache / artifact |
 | `linux-matrix-test` | Linux | none | `linux-sysroot`, `linux-hostlibs` | StaticAppHost matrix verification |
 | `linux-skia` | Linux | `11.0`, `12.0` | `linux-sysroot` | skia cache / artifact |
 | `linux-link-avalonia` | Linux | `11.0`, `12.0` | `linux-sysroot`, `linux-hostlibs`, `linux-skia` | linked Avalonia hosts + `avalonia-test` |
@@ -84,18 +90,20 @@ Job summary:
 - `repo/deps-mirror`：依赖仓库的本地裸仓库缓存（仅非 CI）。
 - `repo/patch`：本仓库对上游工程使用的补丁与参数文件。
 - `scripts/pipeline.py`：构建/测试子命令入口。
-- `scripts/build-hostlibs.py`：构建 Host 静态库到 `artifacts/hostlibs/<version>/<rid>`。
+- `scripts/build-hostlibs.py`：构建 Host 静态库到 `artifacts/hostlibs/<version>/<flavor>/<rid>`。
 - `scripts/build-skia-harfbuzz.py`：构建并收集 mono/skia + HarfBuzz 静态库到 `artifacts/skiasharp/<version>/<rid>`。
 - `scripts/init-vs-env.cmd`：初始化 Visual Studio/MSVC 构建环境。
 - `scripts/set-cmake-path.ps1`：设置 CMake 相关路径辅助脚本。
 - `src/StaticAppHost.targets`、`src/StaticAppHost.Windows.targets`、`src/findvcvarsall.bat`：StaticAppHost 源码级 MSBuild 集成。
+- `src/package-apphost-static`：`ChsBuffer.AppHost.Static.win-x64` 包工程。
+- `src/package-skiasharp-static`：`ChsBuffer.SkiaSharp.Static.win-x64` 包工程。
 - `src/package-avalonia-apphost`：`ChsBuffer.Avalonia.AppHost` 包工程。
 - `samples/simple-pinvoke`：消费端示例工程（dllexport/pinvoke 最小验证）。
 - `samples/avalonia-sample`：Avalonia 消费端示例工程（用于验证 Avalonia AppHost 包）。
 - `tests/HostForge.TestInfra`：测试共享基础设施（命令执行、工作区构建、断言工具）。
 - `tests/HostForge.AvaloniaAppHost.Tests`：Avalonia AppHost 构建/发布行为的 TUnit 集成测试。
 - `tests/HostForge.StaticAppHost.Tests`：Static AppHost 增量链接矩阵的 TUnit 集成测试。
-- `artifacts/hostlibs/<version>/<rid>`：Host 静态库输出目录。
+- `artifacts/hostlibs/<version>/<flavor>/<rid>`：Host 静态库输出目录。
 - `artifacts/skiasharp/<version>/<rid>`：SkiaSharp/HarfBuzz 静态库输出目录。
 
 ## 环境要求
@@ -107,7 +115,6 @@ Job summary:
 - Ninja build
 - CMake on Windows
 - LLVM (C:\Program Files\LLVM)
-- .NET SDK 10.0.101 (可选)
 
 ## 逐步生成
 
@@ -122,10 +129,21 @@ python .\scripts\checkout-deps.py skiasharp 2.88.9
 ```powershell
 python .\scripts\pipeline.py hostlibs -v
 ```
+Windows 下会同时生成 `default` 和 `no-pgo` 两套 hostlibs；Linux 只生成 `default`。
+本地如果要在同一份 `repo\runtime-10.0` 工作树里切换 `default` 和 `no-pgo`，需要先手动执行 `build.cmd -clean` 清理对应 subset 的中间产物；CI 的 `default` / `no-pgo` 在不同 runner 实例上执行，不受这个问题影响。
+
+例如 Windows `x64` 本地切换 flavor 前可先执行：
+```powershell
+.\repo\runtime-10.0\build.cmd -clean -subset host.native -c Release -a x64
+.\repo\runtime-10.0\build.cmd -clean -subset clr.runtime -c Release -a x64
+```
+
 或
 ```powershell
 python .\scripts\build-hostlibs.py all -v --arch x64
 python .\scripts\build-hostlibs.py all -v --arch arm64
+python .\scripts\build-hostlibs.py all -v --arch x64 --no-pgo
+python .\scripts\build-hostlibs.py all -v --arch arm64 --no-pgo
 ```
 
 - 运行构建集成矩阵测试：
@@ -148,7 +166,19 @@ python .\scripts\build-skia-harfbuzz.py -v -a arm64
 - 打包 Avalonia Host 包：
 
 ```powershell
-python .\scripts\pipeline.py pack-avalonia -v
+python .\scripts\pipeline.py pack-avalonia -v --target 11.0 --mode windows
+```
+
+- 打包 StaticAppHost 包：
+
+```powershell
+python .\scripts\pipeline.py pack-static-apphost -v --rid win-x64
+```
+
+- 打包 SkiaSharp.Static 包：
+
+```powershell
+python .\scripts\pipeline.py pack-skia-static -v --target 11.0 --rid win-x64
 ```
 
 - 运行 Avalonia AppHost 集成测试：
