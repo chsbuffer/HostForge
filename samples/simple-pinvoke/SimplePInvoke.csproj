@@ -9,6 +9,8 @@
     <PublishSingleFile>true</PublishSingleFile>
   </PropertyGroup>
 
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+
   <PropertyGroup>
     <RidOrDefault>$(RuntimeIdentifier)</RidOrDefault>
     <RidOrDefault Condition="'$(RidOrDefault)' == ''">$(DefaultAppHostRuntimeIdentifier)</RidOrDefault>
@@ -17,7 +19,6 @@
     <StaticHostAssetsBaseDir>$(HostLibsRoot)</StaticHostAssetsBaseDir>
   </PropertyGroup>
 
-  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
   <Import Project="$(MSBuildProjectDirectory)\..\..\src\StaticAppHost.targets" />
 
   <ItemGroup>
