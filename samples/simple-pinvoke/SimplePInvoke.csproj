@@ -12,7 +12,7 @@
   <PropertyGroup>
     <RidOrDefault>$(RuntimeIdentifier)</RidOrDefault>
     <RidOrDefault Condition="'$(RidOrDefault)' == ''">$(DefaultAppHostRuntimeIdentifier)</RidOrDefault>
-    <HostLibsFlavor Condition="'$(RidOrDefault)' != '' and $(RidOrDefault.StartsWith('win'))">no-pgo</HostLibsFlavor>
+    <HostLibsFlavor Condition="'$(RidOrDefault)' != '' and $(RidOrDefault.StartsWith('win'))">default</HostLibsFlavor>
     <HostLibsRoot>$([MSBuild]::NormalizePath('$(HostLibsBaseRoot)', '$(HostLibsFlavor)'))</HostLibsRoot>
     <StaticHostAssetsBaseDir>$(HostLibsRoot)</StaticHostAssetsBaseDir>
   </PropertyGroup>
