@@ -2,7 +2,7 @@
 
 Apphost and single-file host templates for Avalonia, prelinked against SkiaSharp and HarfBuzz native libraries, for **.NET 10.0** on Windows and Linux.
 
-This package replaces the SDK apphost templates for supported Avalonia publish targets and suppresses redundant SkiaSharp/HarfBuzz native runtime copy by default.
+This package replaces the SDK apphost templates for supported Avalonia publish targets and removes SkiaSharp/HarfBuzz native runtime files from publish output by default.
 
 Supported template RIDs:
 
@@ -49,17 +49,29 @@ When a matching template exists for the consuming project's `TargetFramework` an
 - injects the Avalonia native-library resolver module initializer
 - suppresses SkiaSharp/HarfBuzz native runtime copy
 
-By default this package removes these native runtime files from build/publish output when active:
+By default this package removes these native runtime files from publish output when active:
 
 - `libSkiaSharp.dll`
 - `libHarfBuzzSharp.dll`
 - `libSkiaSharp.so`
 - `libHarfBuzzSharp.so`
 
-You can restore default SDK copy behavior with:
+## Advanced Options
+
+### Keep SkiaSharp native runtime files in publish output
 
 ```xml
 <PropertyGroup>
   <DisableSkiaHarfBuzzRuntimeCopy>false</DisableSkiaHarfBuzzRuntimeCopy>
+</PropertyGroup>
+```
+
+### Disable Avalonia designer detection
+
+If you only want to use SkiaSharp, you can disable Avalonia designer environment detection with the following property to avoid taking a dependency on Avalonia:
+
+```xml
+<PropertyGroup>
+  <DetectAvaloniaDesigner>false</DetectAvaloniaDesigner>
 </PropertyGroup>
 ```
