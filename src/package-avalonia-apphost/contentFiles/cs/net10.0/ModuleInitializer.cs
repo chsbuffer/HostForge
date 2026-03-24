@@ -25,6 +25,9 @@ internal static class ModuleInitializer
 
     private static IntPtr Resolve(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
     {
+#if DETECT_AVALONIA_DESIGNER
+        if (global::Avalonia.Controls.Design.IsDesignMode) return IntPtr.Zero;
+#endif
         if (NativeDllNames.Contains(libraryName))
         {
             return NativeLibrary.GetMainProgramHandle();

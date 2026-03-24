@@ -100,6 +100,8 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
             "RestoreAdditionalProjectSources",
             "$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)");
 
+        propertyGroup.AddProperty("DetectAvaloniaDesigner", "false");
+
         if (disableSkiaHarfBuzzRuntimeCopy is not null)
         {
             propertyGroup.AddProperty(

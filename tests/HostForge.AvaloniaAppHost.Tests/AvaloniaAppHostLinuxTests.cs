@@ -44,12 +44,11 @@ public class AvaloniaAppHostLinuxTests
     }
 
     [Test]
-    public async Task DisableSkiaHarfBuzzRuntimeCopy_AffectsBuildAndPublishOutputs_LinuxX64()
+    public async Task DisableSkiaHarfBuzzRuntimeCopy_AffectsPublishOutputs_LinuxX64()
     {
         SwitchRuleCase[] cases =
         [
-            new("net10_build_default_linux", "build", DisableSkiaHarfBuzzRuntimeCopy: null, ExpectNativeRuntimeCopy: false),
-            new("net10_build_copy-switch-false_linux", "build", DisableSkiaHarfBuzzRuntimeCopy: false, ExpectNativeRuntimeCopy: true),
+            new("net10_publish_default_linux", "publish", DisableSkiaHarfBuzzRuntimeCopy: null, ExpectNativeRuntimeCopy: false),
             new("net10_publish_copy-switch-false_linux", "publish", DisableSkiaHarfBuzzRuntimeCopy: false, ExpectNativeRuntimeCopy: true)
         ];
 

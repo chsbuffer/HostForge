@@ -100,12 +100,11 @@ public class AvaloniaAppHostTests
     }
 
     [Test]
-    public async Task DisableSkiaHarfBuzzRuntimeCopy_AffectsBuildAndPublishOutputs_WinX64()
+    public async Task DisableSkiaHarfBuzzRuntimeCopy_AffectsPublishOutputs_WinX64()
     {
         SwitchRuleCase[] cases =
         [
-            new("net10_build_default", "build", DisableSkiaHarfBuzzRuntimeCopy: null, ExpectNativeRuntimeCopy: false),
-            new("net10_build_copy-switch-false", "build", DisableSkiaHarfBuzzRuntimeCopy: false, ExpectNativeRuntimeCopy: true),
+            new("net10_publish_default", "publish", DisableSkiaHarfBuzzRuntimeCopy: null, ExpectNativeRuntimeCopy: false),
             new("net10_publish_copy-switch-false", "publish", DisableSkiaHarfBuzzRuntimeCopy: false, ExpectNativeRuntimeCopy: true)
         ];
 

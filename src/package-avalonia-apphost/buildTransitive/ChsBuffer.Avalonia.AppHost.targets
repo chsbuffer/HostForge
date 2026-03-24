@@ -1,6 +1,7 @@
 <Project>
   <PropertyGroup>
     <DisableSkiaHarfBuzzRuntimeCopy Condition="'$(DisableSkiaHarfBuzzRuntimeCopy)' == ''">true</DisableSkiaHarfBuzzRuntimeCopy>
+    <DetectAvaloniaDesigner Condition="'$(DetectAvaloniaDesigner)' == ''">true</DetectAvaloniaDesigner>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -39,6 +40,10 @@
           BeforeTargets="CoreCompile"
           DependsOnTargets="ResolveAvaloniaAppHostActivation"
           Condition="'$(AvaloniaAppHostActive)' == 'true' and Exists('$(_AvaloniaModuleInitializer)')">
+    <PropertyGroup>
+        <DefineConstants Condition="'$(DetectAvaloniaDesigner)' == 'true'">$(DefineConstants);DETECT_AVALONIA_DESIGNER</DefineConstants>
+    </PropertyGroup>
+
     <ItemGroup>
       <Compile Include="$(_AvaloniaModuleInitializer)"
                Link="HostForge\Avalonia\ModuleInitializer.g.cs"
@@ -51,20 +56,6 @@
           DependsOnTargets="ResolveAvaloniaAppHostActivation"
           Condition="'$(TargetFramework)' != '' and '$(AvaloniaAppHostActive)' != 'true'">
     <Warning Text="ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='$(TargetFramework)' RuntimeIdentifier='$(RuntimeIdentifier)'. Expected templates under 'template/$(_AvaloniaTemplateTfm)/$(_AvaloniaTemplateRid)' (or default net10.0/win-x64). Host replacement and Skia/HarfBuzz runtime copy suppression are disabled." />
-  </Target>
-
-  <Target Name="DisableSkiaHarfBuzzCopyLocalItems"
-          AfterTargets="ResolveReferences"
-          DependsOnTargets="ResolveAvaloniaAppHostActivation"
-          Condition="'$(DisableSkiaHarfBuzzRuntimeCopy)' == 'true' and '$(AvaloniaAppHostActive)' == 'true'">
-    <ItemGroup>
-      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)"
-                               Condition="$(_AvaloniaSkiaNativeFileNames.Contains(';%(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension);')) or $(_AvaloniaHarfBuzzNativeFileNames.Contains(';%(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension);'))" />
-      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)"
-                            Condition="$(_AvaloniaSkiaNativeFileNames.Contains(';%(NativeCopyLocalItems.Filename)%(NativeCopyLocalItems.Extension);')) or $(_AvaloniaHarfBuzzNativeFileNames.Contains(';%(NativeCopyLocalItems.Filename)%(NativeCopyLocalItems.Extension);'))" />
-      <RuntimeCopyLocalItems Remove="@(RuntimeCopyLocalItems)"
-                             Condition="$(_AvaloniaSkiaNativeFileNames.Contains(';%(RuntimeCopyLocalItems.Filename)%(RuntimeCopyLocalItems.Extension);')) or $(_AvaloniaHarfBuzzNativeFileNames.Contains(';%(RuntimeCopyLocalItems.Filename)%(RuntimeCopyLocalItems.Extension);'))" />
-    </ItemGroup>
   </Target>
 
   <Target Name="DisableSkiaHarfBuzzPublishItems"

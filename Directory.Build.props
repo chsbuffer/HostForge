@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetAvaloniaVersion Condition="'$(TargetAvaloniaVersion)' == ''">11.0</TargetAvaloniaVersion>
     <AvaloniaAppHostPackageVersionMajor>0</AvaloniaAppHostPackageVersionMajor>
-    <AvaloniaAppHostPackageVersionPrev>preview.3</AvaloniaAppHostPackageVersionPrev>
+    <AvaloniaAppHostPackageVersionPrev>preview.4</AvaloniaAppHostPackageVersionPrev>
   </PropertyGroup>
 
   <Choose>
