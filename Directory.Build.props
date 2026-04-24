@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetAvaloniaVersion Condition="'$(TargetAvaloniaVersion)' == ''">11.0</TargetAvaloniaVersion>
     <AvaloniaAppHostPackageVersionMajor>0</AvaloniaAppHostPackageVersionMajor>
-    <AvaloniaAppHostPackageVersionPrev>preview.4</AvaloniaAppHostPackageVersionPrev>
+    <AvaloniaAppHostPackageVersionPrev>preview.5</AvaloniaAppHostPackageVersionPrev>
   </PropertyGroup>
 
   <Choose>
@@ -16,7 +16,7 @@
     </When>
     <When Condition="'$(TargetAvaloniaVersion)' == '12.0'">
       <PropertyGroup>
-        <AvaloniaVersion>12.0.0-preview2</AvaloniaVersion>
+        <AvaloniaVersion>12.0.1</AvaloniaVersion>
         <SkiaSharpVersion>3.119.2</SkiaSharpVersion>
         <HarfBuzzVersion>8.3.1.1</HarfBuzzVersion>
       </PropertyGroup>
