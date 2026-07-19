@@ -9,16 +9,11 @@ targets = (
 )
 
 runtime = {
-    "10.0": {
-        "runtime": "b82454cad0aaaae3db2cf18fbf2cccc36e201ccc",
-    }
+    "version": "10.0.10",
+    "runtime": "8f030f80c0dd2722eb2f618984e9db6784765963",
 }
 
 skiasharp = {
-    "2.88.9": {
-        "skia": "4bed689c9c9eb77a120c6a9d54af6a572c85d1c2",
-    },
-    "3.119.2": {
-        "skia": "927041a58f130e0dd0562ba86cb4170989ad39e9",
-    },
+    "version": "3.119.4",
+    "skia": "7dbfc07dd33181f84e0958afb7ee805c6c769f0b",
 }

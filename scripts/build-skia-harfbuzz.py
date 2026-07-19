@@ -95,11 +95,16 @@ def cp(source: Path, target: Path):
 SCRIPT_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_ROOT.parent
 
+
+def skiasharp_version() -> str:
+    deps = {}
+    with (REPO_ROOT / "DEPS").open(encoding="utf-8") as handle:
+        exec(handle.read(), deps)
+    return deps["skiasharp"]["version"]
+
 VC_COMPILER_VER = os.environ.get("VC_COMPILER_VER", "14.5")
 VC_TOOLSET_VER = os.environ.get("VC_TOOLSET_VER", "v145")
 WINDOWS_SDK_VER = os.environ.get("WINDOWS_SDK_VER", "10.0.26100.0")
-
-DEFAULT_VERSION = "2.88.9"
 
 SKIA_ROOT: Path
 SKIA_BUILD_DIR: Path
@@ -232,6 +237,7 @@ def write_windows_args_gn(target: Path):
         f'target_cpu = "{cpu}"',
         "skia_enable_fontmgr_win_gdi = false",
         "skia_use_dng_sdk = true",
+        "skia_use_harfbuzz = false",
         "skia_use_icu = false",
         "skia_use_piex = true",
         "skia_use_sfntly = false",
@@ -241,18 +247,16 @@ def write_windows_args_gn(target: Path):
         "skia_use_system_libwebp = false",
         "skia_use_system_zlib = false",
         "skia_enable_skottie = true",
-        "is_static_skiasharp = true",
         "skia_use_vulkan = true",
         'clang_win = "C:/Program Files/LLVM"',
         f'win_vcvars_version = "{VC_COMPILER_VER}"',
         "skia_enable_tools = false",
         "is_official_build = true",
+        "is_static_skiasharp = true",
     ]
 
-    if args.version != "2.88.9":
-        lines.insert(4, "skia_use_harfbuzz = false")
-        extra_cflags.append('"/guard:cf"')
-        extra_ldflags.append('"/guard:cf"')
+    extra_cflags.append('"/guard:cf"')
+    extra_ldflags.append('"/guard:cf"')
 
     extra_cflags.extend(
         [
@@ -283,9 +287,8 @@ def write_linux_skia_args_gn(target: Path):
     lines = [
         'target_os = "linux"',
         f'target_cpu = "{cpu}"',
-        "is_official_build = true",
-        "skia_enable_tools = false",
-        "is_static_skiasharp = true",
+        "skia_enable_ganesh = true",
+        "skia_use_harfbuzz = false",
         "skia_use_icu = false",
         "skia_use_piex = true",
         "skia_use_sfntly = false",
@@ -297,13 +300,13 @@ def write_linux_skia_args_gn(target: Path):
         "skia_use_system_zlib = false",
         "skia_enable_skottie = true",
         "skia_use_vulkan = true",
-        "skia_use_harfbuzz = false",
+        "skia_enable_tools = false",
+        "is_official_build = true",
+        "is_static_skiasharp = true",
         f"extra_asmflags = {format_gn_list(extra_asmflags)}",
         f"extra_cflags = {format_gn_list(extra_cflags)}",
         f"extra_ldflags = {format_gn_list(toolchain_ldflags)}",
     ]
-    if args.version != "2.88.9":
-        lines.append("skia_enable_ganesh = true")
     lines.extend(compiler_args_gn())
     target.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -445,11 +448,6 @@ def parse_args():
         help="target os",
     )
     parser.add_argument(
-        "--version",
-        default=DEFAULT_VERSION,
-        help=f"SkiaSharp version key in DEPS (default: {DEFAULT_VERSION})",
-    )
-    parser.add_argument(
         "--skip-sync-deps", action="store_true", help="skip running tools/git-sync-deps"
     )
     return parser.parse_args()
@@ -460,7 +458,8 @@ def main():
     args = parse_args()
     global SKIA_ROOT, SKIA_BUILD_DIR, HARFBUZZ_BUILD_DIR, OUTDIR, HARFBUZZ_SLN_DIR
 
-    SKIA_ROOT = REPO_ROOT / "repo" / f"skia-{args.version}"
+    version = skiasharp_version()
+    SKIA_ROOT = REPO_ROOT / "repo" / f"skia-{version}"
     if args.os == "windows":
         SKIA_BUILD_DIR = SKIA_ROOT / "out" / "windows" / args.arch
         HARFBUZZ_BUILD_DIR = SKIA_ROOT / "out" / "windows" / args.arch
@@ -468,8 +467,8 @@ def main():
         SKIA_BUILD_DIR = SKIA_ROOT / "out" / "linux" / args.arch / "skiasharp"
         HARFBUZZ_BUILD_DIR = SKIA_ROOT / "out" / "linux" / args.arch / "harfbuzz"
 
-    HARFBUZZ_SLN_DIR = REPO_ROOT / "repo" / f"HarfBuzzSharp-{args.version}"
-    OUTDIR = REPO_ROOT / "artifacts" / "skiasharp" / args.version / target_rid()
+    HARFBUZZ_SLN_DIR = REPO_ROOT / "repo" / f"HarfBuzzSharp-{version}"
+    OUTDIR = REPO_ROOT / "artifacts" / "skiasharp" / version / target_rid()
 
     if not SKIA_ROOT.exists():
         error("source code not found; checkout-deps first.")

@@ -3,11 +3,10 @@
 
   Responsibilities:
   - Resolve the RID set for one OS at a time (`AvaloniaAppHostTarget=windows|linux`).
-  - Link `apphost` and `singlefilehost` into `artifacts/avalonia-host/<TargetAvaloniaVersion>/<rid>/`.
+  - Link `apphost` and `singlefilehost` into `artifacts/avalonia-host/<version>/<rid>/`.
   - Produce artifact folders that can be consumed either by local OS-specific packing or by CI's aggregate `all` pack job.
 
   Required inputs:
-  - `TargetAvaloniaVersion`
   - `HostLibsRoot`
   - `AvaloniaNativeLibsRoot`
   - `AvaloniaAppHostTarget`
@@ -112,10 +111,10 @@
     <MSBuild Projects="$(MSBuildProjectFullPath)"
              Targets="_LinkAvaloniaAppHostForRid"
              BuildInParallel="false"
-             Properties="Configuration=$(Configuration);TargetAvaloniaVersion=$(TargetAvaloniaVersion);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);AvaloniaHostRid=%(_AvaloniaTargetRid.Identity);Sysroot=$(_ResolvedSysroot);AvaloniaExportsFile=$(_AvaloniaAppHostExportsFile)" />
+             Properties="Configuration=$(Configuration);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);AvaloniaHostRid=%(_AvaloniaTargetRid.Identity);Sysroot=$(_ResolvedSysroot);AvaloniaExportsFile=$(_AvaloniaAppHostExportsFile)" />
     <MSBuild Projects="$(MSBuildProjectFullPath)"
              Targets="_LinkAvaloniaSingleFileHostForRid"
              BuildInParallel="false"
-             Properties="Configuration=$(Configuration);TargetAvaloniaVersion=$(TargetAvaloniaVersion);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);AvaloniaHostRid=%(_AvaloniaTargetRid.Identity);Sysroot=$(_ResolvedSysroot);AvaloniaExportsFile=$(_AvaloniaSingleFileHostExportsFile)" />
+             Properties="Configuration=$(Configuration);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);AvaloniaHostRid=%(_AvaloniaTargetRid.Identity);Sysroot=$(_ResolvedSysroot);AvaloniaExportsFile=$(_AvaloniaSingleFileHostExportsFile)" />
   </Target>
 </Project>

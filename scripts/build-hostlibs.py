@@ -106,9 +106,15 @@ REPO_ROOT = SCRIPT_ROOT.parent
 RUNTIME_ROOT: Path
 OUTDIR: Path
 
-DEFAULT_VERSION = "10.0"
 DEFAULT_HOSTLIBS_FLAVOR = "default"
 NO_PGO_HOSTLIBS_FLAVOR = "no-pgo"
+
+
+def runtime_version() -> str:
+    deps = {}
+    with (REPO_ROOT / "DEPS").open(encoding="utf-8") as handle:
+        exec(handle.read(), deps)
+    return deps["runtime"]["version"]
 
 
 def get_rid() -> str:
@@ -434,11 +440,6 @@ ROOTFS_DIR:
         action="store_true",
         help="disable whole program optimization and native PGO",
     )
-    parser.add_argument(
-        "--version",
-        default=DEFAULT_VERSION,
-        help="dotnet/runtime version key in DEPS",
-    )
     parser.add_argument("--skip-build", action="store_true", help="skip build")
 
     return parser.parse_args()
@@ -449,12 +450,13 @@ def main():
     args = parse_args()
 
     global RUNTIME_ROOT, OUTDIR
-    RUNTIME_ROOT = REPO_ROOT / "repo" / f"runtime-{args.version}"
+    version = runtime_version()
+    RUNTIME_ROOT = REPO_ROOT / "repo" / f"runtime-{version}"
     OUTDIR = (
         REPO_ROOT
         / "artifacts"
         / "hostlibs"
-        / args.version
+        / version
         / get_hostlibs_flavor()
         / get_rid()
     )

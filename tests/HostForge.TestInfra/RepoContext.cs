@@ -15,12 +15,9 @@ static class InitMsBuild {
 
 public static class RepoContext
 {
-    public const string TargetAvaloniaVersionEnvironmentVariableName = "TargetAvaloniaVersion";
     public const string AvaloniaAppHostBasePackageId = "ChsBuffer.Avalonia.AppHost";
 
     public static string RepoRoot { get; } = LocateRepoRoot();
-
-    public static string? TargetAvaloniaVersion { get; } = ReadOptionalEnvironmentVariable(TargetAvaloniaVersionEnvironmentVariableName);
 
     public static string AvaloniaPackageVersion { get; } = ReadProperty("AvaloniaAppHostPackageVersion");
 
@@ -37,16 +34,6 @@ public static class RepoContext
 
     public static string ArtifactsTestRoot { get; } =
         Path.Combine(RepoRoot, "artifacts", "tmp", "build-tests");
-
-    public static string AppendTargetAvaloniaVersionProperty(string arguments)
-    {
-        if (string.IsNullOrWhiteSpace(TargetAvaloniaVersion))
-        {
-            return arguments;
-        }
-
-        return $"{arguments} -p:TargetAvaloniaVersion={TargetAvaloniaVersion}";
-    }
 
     public static string GetAvaloniaPackageId(string packageMode)
     {
@@ -86,7 +73,7 @@ public static class RepoContext
         {
             var project = new Project(
                 propsFile,
-                globalProperties: BuildGlobalProperties(),
+                globalProperties: null,
                 toolsVersion: null,
                 projectCollection: projectCollection,
                 loadSettings: ProjectLoadSettings.IgnoreMissingImports);
@@ -100,25 +87,6 @@ public static class RepoContext
         }
 
         return value;
-    }
-
-    private static Dictionary<string, string>? BuildGlobalProperties()
-    {
-        if (string.IsNullOrWhiteSpace(TargetAvaloniaVersion))
-        {
-            return null;
-        }
-
-        return new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            [TargetAvaloniaVersionEnvironmentVariableName] = TargetAvaloniaVersion
-        };
-    }
-
-    private static string? ReadOptionalEnvironmentVariable(string name)
-    {
-        string? value = Environment.GetEnvironmentVariable(name);
-        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
     private static string StripSemVerBuildMetadata(string version)

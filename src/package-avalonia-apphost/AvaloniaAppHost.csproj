@@ -56,7 +56,7 @@
     <MSBuild Projects="$(MSBuildProjectDirectory)\AvaloniaAppHost.Link.proj"
              Targets="LinkAvaloniaHosts"
              BuildInParallel="false"
-             Properties="Configuration=$(Configuration);TargetAvaloniaVersion=$(TargetAvaloniaVersion);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);AvaloniaAppHostTarget=$(AvaloniaAppHostPackageMode)" />
+             Properties="Configuration=$(Configuration);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);AvaloniaAppHostTarget=$(AvaloniaAppHostPackageMode)" />
   </Target>
 
   <Target Name="_CollectAvaloniaHostTemplates"

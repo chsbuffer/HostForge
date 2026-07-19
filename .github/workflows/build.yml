@@ -9,7 +9,7 @@ on:
 env:
   LINUX_SYSROOT_CACHE_KEY: linux-sysroot-bionic-amd64
 
-# Keep the job graph below in sync with the Mermaid workflow diagram in README.md.
+# Keep the job graph below in sync with the Mermaid workflow diagram in DEVELOPMENT.md.
 jobs:
   windows-hostlibs:
     runs-on: windows-2025-vs2026
@@ -18,22 +18,18 @@ jobs:
         include:
           - arch: x64
             rid: win-x64
-            runtime_version: "10.0"
             hostlibs_flavor: default
             build_args: ""
           - arch: arm64
             rid: win-arm64
-            runtime_version: "10.0"
             hostlibs_flavor: default
             build_args: ""
           - arch: x64
             rid: win-x64
-            runtime_version: "10.0"
             hostlibs_flavor: no-pgo
             build_args: "--no-pgo"
           - arch: arm64
             rid: win-arm64
-            runtime_version: "10.0"
             hostlibs_flavor: no-pgo
             build_args: "--no-pgo"
 
@@ -48,7 +44,7 @@ jobs:
         id: hostlibs_key
         shell: powershell
         run: |
-          $key = python .\scripts\cache_key.py --kind hostlibs --arch ${{ matrix.arch }} --os windows --runtime-version ${{ matrix.runtime_version }} --hostlibs-flavor ${{ matrix.hostlibs_flavor }}
+          $key = python .\scripts\cache_key.py --kind hostlibs --arch ${{ matrix.arch }} --os windows --hostlibs-flavor ${{ matrix.hostlibs_flavor }}
           "key=$key" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       # `lookup-only` is intentional here: `actions/cache` still runs its post step,
@@ -58,24 +54,24 @@ jobs:
         uses: actions/cache@v5
         with:
           lookup-only: true
-          path: artifacts\hostlibs\${{ matrix.runtime_version }}\${{ matrix.hostlibs_flavor }}\${{ matrix.rid }}
+          path: artifacts\hostlibs
           key: ${{ steps.hostlibs_key.outputs.key }}
 
       - name: Checkout runtime deps
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
         shell: powershell
-        run: python .\scripts\checkout-deps.py runtime ${{ matrix.runtime_version }}
+        run: python .\scripts\checkout-deps.py runtime
 
       - name: Build hostlibs for Windows
         shell: powershell
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
-        run: python .\scripts\build-hostlibs.py all -v --arch ${{ matrix.arch }} --version ${{ matrix.runtime_version }} ${{ matrix.build_args }}
+        run: python .\scripts\build-hostlibs.py all -v --arch ${{ matrix.arch }} ${{ matrix.build_args }}
 
       - name: Upload hostlibs artifact
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v6
         with:
-          name: hostlibs-${{ matrix.runtime_version }}-${{ matrix.hostlibs_flavor }}-${{ matrix.rid }}
+          name: hostlibs-${{ matrix.hostlibs_flavor }}-${{ matrix.rid }}
           path: artifacts\hostlibs
           if-no-files-found: error
 
@@ -91,18 +87,18 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Compute hostlibs cache key (10.0 default win-x64)
+      - name: Compute hostlibs cache key (default win-x64)
         id: hostlibs_key
         shell: powershell
         run: |
-          $key = python .\scripts\cache_key.py --kind hostlibs --arch x64 --os windows --runtime-version 10.0 --hostlibs-flavor default
+          $key = python .\scripts\cache_key.py --kind hostlibs --arch x64 --os windows --hostlibs-flavor default
           "key=$key" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Restore hostlibs cache (10.0 default win-x64)
+      - name: Restore hostlibs cache (default win-x64)
         uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
-          path: artifacts\hostlibs\10.0\default\win-x64
+          path: artifacts\hostlibs
           key: ${{ steps.hostlibs_key.outputs.key }}
 
       - name: Run matrix integration build
@@ -121,18 +117,18 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Compute hostlibs cache key (10.0 no-pgo win-x64)
+      - name: Compute hostlibs cache key (no-pgo win-x64)
         id: hostlibs_key
         shell: powershell
         run: |
-          $key = python .\scripts\cache_key.py --kind hostlibs --arch x64 --os windows --runtime-version 10.0 --hostlibs-flavor no-pgo
+          $key = python .\scripts\cache_key.py --kind hostlibs --arch x64 --os windows --hostlibs-flavor no-pgo
           "key=$key" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Restore hostlibs cache (10.0 no-pgo win-x64)
+      - name: Restore hostlibs cache (no-pgo win-x64)
         uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
-          path: artifacts\hostlibs\10.0\no-pgo\win-x64
+          path: artifacts\hostlibs
           key: ${{ steps.hostlibs_key.outputs.key }}
 
       - name: Pack static apphost
@@ -150,13 +146,6 @@ jobs:
     runs-on: windows-2025-vs2026
     needs:
       - windows-skia
-    strategy:
-      matrix:
-        include:
-          - avalonia_target: "11.0"
-            skiasharp_version: "2.88.9"
-          - avalonia_target: "12.0"
-            skiasharp_version: "3.119.2"
 
     steps:
       - name: Checkout repository
@@ -172,24 +161,24 @@ jobs:
         id: skia_key
         shell: powershell
         run: |
-          $key = python .\scripts\cache_key.py --kind skiasharp --skiasharp-version ${{ matrix.skiasharp_version }} --arch x64 --os windows
+          $key = python .\scripts\cache_key.py --kind skiasharp --arch x64 --os windows
           "key=$key" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Restore skia cache (win-x64)
         uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
-          path: artifacts\skiasharp\${{ matrix.skiasharp_version }}\win-x64
+          path: artifacts\skiasharp
           key: ${{ steps.skia_key.outputs.key }}
 
       - name: Pack skia static
         shell: powershell
-        run: python .\scripts\pipeline.py pack-skia-static -v --target ${{ matrix.avalonia_target }} --rid win-x64
+        run: python .\scripts\pipeline.py pack-skia-static -v --rid win-x64
 
       - name: Upload skia static package
         uses: actions/upload-artifact@v6
         with:
-          name: nuget-packages-skia-static-${{ matrix.avalonia_target }}-win-x64
+          name: nuget-packages-skia-static-win-x64
           path: artifacts\packages\Release
           if-no-files-found: error
 
@@ -200,16 +189,8 @@ jobs:
         include:
           - arch: x64
             rid: win-x64
-            skiasharp_version: 2.88.9
           - arch: arm64
             rid: win-arm64
-            skiasharp_version: 2.88.9
-          - arch: x64
-            rid: win-x64
-            skiasharp_version: 3.119.2
-          - arch: arm64
-            rid: win-arm64
-            skiasharp_version: 3.119.2
 
     steps:
       - name: Checkout repository
@@ -225,7 +206,7 @@ jobs:
         id: skia_key
         shell: powershell
         run: |
-          $key = python .\scripts\cache_key.py --kind skiasharp --skiasharp-version ${{ matrix.skiasharp_version }} --arch ${{ matrix.arch }} --os windows
+          $key = python .\scripts\cache_key.py --kind skiasharp --arch ${{ matrix.arch }} --os windows
           "key=$key" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Lookup skia cache
@@ -233,25 +214,25 @@ jobs:
         uses: actions/cache@v5
         with:
           lookup-only: true
-          path: artifacts\skiasharp\${{ matrix.skiasharp_version }}\${{ matrix.rid }}
+          path: artifacts\skiasharp
           key: ${{ steps.skia_key.outputs.key }}
 
       - name: Checkout Skia deps
         if: steps.cache_skia.outputs.cache-hit != 'true'
         shell: powershell
-        run: python .\scripts\checkout-deps.py skiasharp ${{ matrix.skiasharp_version }}
+        run: python .\scripts\checkout-deps.py skiasharp
 
       - name: Build SkiaSharp and HarfBuzz for Windows
         shell: powershell
         if: steps.cache_skia.outputs.cache-hit != 'true'
-        run: python .\scripts\build-skia-harfbuzz.py -v -a ${{ matrix.arch }} --os windows --version ${{ matrix.skiasharp_version }}
+        run: python .\scripts\build-skia-harfbuzz.py -v -a ${{ matrix.arch }} --os windows
 
       - name: Upload skiasharp artifact
         if: steps.cache_skia.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v6
         with:
-          name: skiasharp-${{ matrix.skiasharp_version }}-${{ matrix.rid }}
-          path: artifacts\skiasharp\${{ matrix.skiasharp_version }}\${{ matrix.rid }}
+          name: skiasharp-${{ matrix.rid }}
+          path: artifacts\skiasharp
           if-no-files-found: error
 
   windows-link-avalonia:
@@ -259,14 +240,6 @@ jobs:
     needs:
       - windows-hostlibs
       - windows-skia
-    strategy:
-      matrix:
-        include:
-          - avalonia_target: "11.0"
-            skiasharp_version: "2.88.9"
-          - avalonia_target: "12.0"
-            skiasharp_version: "3.119.2"
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -281,64 +254,64 @@ jobs:
         id: hostlibs_keys
         shell: powershell
         run: |
-          $keyX64 = python .\scripts\cache_key.py --kind hostlibs --arch x64 --os windows --runtime-version 10.0 --hostlibs-flavor default
+          $keyX64 = python .\scripts\cache_key.py --kind hostlibs --arch x64 --os windows --hostlibs-flavor default
           "key_x64=$keyX64" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-          $keyArm64 = python .\scripts\cache_key.py --kind hostlibs --arch arm64 --os windows --runtime-version 10.0 --hostlibs-flavor default
+          $keyArm64 = python .\scripts\cache_key.py --kind hostlibs --arch arm64 --os windows --hostlibs-flavor default
           "key_arm64=$keyArm64" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Restore hostlibs cache (10.0 win-x64)
+      - name: Restore hostlibs cache (win-x64)
         uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
-          path: artifacts\hostlibs\10.0\default\win-x64
+          path: artifacts\hostlibs
           key: ${{ steps.hostlibs_keys.outputs.key_x64 }}
 
-      - name: Restore hostlibs cache (10.0 win-arm64)
+      - name: Restore hostlibs cache (win-arm64)
         uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
-          path: artifacts\hostlibs\10.0\default\win-arm64
+          path: artifacts\hostlibs
           key: ${{ steps.hostlibs_keys.outputs.key_arm64 }}
 
       - name: Compute skia cache keys
         id: skia_keys
         shell: powershell
         run: |
-          $keySkiaX64 = python .\scripts\cache_key.py --kind skiasharp --skiasharp-version ${{ matrix.skiasharp_version }} --arch x64 --os windows
+          $keySkiaX64 = python .\scripts\cache_key.py --kind skiasharp --arch x64 --os windows
           "key_skia_x64=$keySkiaX64" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-          $keySkiaArm64 = python .\scripts\cache_key.py --kind skiasharp --skiasharp-version ${{ matrix.skiasharp_version }} --arch arm64 --os windows
+          $keySkiaArm64 = python .\scripts\cache_key.py --kind skiasharp --arch arm64 --os windows
           "key_skia_arm64=$keySkiaArm64" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Restore skia cache (win-x64)
         uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
-          path: artifacts\skiasharp\${{ matrix.skiasharp_version }}\win-x64
+          path: artifacts\skiasharp
           key: ${{ steps.skia_keys.outputs.key_skia_x64 }}
 
       - name: Restore skia cache (win-arm64)
         uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
-          path: artifacts\skiasharp\${{ matrix.skiasharp_version }}\win-arm64
+          path: artifacts\skiasharp
           key: ${{ steps.skia_keys.outputs.key_skia_arm64 }}
 
       - name: Link Avalonia apphost templates for Windows
         shell: powershell
-        run: python .\scripts\pipeline.py link-avalonia -v --target ${{ matrix.avalonia_target }} --os windows
+        run: python .\scripts\pipeline.py link-avalonia -v --os windows
 
       - name: Upload Windows Avalonia apphost artifact
         uses: actions/upload-artifact@v6
         with:
-          name: avalonia-host-${{ matrix.avalonia_target }}-windows
-          path: artifacts\avalonia-host\${{ matrix.avalonia_target }}
+          name: avalonia-host-windows
+          path: artifacts\avalonia-host
           if-no-files-found: error
 
       - name: Run Avalonia App Host package tests
         shell: powershell
-        run: python .\scripts\pipeline.py avalonia-test -v --target ${{ matrix.avalonia_target }}
+        run: python .\scripts\pipeline.py avalonia-test -v
 
   linux-sysroot:
     runs-on: ubuntu-latest
@@ -376,7 +349,7 @@ jobs:
       - name: Compute hostlibs cache key
         id: hostlibs_key
         run: |
-          key=$(python ./scripts/cache_key.py --kind hostlibs --arch x64 --os linux --runtime-version 10.0 --hostlibs-flavor default)
+          key=$(python ./scripts/cache_key.py --kind hostlibs --arch x64 --os linux --hostlibs-flavor default)
           echo "key=$key" >> "$GITHUB_OUTPUT"
 
       - name: Lookup hostlibs cache
@@ -384,29 +357,30 @@ jobs:
         uses: actions/cache@v5
         with:
           lookup-only: true
-          path: artifacts/hostlibs/10.0/default/linux-x64
+          path: artifacts/hostlibs
           key: ${{ steps.hostlibs_key.outputs.key }}
 
       - name: Checkout runtime deps
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
-        run: python ./scripts/checkout-deps.py runtime 10.0
+        run: python ./scripts/checkout-deps.py runtime
 
       - name: Install runtime native dependencies
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
-        working-directory: ./repo/runtime-10.0
-        run: sudo ./eng/common/native/install-dependencies.sh linux
+        run: |
+          runtime_dir=$(python ./scripts/checkout-deps.py --print-source-dir runtime)
+          sudo "$runtime_dir/eng/common/native/install-dependencies.sh" linux
 
       - name: Build hostlibs for Linux x64
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
         env:
           ROOTFS_DIR: ${{ steps.restore_sysroot.outputs.sysroot-path }}
-        run: python ./scripts/build-hostlibs.py -v --os linux --arch x64 --version 10.0
+        run: python ./scripts/build-hostlibs.py -v --os linux --arch x64
 
       - name: Upload hostlibs artifact
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v6
         with:
-          name: hostlibs-10.0-default-linux-x64
+          name: hostlibs-default-linux-x64
           path: artifacts/hostlibs
           if-no-files-found: error
 
@@ -433,17 +407,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y llvm
 
-      - name: Compute hostlibs cache key (10.0 linux-x64)
+      - name: Compute hostlibs cache key (linux-x64)
         id: hostlibs_key
         run: |
-          key=$(python ./scripts/cache_key.py --kind hostlibs --arch x64 --os linux --runtime-version 10.0 --hostlibs-flavor default)
+          key=$(python ./scripts/cache_key.py --kind hostlibs --arch x64 --os linux --hostlibs-flavor default)
           echo "key=$key" >> "$GITHUB_OUTPUT"
 
-      - name: Restore hostlibs cache (10.0 linux-x64)
+      - name: Restore hostlibs cache (linux-x64)
         uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
-          path: artifacts/hostlibs/10.0/default/linux-x64
+          path: artifacts/hostlibs
           key: ${{ steps.hostlibs_key.outputs.key }}
 
       - name: Run matrix integration build
@@ -453,15 +427,6 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - linux-sysroot
-    strategy:
-      matrix:
-        include:
-          - rid: linux-x64
-            arch: x64
-            skiasharp_version: 2.88.9
-          - rid: linux-x64
-            arch: x64
-            skiasharp_version: 3.119.2
 
     steps:
       - name: Checkout repository
@@ -479,7 +444,7 @@ jobs:
       - name: Compute skia cache key
         id: skia_key
         run: |
-          key=$(python ./scripts/cache_key.py --kind skiasharp --skiasharp-version ${{ matrix.skiasharp_version }} --arch ${{ matrix.arch }} --os linux --clang clang)
+          key=$(python ./scripts/cache_key.py --kind skiasharp --arch x64 --os linux --clang clang)
           echo "key=$key" >> "$GITHUB_OUTPUT"
 
       - name: Lookup skia cache
@@ -487,12 +452,12 @@ jobs:
         uses: actions/cache@v5
         with:
           lookup-only: true
-          path: artifacts/skiasharp/${{ matrix.skiasharp_version }}/${{ matrix.rid }}
+          path: artifacts/skiasharp
           key: ${{ steps.skia_key.outputs.key }}
 
       - name: Checkout Skia deps
         if: steps.cache_skia.outputs.cache-hit != 'true'
-        run: python ./scripts/checkout-deps.py skiasharp ${{ matrix.skiasharp_version }}
+        run: python ./scripts/checkout-deps.py skiasharp
 
       - name: Build SkiaSharp and HarfBuzz for Linux
         if: steps.cache_skia.outputs.cache-hit != 'true'
@@ -500,14 +465,14 @@ jobs:
           CC: clang
           CXX: clang++
           ROOTFS_DIR: ${{ steps.restore_sysroot.outputs.sysroot-path }}
-        run: python ./scripts/build-skia-harfbuzz.py -v --os linux --arch ${{ matrix.arch }} --version ${{ matrix.skiasharp_version }}
+        run: python ./scripts/build-skia-harfbuzz.py -v --os linux --arch x64
 
       - name: Upload skia artifact
         if: steps.cache_skia.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v6
         with:
-          name: skiasharp-${{ matrix.skiasharp_version }}-${{ matrix.rid }}
-          path: artifacts/skiasharp/${{ matrix.skiasharp_version }}/${{ matrix.rid }}
+          name: skiasharp-linux-x64
+          path: artifacts/skiasharp
           if-no-files-found: error
 
   linux-link-avalonia:
@@ -516,14 +481,6 @@ jobs:
       - linux-sysroot
       - linux-hostlibs
       - linux-skia
-    strategy:
-      matrix:
-        include:
-          - avalonia_target: "11.0"
-            skiasharp_version: "2.88.9"
-          - avalonia_target: "12.0"
-            skiasharp_version: "3.119.2"
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -540,40 +497,40 @@ jobs:
       - name: Compute hostlibs cache key
         id: hostlibs_key
         run: |
-          key=$(python ./scripts/cache_key.py --kind hostlibs --arch x64 --os linux --runtime-version 10.0 --hostlibs-flavor default)
+          key=$(python ./scripts/cache_key.py --kind hostlibs --arch x64 --os linux --hostlibs-flavor default)
           echo "key=$key" >> "$GITHUB_OUTPUT"
 
-      - name: Restore hostlibs cache (10.0 linux-x64)
+      - name: Restore hostlibs cache (linux-x64)
         uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
-          path: artifacts/hostlibs/10.0/default/linux-x64
+          path: artifacts/hostlibs
           key: ${{ steps.hostlibs_key.outputs.key }}
 
       - name: Compute skia cache key
         id: skia_key
         run: |
-          key=$(python ./scripts/cache_key.py --kind skiasharp --skiasharp-version ${{ matrix.skiasharp_version }} --arch x64 --os linux --clang clang)
+          key=$(python ./scripts/cache_key.py --kind skiasharp --arch x64 --os linux --clang clang)
           echo "key=$key" >> "$GITHUB_OUTPUT"
 
       - name: Restore skia cache (linux-x64)
         uses: actions/cache@v5
         with:
           fail-on-cache-miss: true
-          path: artifacts/skiasharp/${{ matrix.skiasharp_version }}/linux-x64
+          path: artifacts/skiasharp
           key: ${{ steps.skia_key.outputs.key }}
 
       - name: Link Avalonia apphost templates for Linux
-        run: python ./scripts/pipeline.py link-avalonia -v --target ${{ matrix.avalonia_target }} --os linux --sysroot "${{ steps.restore_sysroot.outputs.sysroot-path }}"
+        run: python ./scripts/pipeline.py link-avalonia -v --os linux --sysroot "${{ steps.restore_sysroot.outputs.sysroot-path }}"
 
       - name: Run Avalonia App Host package tests
-        run: python ./scripts/pipeline.py avalonia-test -v --target ${{ matrix.avalonia_target }} --sysroot "${{ steps.restore_sysroot.outputs.sysroot-path }}"
+        run: python ./scripts/pipeline.py avalonia-test -v --sysroot "${{ steps.restore_sysroot.outputs.sysroot-path }}"
 
       - name: Upload Linux Avalonia apphost artifact
         uses: actions/upload-artifact@v6
         with:
-          name: avalonia-host-${{ matrix.avalonia_target }}-linux
-          path: artifacts/avalonia-host/${{ matrix.avalonia_target }}
+          name: avalonia-host-linux
+          path: artifacts/avalonia-host
           if-no-files-found: error
 
   pack-avalonia:
@@ -581,12 +538,6 @@ jobs:
     needs:
       - windows-link-avalonia
       - linux-link-avalonia
-    strategy:
-      matrix:
-        include:
-          - avalonia_target: "11.0"
-          - avalonia_target: "12.0"
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -597,22 +548,22 @@ jobs:
       - name: Download Windows Avalonia apphost artifact
         uses: actions/download-artifact@v8.0.1
         with:
-          name: avalonia-host-${{ matrix.avalonia_target }}-windows
-          path: artifacts\avalonia-host\${{ matrix.avalonia_target }}
+          name: avalonia-host-windows
+          path: artifacts\avalonia-host
 
       - name: Download Linux Avalonia apphost artifact
         uses: actions/download-artifact@v8.0.1
         with:
-          name: avalonia-host-${{ matrix.avalonia_target }}-linux
-          path: artifacts\avalonia-host\${{ matrix.avalonia_target }}
+          name: avalonia-host-linux
+          path: artifacts\avalonia-host
 
-      - name: Pack Avalonia apphost ${{ matrix.avalonia_target }}
+      - name: Pack Avalonia apphost
         shell: powershell
-        run: python .\scripts\pipeline.py pack-avalonia -v --target ${{ matrix.avalonia_target }} --mode all
+        run: python .\scripts\pipeline.py pack-avalonia -v --mode all
 
       - name: Upload nuget packages
         uses: actions/upload-artifact@v6
         with:
-          name: nuget-packages-avalonia-${{ matrix.avalonia_target }}
+          name: nuget-packages-avalonia
           path: artifacts\packages\Release
           if-no-files-found: error

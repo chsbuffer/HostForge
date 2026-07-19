@@ -148,7 +148,6 @@ def run_matrix_test():
 def run_avalonia_test():
     header("Run avalonia apphost test")
     env = dict(os.environ)
-    env["TargetAvaloniaVersion"] = args.target
     if args.sysroot:
         env["ROOTFS_DIR"] = args.sysroot
     cmd = ["dotnet", "test", "--project", AVALONIA_TEST_CSPROJ, "-c", "Release"]
@@ -158,7 +157,6 @@ def run_avalonia_test():
 
 def link_avalonia_apphost():
     header("Link avalonia apphost templates")
-    target = [f"-p:TargetAvaloniaVersion={args.target}"]
     os_arg = [f"-p:AvaloniaAppHostTarget={args.os}"]
     hostlibs_flavor = ["-p:HostLibsFlavor=default"]
     sysroot = [f"-p:Sysroot={args.sysroot}"] if args.sysroot else []
@@ -168,7 +166,6 @@ def link_avalonia_apphost():
             "msbuild",
             AVALONIA_APPHOST_LINK_PROJ,
             "/t:LinkAvaloniaHosts",
-            *target,
             *os_arg,
             *hostlibs_flavor,
             *sysroot,
@@ -179,7 +176,6 @@ def link_avalonia_apphost():
 
 def pack_avalonia_apphost():
     header("Pack avalonia apphost nuget")
-    target = [f"-p:TargetAvaloniaVersion={args.target}"]
     mode = [f"-p:AvaloniaAppHostPackageMode={args.mode}"]
     hostlibs_flavor = ["-p:HostLibsFlavor=default"]
     execv(
@@ -187,7 +183,6 @@ def pack_avalonia_apphost():
             "dotnet",
             "pack",
             AVALONIA_APPHOST_CSPROJ,
-            *target,
             *mode,
             *hostlibs_flavor,
             f"-v:{dotnet_verbosity()}",
@@ -213,14 +208,12 @@ def pack_static_apphost():
 
 def pack_skiasharp_static():
     header("Pack skiasharp static nuget")
-    target = [f"-p:TargetAvaloniaVersion={args.target}"]
     rid = [f"-p:AvaloniaHostRid={args.rid}"]
     execv(
         [
             "dotnet",
             "pack",
             SKIASHARP_STATIC_CSPROJ,
-            *target,
             *rid,
             f"-v:{dotnet_verbosity()}",
         ]
@@ -268,12 +261,6 @@ def parse_args():
         "avalonia-test", help="run avalonia apphost integration test only"
     )
     avalonia_test_parser.add_argument(
-        "--target",
-        choices=["11.0", "12.0"],
-        default="11.0",
-        help="Target Avalonia version. This decides skiasharp version and changes output package version",
-    )
-    avalonia_test_parser.add_argument(
         "--sysroot",
         help="optional sysroot path exposed to tests as ROOTFS_DIR",
     )
@@ -284,12 +271,6 @@ def parse_args():
 
     link_avalonia_parser = subparsers.add_parser(
         "link-avalonia", help="link avalonia apphost templates only"
-    )
-    link_avalonia_parser.add_argument(
-        "--target",
-        choices=["11.0", "12.0"],
-        default="11.0",
-        help="Target Avalonia version. This decides skiasharp version and changes output package version",
     )
     link_avalonia_parser.add_argument(
         "--os",
@@ -314,12 +295,6 @@ def parse_args():
 
     pack_avalonia_parser = subparsers.add_parser(
         "pack-avalonia", help="pack avalonia apphost only"
-    )
-    pack_avalonia_parser.add_argument(
-        "--target",
-        choices=["11.0", "12.0"],
-        default="11.0",
-        help="Target Avalonia version. This decides skiasharp version and changes output package version",
     )
     pack_avalonia_parser.add_argument(
         "--mode",
@@ -348,12 +323,6 @@ def parse_args():
 
     pack_skiasharp_parser = subparsers.add_parser(
         "pack-skia-static", help="pack skiasharp static only"
-    )
-    pack_skiasharp_parser.add_argument(
-        "--target",
-        choices=["11.0", "12.0"],
-        default="11.0",
-        help="Target Avalonia version. This decides the bundled SkiaSharp version.",
     )
     pack_skiasharp_parser.add_argument(
         "--rid",

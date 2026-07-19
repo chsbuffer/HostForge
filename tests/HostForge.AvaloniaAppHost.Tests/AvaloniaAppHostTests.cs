@@ -13,7 +13,7 @@ public class AvaloniaAppHostTests
     }
 
     [Test]
-    public async Task PackageContract_MatchesCurrentTargetAvaloniaVersion()
+    public async Task PackageContract_MatchesCurrentAvaloniaVersion()
     {
         string nuspecPath = Path.Combine(
             RepoContext.RepoRoot,
@@ -139,7 +139,7 @@ public class AvaloniaAppHostTests
     {
         return await CommandRunner.RunAsync(
             "dotnet",
-            RepoContext.AppendTargetAvaloniaVersionProperty($"{verb} \"{projectFilePath}\" -c Release -v:minimal"),
+            $"{verb} \"{projectFilePath}\" -c Release -v:minimal",
             workingDirectory);
     }
 

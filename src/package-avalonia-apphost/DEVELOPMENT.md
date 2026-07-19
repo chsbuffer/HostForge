@@ -6,12 +6,12 @@ This file is for repository maintainers. The NuGet README is intentionally limit
 
 Linked host templates are generated under:
 
-- `artifacts/avalonia-host/<TargetAvaloniaVersion>/<rid>/`
+- `artifacts/avalonia-host/<version>/<rid>/`
 
 Examples:
 
-- `artifacts/avalonia-host/11.0/win-x64/apphost.exe`
-- `artifacts/avalonia-host/11.0/linux-x64/singlefilehost`
+- `artifacts/avalonia-host/12.0/win-x64/apphost.exe`
+- `artifacts/avalonia-host/12.0/linux-x64/singlefilehost`
 
 ## Projects
 
@@ -43,21 +43,21 @@ Examples:
 Link one OS:
 
 ```powershell
-python .\scripts\pipeline.py link-avalonia -v --target 11.0 --os windows
-python .\scripts\pipeline.py link-avalonia -v --target 11.0 --os linux --sysroot repo/rootfs/x64
+python .\scripts\pipeline.py link-avalonia -v --os windows
+python .\scripts\pipeline.py link-avalonia -v --os linux --sysroot repo/rootfs/x64
 ```
 
 Pack one OS:
 
 ```powershell
-python .\scripts\pipeline.py pack-avalonia -v --target 11.0 --mode windows
-python .\scripts\pipeline.py pack-avalonia -v --target 11.0 --mode linux
+python .\scripts\pipeline.py pack-avalonia -v --mode windows
+python .\scripts\pipeline.py pack-avalonia -v --mode linux
 ```
 
 Pack aggregate CI-style package:
 
 ```powershell
-python .\scripts\pipeline.py pack-avalonia -v --target 11.0 --mode all
+python .\scripts\pipeline.py pack-avalonia -v --mode all
 ```
 
 `all` should only be used after downloading or generating both Windows and Linux artifacts.

@@ -43,8 +43,7 @@ public static class AvaloniaPackageBuilder
 
             CommandResult result = await CommandRunner.RunAsync(
                 "dotnet",
-                RepoContext.AppendTargetAvaloniaVersionProperty(
-                    $"pack \"{project}\" -c Release -v:minimal -p:AvaloniaAppHostPackageMode={packageMode}{BuildSysrootPropertyArgument()}"),
+                $"pack \"{project}\" -c Release -v:minimal -p:AvaloniaAppHostPackageMode={packageMode}{BuildSysrootPropertyArgument()}",
                 RepoContext.RepoRoot,
                 cancellationToken);
 

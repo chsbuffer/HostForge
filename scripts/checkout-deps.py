@@ -94,12 +94,16 @@ def resolve_checkouts() -> list[tuple[str, str, str, Path]]:
     if args.target not in available_targets:
         error(f"Unknown target: {args.target}")
 
-    versions = deps[args.target]
-    if args.version not in versions:
-        error(f"Unknown version for {args.target}: {args.version}")
+    target_deps = deps[args.target]
+    args.version = target_deps["version"]
+    repositories = {
+        name: commit
+        for name, commit in target_deps.items()
+        if name != "version"
+    }
 
     checkouts = []
-    for name, commit in versions[args.version].items():
+    for name, commit in repositories.items():
         directory = CHECKOUT_ROOT / f"{name}-{args.version}"
         checkouts.append((name, urls[name], commit, directory))
     return checkouts
@@ -151,7 +155,8 @@ def ensure_worktree(mirror_dir: Path, commit: str, directory: Path):
         head = proc.stdout.strip()
         if head == commit:
             return
-        error(f"Existing worktree has different commit: {directory}")
+        execv(["git", "checkout", "--detach", commit], cwd=directory)
+        return
 
     proc = subprocess.run(
         ["git", "cat-file", "-e", f"{commit}^{{commit}}"],
@@ -216,15 +221,17 @@ def parse_args():
     parser.add_argument(
         "--list",
         action="store_true",
-        help="list available target/version combinations",
+        help="list configured target versions",
+    )
+    parser.add_argument(
+        "--print-source-dir",
+        action="store_true",
+        help="print configured source directory without checking it out",
     )
     parser.add_argument(
         "target",
         nargs="?",
         help="checkout target in DEPS, such as runtime or skiasharp",
-    )
-    parser.add_argument(
-        "version", nargs="?", help="version key under the target in DEPS"
     )
     return parser.parse_args()
 
@@ -236,11 +243,15 @@ def main():
         deps = parse_file_to_dict(DEPS_FILE)
         targets = deps.get("targets", [])
         for target in targets:
-            versions = deps.get(target, {})
-            print(f"{target}: {', '.join(versions.keys())}")
+            target_deps = deps.get(target, {})
+            print(f"{target}: {target_deps['version']}")
         return
-    if not args.target or not args.version:
-        error("target and version are required unless --list is specified")
+    if not args.target:
+        error("target is required unless --list is specified")
+    if args.print_source_dir:
+        for _, _, _, directory in resolve_checkouts():
+            print(directory)
+        return
     args.func()
 
 

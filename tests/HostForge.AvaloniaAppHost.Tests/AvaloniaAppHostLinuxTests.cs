@@ -22,7 +22,7 @@ public class AvaloniaAppHostLinuxTests
 
         CommandResult result = await CommandRunner.RunAsync(
             "dotnet",
-            RepoContext.AppendTargetAvaloniaVersionProperty($"publish \"{project.ProjectFilePath}\" -c Release -r linux-x64 -v:minimal"),
+            $"publish \"{project.ProjectFilePath}\" -c Release -r linux-x64 -v:minimal",
             project.ProjectDirectory);
 
         AssertEx.Success(result, "linux-x64-publish");
@@ -65,7 +65,7 @@ public class AvaloniaAppHostLinuxTests
 
                 CommandResult result = await CommandRunner.RunAsync(
                     "dotnet",
-                    RepoContext.AppendTargetAvaloniaVersionProperty($"{testCase.Verb} \"{project.ProjectFilePath}\" -c Release -r linux-x64 -v:minimal"),
+                    $"{testCase.Verb} \"{project.ProjectFilePath}\" -c Release -r linux-x64 -v:minimal",
                     project.ProjectDirectory);
 
                 AssertEx.Success(result, testCase.Name);

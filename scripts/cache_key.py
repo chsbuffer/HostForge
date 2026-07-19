@@ -72,16 +72,15 @@ def hostlibs_cache_key(
     deps_file: Path,
     os_name: str,
     arch: str,
-    runtime_version: str,
     hostlibs_flavor: str = "default",
     clang_path: str | None = None,
 ) -> tuple[str, list[str]]:
     deps = load_deps(deps_file)
-    runtime_versions = deps.get("runtime", {})
-    if runtime_version not in runtime_versions:
-        raise CacheKeyError(f"Unknown runtime version: {runtime_version}")
-
-    runtime_commit = runtime_versions[runtime_version]["runtime"]
+    entry = deps.get("runtime", {})
+    runtime_version = entry.get("version")
+    runtime_commit = entry.get("runtime")
+    if not runtime_version or not runtime_commit:
+        raise CacheKeyError("DEPS runtime entry must define version and runtime")
     inputs = [
         f"os={os_name}",
         f"arch={arch}",
@@ -105,17 +104,15 @@ def skiasharp_cache_key(
     deps_file: Path,
     os_name: str,
     arch: str,
-    skiasharp_version: str,
     clang_path: str | None = None,
     gcc_path: str | None = None,
 ) -> tuple[str, list[str]]:
     deps = load_deps(deps_file)
-    skia_versions = deps.get("skiasharp", {})
-    if skiasharp_version not in skia_versions:
-        raise CacheKeyError(f"Unknown skiasharp version: {skiasharp_version}")
-
-    entry = skia_versions[skiasharp_version]
-    skia_commit = entry["skia"]
+    entry = deps.get("skiasharp", {})
+    skiasharp_version = entry.get("version")
+    skia_commit = entry.get("skia")
+    if not skiasharp_version or not skia_commit:
+        raise CacheKeyError("DEPS skiasharp entry must define version and skia")
     inputs = [
         f"os={os_name}",
         f"arch={arch}",
@@ -146,8 +143,6 @@ def parse_args():
     parser.add_argument("--kind", choices=["hostlibs", "skiasharp"], required=True)
     parser.add_argument("--arch", choices=["x64", "arm64"], required=True)
     parser.add_argument("--os", choices=["windows", "linux"], default="windows")
-    parser.add_argument("--runtime-version", default=None)
-    parser.add_argument("--skiasharp-version", default=None)
     parser.add_argument(
         "--hostlibs-flavor",
         choices=["default", "no-pgo"],
@@ -174,16 +169,14 @@ def parse_args():
 
 def main():
     args = parse_args()
-    deps_file = Path(__file__).resolve().parent.parent / "DEPS"
+    repo_root = Path(__file__).resolve().parent.parent
+    deps_file = repo_root / "DEPS"
     try:
         if args.kind == "hostlibs":
-            if not args.runtime_version:
-                raise CacheKeyError("--runtime-version is required for hostlibs")
             key, inputs = hostlibs_cache_key(
                 deps_file=deps_file,
                 os_name=args.os,
                 arch=args.arch,
-                runtime_version=args.runtime_version,
                 hostlibs_flavor=args.hostlibs_flavor,
                 clang_path=args.clang,
             )
@@ -191,13 +184,10 @@ def main():
             return 0
 
         if args.kind == "skiasharp":
-            if not args.skiasharp_version:
-                raise CacheKeyError("--skiasharp-version is required for skiasharp")
             key, inputs = skiasharp_cache_key(
                 deps_file=deps_file,
                 os_name=args.os,
                 arch=args.arch,
-                skiasharp_version=args.skiasharp_version,
                 clang_path=args.clang,
                 gcc_path=args.gcc,
             )

@@ -1,38 +1,24 @@
 <Project>
 
   <PropertyGroup>
-    <TargetAvaloniaVersion Condition="'$(TargetAvaloniaVersion)' == ''">11.0</TargetAvaloniaVersion>
-    <AvaloniaAppHostPackageVersionMajor>0</AvaloniaAppHostPackageVersionMajor>
-    <AvaloniaAppHostPackageVersionPrev>preview.5</AvaloniaAppHostPackageVersionPrev>
-  </PropertyGroup>
-
-  <Choose>
-    <When Condition="'$(TargetAvaloniaVersion)' == '11.0'">
-      <PropertyGroup>
-        <AvaloniaVersion>11.3.12</AvaloniaVersion>
-        <SkiaSharpVersion>2.88.9</SkiaSharpVersion>
-        <HarfBuzzVersion>7.3.0</HarfBuzzVersion>
-      </PropertyGroup>
-    </When>
-    <When Condition="'$(TargetAvaloniaVersion)' == '12.0'">
-      <PropertyGroup>
-        <AvaloniaVersion>12.0.1</AvaloniaVersion>
-        <SkiaSharpVersion>3.119.2</SkiaSharpVersion>
-        <HarfBuzzVersion>8.3.1.1</HarfBuzzVersion>
-      </PropertyGroup>
-    </When>
-  </Choose>
-
-  <PropertyGroup>
-    <AvaloniaAppHostPackageVersionMeta>skiasharp-v$(SkiaSharpVersion)-harfbuzz-v$(HarfBuzzVersion)</AvaloniaAppHostPackageVersionMeta>
-
-    <AvaloniaAppHostPackageVersion>$(TargetAvaloniaVersion).$(AvaloniaAppHostPackageVersionMajor)</AvaloniaAppHostPackageVersion>
-    <AvaloniaAppHostPackageVersion Condition="'$(AvaloniaAppHostPackageVersionPrev)' != ''">$(AvaloniaAppHostPackageVersion)-$(AvaloniaAppHostPackageVersionPrev)</AvaloniaAppHostPackageVersion>
-    <AvaloniaAppHostPackageVersion>$(AvaloniaAppHostPackageVersion)+$(AvaloniaAppHostPackageVersionMeta)</AvaloniaAppHostPackageVersion>
+    <AvaloniaVersion>12.1.0</AvaloniaVersion>
+    <SkiaSharpVersion>3.119.4</SkiaSharpVersion>
+    <HarfBuzzVersion>8.3.1.5</HarfBuzzVersion>
+    <HostLibsVersion>10.0.10</HostLibsVersion>
   </PropertyGroup>
 
   <PropertyGroup>
-    <HostLibsVersion>10.0</HostLibsVersion>
+    <TargetAvaloniaVersion>12.0</TargetAvaloniaVersion>
+    <_Major>0</_Major>
+    <_Preview>preview.5</_Preview>
+    <_Meta>runtime-v$(HostLibsVersion)-skiasharp-v$(SkiaSharpVersion)-harfbuzz-v$(HarfBuzzVersion)</_Meta>
+
+    <AvaloniaAppHostPackageVersion>$(TargetAvaloniaVersion).$(_Major)</AvaloniaAppHostPackageVersion>
+    <AvaloniaAppHostPackageVersion Condition="'$(_Preview)' != ''">$(AvaloniaAppHostPackageVersion)-$(_Preview)</AvaloniaAppHostPackageVersion>
+    <AvaloniaAppHostPackageVersion>$(AvaloniaAppHostPackageVersion)+$(_Meta)</AvaloniaAppHostPackageVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <HostLibsFlavor Condition="'$(HostLibsFlavor)' == ''">default</HostLibsFlavor>
     <RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>

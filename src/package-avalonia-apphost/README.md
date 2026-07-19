@@ -12,12 +12,11 @@ Supported template RIDs:
 
 ## Package version compatibility
 
-- `11.0.0`: supports Avalonia 11 and is prelinked against `SkiaSharp 2.88.9` + `HarfBuzz 7.3.0`
-- `12.0.0`: supports Avalonia 12 and is prelinked against `SkiaSharp 3.119.2` + `HarfBuzz 8.3.1`
+- `12.0.0`: supports Avalonia 12 and is prelinked against `SkiaSharp 3.119.4` + `HarfBuzz 8.3.1.5`
 
 ## Windows rendering note
 
-`AngleEgl` is not statically linked by this package. Avalonia 11 Win32 commonly defaults to `AngleEgl, Software`, so removing `av_libglesv2.dll` may leave only software rendering available.
+`AngleEgl` is not statically linked by this package. Avalonia on Windows commonly defaults to `AngleEgl, Software`, so removing `av_libglesv2.dll` may leave only software rendering available.
 
 If you want to allow non-ANGLE backends instead of shipping `av_libglesv2.dll`, configure explicit rendering fallback order:
 

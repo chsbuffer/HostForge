@@ -6,7 +6,6 @@ Apphost and single-file host templates for Avalonia, prelinked against SkiaSharp
 Supported template targets
 --------------------------
 
-- Avalonia 11
 - Avalonia 12
 - .NET 10.0
 - win-x64
@@ -16,15 +15,14 @@ Supported template targets
 Package version compatibility
 -----------------------------
 
-- 11.0.0: supports Avalonia 11 and is prelinked against SkiaSharp 2.88.9 + HarfBuzz 7.3.0
-- 12.0.0: supports Avalonia 12 and is prelinked against SkiaSharp 3.119.2 + HarfBuzz 8.3.1
+- 12.0.0: supports Avalonia 12 and is prelinked against SkiaSharp 3.119.4 + HarfBuzz 8.3.1.5
 
 Render mode notes
 -----------------
 
 AngleEgl is not statically linked by this package.
 
-Avalonia 11 on Win32 commonly uses a default rendering mode equivalent to:
+Avalonia on Windows commonly uses a default rendering mode equivalent to:
 
 - AngleEgl
 - Software
