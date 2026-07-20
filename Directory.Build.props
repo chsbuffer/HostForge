@@ -10,7 +10,7 @@
   <PropertyGroup>
     <TargetAvaloniaVersion>12.0</TargetAvaloniaVersion>
     <_Major>0</_Major>
-    <_Preview>preview.5</_Preview>
+    <_Preview>preview.6</_Preview>
     <_Meta>runtime-v$(HostLibsVersion)-skiasharp-v$(SkiaSharpVersion)-harfbuzz-v$(HarfBuzzVersion)</_Meta>
 
     <AvaloniaAppHostPackageVersion>$(TargetAvaloniaVersion).$(_Major)</AvaloniaAppHostPackageVersion>
