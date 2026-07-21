@@ -11,7 +11,7 @@
     <TargetAvaloniaVersion>12.0</TargetAvaloniaVersion>
     <_Major>0</_Major>
     <_Preview>preview.6</_Preview>
-    <_Meta>runtime-v$(HostLibsVersion)-skiasharp-v$(SkiaSharpVersion)-harfbuzz-v$(HarfBuzzVersion)</_Meta>
+    <_Meta>runtime-v$(HostLibsVersion)-skiasharp-v$(SkiaSharpVersion)</_Meta>
 
     <AvaloniaAppHostPackageVersion>$(TargetAvaloniaVersion).$(_Major)</AvaloniaAppHostPackageVersion>
     <AvaloniaAppHostPackageVersion Condition="'$(_Preview)' != ''">$(AvaloniaAppHostPackageVersion)-$(_Preview)</AvaloniaAppHostPackageVersion>
