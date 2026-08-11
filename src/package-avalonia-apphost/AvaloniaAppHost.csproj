@@ -11,8 +11,8 @@
     <PackageId>ChsBuffer.Avalonia.AppHost$(_AvaloniaAppHostPackageIdSuffix)</PackageId>
     <Version>$(AvaloniaAppHostPackageVersion)</Version>
     <Authors>ChsBuffer</Authors>
-    <Description>Prelinked Avalonia apphost/singlefilehost template package for .NET 10 on Windows and Linux, with optional SkiaSharp/HarfBuzz native runtime copy suppression.</Description>
-    <PackageTags>avalonia;apphost;single-file;host-template;skia;harfbuzz</PackageTags>
+    <Description>Prelinked Avalonia apphost/singlefilehost template package for .NET 10 on Windows and Linux, with static ANGLE, SkiaSharp, and HarfBuzz native libraries.</Description>
+    <PackageTags>avalonia;apphost;single-file;host-template;angle;skia;harfbuzz</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://github.com/chsbuffer/HostForge</PackageProjectUrl>
@@ -32,13 +32,19 @@
   <Import Project="$(MSBuildProjectDirectory)\AvaloniaAppHost.Rids.targets" />
 
   <ItemGroup>
+    <PackageReference Include="Avalonia.Angle.Windows.Natives"
+                      Version="$(AngleVersion)"
+                      Condition="'$(AvaloniaAppHostPackageMode)' != 'linux'" />
     <PackageReference Include="SkiaSharp" Version="$(SkiaSharpVersion)" />
     <PackageReference Include="HarfBuzzSharp" Version="$(HarfBuzzVersion)" />
   </ItemGroup>
 
   <ItemGroup>
     <None Include="buildTransitive\ChsBuffer.Avalonia.AppHost.targets" Pack="true" PackagePath="buildTransitive/$(PackageId).targets" />
-    <None Include="contentFiles\cs\net10.0\ModuleInitializer.cs" Pack="true" PackagePath="contentFiles/cs/net10.0/" />
+    <None Include="contentFiles\cs\net10.0\ModuleInitializer.cs"
+          Pack="true"
+          PackagePath="contentFiles/cs/net10.0/"
+          BuildAction="None" />
     <None Include="README.md" Pack="true" PackagePath="" />
     <None Include="README.txt" Pack="true" PackagePath="" />
   </ItemGroup>
@@ -56,7 +62,7 @@
     <MSBuild Projects="$(MSBuildProjectDirectory)\AvaloniaAppHost.Link.proj"
              Targets="LinkAvaloniaHosts"
              BuildInParallel="false"
-             Properties="Configuration=$(Configuration);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);AvaloniaAppHostTarget=$(AvaloniaAppHostPackageMode)" />
+             Properties="Configuration=$(Configuration);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AngleNativeLibsRoot=$(AngleNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);AvaloniaAppHostTarget=$(AvaloniaAppHostPackageMode);AvaloniaHostRids=$(AvaloniaHostRids)" />
   </Target>
 
   <Target Name="_CollectAvaloniaHostTemplates"

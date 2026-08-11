@@ -25,6 +25,8 @@ public static class RepoContext
 
     public static string SkiaSharpVersion { get; } = ReadProperty("SkiaSharpVersion");
 
+    public static string AngleVersion { get; } = ReadProperty("AngleVersion");
+
     public static string HarfBuzzVersion { get; } = ReadProperty("HarfBuzzVersion");
 
     public static string HostLibsVersion { get; } = ReadProperty("HostLibsVersion");

@@ -1,0 +1,63 @@
+diff --git a/DEPS b/DEPS
+--- a/DEPS
++++ b/DEPS
+@@ -779,11 +779,6 @@ deps = {
+       'dep_type': 'cipd',
+   },
+ 
+-  'third_party/catapult': {
+-    'url': Var('chromium_git') + '/catapult.git' + '@' + Var('catapult_revision'),
+-    'condition': 'not build_with_chromium',
+-  },
+-
+   # Cherry is a dEQP/VK-GL-CTS management GUI written in Go. We use it for viewing test results.
+   'third_party/cherry': {
+     'url': Var('android_git') + '/platform/external/cherry@4f8fb08d33ca5ff05a1c638f04c85bbb8d8b52cc',
+@@ -805,12 +800,6 @@ deps = {
+     'condition': 'checkout_android and not build_with_chromium',
+   },
+ 
+-
+-  'third_party/dawn': {
+-    'url': Var('dawn_git') + '/dawn.git' + '@' +  Var('dawn_revision'),
+-    'condition': 'checkout_angle_dawn_deps and not build_with_chromium'
+-  },
+-
+   'third_party/depot_tools': {
+     'url': Var('chromium_git') + '/chromium/tools/depot_tools.git@442cbd6d584d2c992ca9bcc19ecbd2235bea772e',
+     'condition': 'not build_with_chromium',
+@@ -892,11 +881,6 @@ deps = {
+     'condition': 'not build_with_chromium',
+   },
+ 
+-  'third_party/llvm/src': {
+-    'url': Var('chromium_git') + '/external/github.com/llvm/llvm-project@67790d3fb06b184b7be9c4d3e36ab01f0ac4198e',
+-    'condition': 'checkout_angle_cl_deps and not build_with_chromium',
+-  },
+-
+   'third_party/jdk/current': {
+       'packages': [
+           {
+@@ -1077,11 +1061,6 @@ deps = {
+     'condition': 'checkout_android and not build_with_chromium',
+   },
+ 
+-  'third_party/SwiftShader': {
+-    'url': Var('swiftshader_git') + '/SwiftShader@89556131bf9d48af3c5c9fbb9a3322e706da89a3',
+-    'condition': 'not build_with_chromium',
+-  },
+-
+   'third_party/turbine/cipd': {
+       'packages': [
+           {
+@@ -1093,10 +1072,6 @@ deps = {
+       'dep_type': 'cipd',
+   },
+ 
+-  'third_party/VK-GL-CTS/src': {
+-    'url': Var('chromium_git') + '/external/github.com/KhronosGroup/VK-GL-CTS' + '@' + Var('vk_gl_cts_revision'),
+-  },
+-
+   'third_party/vulkan-deps': {
+     'url': Var('chromium_git') + '/vulkan-deps@a4418d38ded42296e5b0b46332ff1c4682cf265b',
+     'condition': 'not build_with_chromium',

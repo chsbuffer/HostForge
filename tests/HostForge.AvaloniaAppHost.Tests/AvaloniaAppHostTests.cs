@@ -35,6 +35,7 @@ public class AvaloniaAppHostTests
         XNamespace ns = nuspec.Root?.Name.Namespace ?? XNamespace.None;
 
         AssertElementValue(nuspec, ns, "metadata", "version", RepoContext.AvaloniaPackageVersion);
+        AssertDependencyVersion(nuspec, ns, "Avalonia.Angle.Windows.Natives", RepoContext.AngleVersion);
         AssertDependencyVersion(nuspec, ns, "SkiaSharp", RepoContext.SkiaSharpVersion);
         AssertDependencyVersion(nuspec, ns, "HarfBuzzSharp", RepoContext.HarfBuzzVersion);
 
@@ -63,6 +64,33 @@ public class AvaloniaAppHostTests
     }
 
     [Test]
+    public async Task WindowsAnglePInvoke_ResolvesFromAppHost_WinX64()
+    {
+        await using var project = await TestProjectWorkspace.CreateAsync(
+            targetFramework: "net10.0",
+            runtimeIdentifier: "win-x64",
+            includeNativeAssetsPackages: true);
+
+        CommandResult result = await RunDotNetCommandAsync(
+            "publish",
+            project.ProjectFilePath,
+            project.ProjectDirectory);
+
+        AssertEx.Success(result, "windows-angle-pinvoke:publish");
+        string outputDirectory = project.GetPublishDirectory("Release", "net10.0", "win-x64");
+        string executable = Path.Combine(outputDirectory, $"{project.ProjectName}.exe");
+        string angleDll = Path.Combine(outputDirectory, "av_libglesv2.dll");
+        AssertEx.FileMissing(angleDll);
+
+        CommandResult runResult = await CommandRunner.RunAsync(
+            executable,
+            string.Empty,
+            outputDirectory);
+        AssertEx.Success(runResult, "windows-angle-pinvoke:run");
+        AssertEx.Contains(runResult.CombinedOutput, "AngleError=0x");
+    }
+
+    [Test]
     public async Task PublishRules_CoverNet9Net10AndWinX64WinArm64()
     {
         PublishRuleCase[] cases =
@@ -88,7 +116,10 @@ public class AvaloniaAppHostTests
                 AssertActivationState(result.CombinedOutput, testCase.ExpectedActive, testCase.TargetFramework, testCase.RuntimeIdentifier);
 
                 string outputDirectory = project.GetPublishDirectory("Release", testCase.TargetFramework, testCase.RuntimeIdentifier);
-                AssertNativeRuntimeCopy(outputDirectory, testCase.ExpectNativeRuntimeCopy);
+                AssertNativeRuntimeCopy(
+                    outputDirectory,
+                    testCase.ExpectNativeRuntimeCopy,
+                    testCase.ExpectNativeRuntimeCopy);
 
                 if (testCase.RunExecutable)
                 {
@@ -104,8 +135,9 @@ public class AvaloniaAppHostTests
     {
         SwitchRuleCase[] cases =
         [
-            new("net10_publish_default", "publish", DisableSkiaHarfBuzzRuntimeCopy: null, ExpectNativeRuntimeCopy: false),
-            new("net10_publish_copy-switch-false", "publish", DisableSkiaHarfBuzzRuntimeCopy: false, ExpectNativeRuntimeCopy: true)
+            new("net10_publish_default", DisableSkiaHarfBuzzRuntimeCopy: null, DisableAngleRuntimeCopy: null, ExpectSkiaHarfBuzzRuntimeCopy: false, ExpectAngleRuntimeCopy: false),
+            new("net10_publish_skia-copy-switch-false", DisableSkiaHarfBuzzRuntimeCopy: false, DisableAngleRuntimeCopy: null, ExpectSkiaHarfBuzzRuntimeCopy: true, ExpectAngleRuntimeCopy: false),
+            new("net10_publish_angle-copy-switch-false", DisableSkiaHarfBuzzRuntimeCopy: null, DisableAngleRuntimeCopy: false, ExpectSkiaHarfBuzzRuntimeCopy: false, ExpectAngleRuntimeCopy: true)
         ];
 
         foreach (SwitchRuleCase testCase in cases)
@@ -116,18 +148,20 @@ public class AvaloniaAppHostTests
                     targetFramework: "net10.0",
                     runtimeIdentifier: "win-x64",
                     includeNativeAssetsPackages: true,
-                    disableSkiaHarfBuzzRuntimeCopy: testCase.DisableSkiaHarfBuzzRuntimeCopy);
+                    disableSkiaHarfBuzzRuntimeCopy: testCase.DisableSkiaHarfBuzzRuntimeCopy,
+                    disableAngleRuntimeCopy: testCase.DisableAngleRuntimeCopy);
 
-                CommandResult result = await RunDotNetCommandAsync(testCase.Verb, project.ProjectFilePath, project.ProjectDirectory);
+                CommandResult result = await RunDotNetCommandAsync("publish", project.ProjectFilePath, project.ProjectDirectory);
 
                 AssertEx.Success(result, testCase.Name);
                 AssertActivationState(result.CombinedOutput, expectedActive: true, "net10.0", "win-x64");
 
-                string outputDirectory = testCase.Verb == "publish"
-                    ? project.GetPublishDirectory("Release", "net10.0", "win-x64")
-                    : GetBuildOutputDirectory(project, "net10.0", "win-x64");
+                string outputDirectory = project.GetPublishDirectory("Release", "net10.0", "win-x64");
 
-                AssertNativeRuntimeCopy(outputDirectory, testCase.ExpectNativeRuntimeCopy);
+                AssertNativeRuntimeCopy(
+                    outputDirectory,
+                    testCase.ExpectSkiaHarfBuzzRuntimeCopy,
+                    testCase.ExpectAngleRuntimeCopy);
             });
         }
     }
@@ -143,33 +177,34 @@ public class AvaloniaAppHostTests
             workingDirectory);
     }
 
-    private static string GetBuildOutputDirectory(
-        TestProjectWorkspace project,
-        string targetFramework,
-        string runtimeIdentifier)
-    {
-        return Path.Combine(
-            project.ProjectDirectory,
-            "bin",
-            "Release",
-            targetFramework,
-            runtimeIdentifier);
-    }
-
-    private static void AssertNativeRuntimeCopy(string outputDirectory, bool expectNativeRuntimeCopy)
+    private static void AssertNativeRuntimeCopy(
+        string outputDirectory,
+        bool expectSkiaHarfBuzzRuntimeCopy,
+        bool expectAngleRuntimeCopy)
     {
         string skiaDllPath = Path.Combine(outputDirectory, "libSkiaSharp.dll");
         string harfBuzzDllPath = Path.Combine(outputDirectory, "libHarfBuzzSharp.dll");
+        string angleDllPath = Path.Combine(outputDirectory, "av_libglesv2.dll");
 
-        if (expectNativeRuntimeCopy)
+        if (expectSkiaHarfBuzzRuntimeCopy)
         {
             AssertEx.FileExists(skiaDllPath);
             AssertEx.FileExists(harfBuzzDllPath);
-            return;
+        }
+        else
+        {
+            AssertEx.FileMissing(skiaDllPath);
+            AssertEx.FileMissing(harfBuzzDllPath);
         }
 
-        AssertEx.FileMissing(skiaDllPath);
-        AssertEx.FileMissing(harfBuzzDllPath);
+        if (expectAngleRuntimeCopy)
+        {
+            AssertEx.FileExists(angleDllPath);
+        }
+        else
+        {
+            AssertEx.FileMissing(angleDllPath);
+        }
     }
 
     private static async Task RunExeAndAssertSuccess(string caseName, string exePath)
@@ -278,7 +313,8 @@ public class AvaloniaAppHostTests
 
     private sealed record SwitchRuleCase(
         string Name,
-        string Verb,
         bool? DisableSkiaHarfBuzzRuntimeCopy,
-        bool ExpectNativeRuntimeCopy);
+        bool? DisableAngleRuntimeCopy,
+        bool ExpectSkiaHarfBuzzRuntimeCopy,
+        bool ExpectAngleRuntimeCopy);
 }

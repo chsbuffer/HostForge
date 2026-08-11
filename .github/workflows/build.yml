@@ -24,14 +24,6 @@ jobs:
             rid: win-arm64
             hostlibs_flavor: default
             build_args: ""
-          - arch: x64
-            rid: win-x64
-            hostlibs_flavor: no-pgo
-            build_args: "--no-pgo"
-          - arch: arm64
-            rid: win-arm64
-            hostlibs_flavor: no-pgo
-            build_args: "--no-pgo"
 
     steps:
       - name: Checkout repository
@@ -105,83 +97,6 @@ jobs:
         shell: powershell
         run: python .\scripts\pipeline.py matrix -v
 
-  pack-static-apphost:
-    runs-on: windows-2025-vs2026
-    needs:
-      - windows-matrix-test
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-          submodules: false
-
-      - name: Compute hostlibs cache key (no-pgo win-x64)
-        id: hostlibs_key
-        shell: powershell
-        run: |
-          $key = python .\scripts\cache_key.py --kind hostlibs --arch x64 --os windows --hostlibs-flavor no-pgo
-          "key=$key" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
-      - name: Restore hostlibs cache (no-pgo win-x64)
-        uses: actions/cache@v5
-        with:
-          fail-on-cache-miss: true
-          path: artifacts\hostlibs
-          key: ${{ steps.hostlibs_key.outputs.key }}
-
-      - name: Pack static apphost
-        shell: powershell
-        run: python .\scripts\pipeline.py pack-static-apphost -v --rid win-x64
-
-      - name: Upload static apphost package
-        uses: actions/upload-artifact@v6
-        with:
-          name: nuget-packages-static-apphost-win-x64
-          path: artifacts\packages\Release
-          if-no-files-found: error
-
-  pack-skia-static:
-    runs-on: windows-2025-vs2026
-    needs:
-      - windows-skia
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-          submodules: false
-
-      - name: Install LLVM
-        uses: ./.github/actions/install-llvm
-
-      - name: Compute skia cache key
-        id: skia_key
-        shell: powershell
-        run: |
-          $key = python .\scripts\cache_key.py --kind skiasharp --arch x64 --os windows
-          "key=$key" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
-      - name: Restore skia cache (win-x64)
-        uses: actions/cache@v5
-        with:
-          fail-on-cache-miss: true
-          path: artifacts\skiasharp
-          key: ${{ steps.skia_key.outputs.key }}
-
-      - name: Pack skia static
-        shell: powershell
-        run: python .\scripts\pipeline.py pack-skia-static -v --rid win-x64
-
-      - name: Upload skia static package
-        uses: actions/upload-artifact@v6
-        with:
-          name: nuget-packages-skia-static-win-x64
-          path: artifacts\packages\Release
-          if-no-files-found: error
-
   windows-skia:
     runs-on: windows-2025-vs2026
     strategy:
@@ -235,11 +150,69 @@ jobs:
           path: artifacts\skiasharp
           if-no-files-found: error
 
+  windows-angle:
+    runs-on: windows-2025-vs2026
+    strategy:
+      matrix:
+        include:
+          - arch: x64
+            rid: win-x64
+          - arch: arm64
+            rid: win-arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Compute ANGLE cache key
+        id: angle_key
+        shell: powershell
+        run: |
+          $key = python .\scripts\cache_key.py --kind angle --arch ${{ matrix.arch }} --os windows
+          "key=$key" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Lookup ANGLE cache
+        id: cache_angle
+        uses: actions/cache@v5
+        with:
+          lookup-only: true
+          path: artifacts\angle
+          key: ${{ steps.angle_key.outputs.key }}
+
+      - name: Install depot_tools
+        if: steps.cache_angle.outputs.cache-hit != 'true'
+        shell: powershell
+        run: |
+          git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$env:RUNNER_TEMP\depot_tools"
+          "$env:RUNNER_TEMP\depot_tools" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Checkout ANGLE
+        if: steps.cache_angle.outputs.cache-hit != 'true'
+        shell: powershell
+        run: python .\scripts\checkout-deps.py angle
+
+      - name: Build ANGLE static libraries
+        if: steps.cache_angle.outputs.cache-hit != 'true'
+        shell: powershell
+        run: python .\scripts\build-angle.py -v --arch ${{ matrix.arch }}
+
+      - name: Upload ANGLE artifact
+        if: steps.cache_angle.outputs.cache-hit != 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: angle-${{ matrix.rid }}
+          path: artifacts\angle
+          if-no-files-found: error
+
   windows-link-avalonia:
     runs-on: windows-2025-vs2026
     needs:
       - windows-hostlibs
       - windows-skia
+      - windows-angle
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -297,6 +270,30 @@ jobs:
           fail-on-cache-miss: true
           path: artifacts\skiasharp
           key: ${{ steps.skia_keys.outputs.key_skia_arm64 }}
+
+      - name: Compute ANGLE cache keys
+        id: angle_keys
+        shell: powershell
+        run: |
+          $keyAngleX64 = python .\scripts\cache_key.py --kind angle --arch x64 --os windows
+          "key_angle_x64=$keyAngleX64" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+          $keyAngleArm64 = python .\scripts\cache_key.py --kind angle --arch arm64 --os windows
+          "key_angle_arm64=$keyAngleArm64" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Restore ANGLE cache (win-x64)
+        uses: actions/cache@v5
+        with:
+          fail-on-cache-miss: true
+          path: artifacts\angle
+          key: ${{ steps.angle_keys.outputs.key_angle_x64 }}
+
+      - name: Restore ANGLE cache (win-arm64)
+        uses: actions/cache@v5
+        with:
+          fail-on-cache-miss: true
+          path: artifacts\angle
+          key: ${{ steps.angle_keys.outputs.key_angle_arm64 }}
 
       - name: Link Avalonia apphost templates for Windows
         shell: powershell

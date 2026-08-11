@@ -14,13 +14,13 @@
       <_HostVariant Include="AppHost">
         <StampPath>$(AppHostStampFullPath)</StampPath>
         <CommandText>@(_AppHostLinkerArg, '&#x0A;')</CommandText>
-        <FilesText>@(_AppHostFingerprintFile->'%(FullPath)|%(ModifiedTime)', '&#x0A;')&#x0A;@(_NativeLibraryInput->'%(FullPath)|%(ModifiedTime)', '&#x0A;')</FilesText>
+        <FilesText>@(_AppHostFingerprintFile->'%(FullPath)|%(ModifiedTime)', '&#x0A;')&#x0A;@(_NativeLibraryInput->'%(FullPath)|%(ModifiedTime)', '&#x0A;')&#x0A;@(LinkerInput->'%(FullPath)|%(ModifiedTime)', '&#x0A;')</FilesText>
       </_HostVariant>
 
       <_HostVariant Include="SingleFileHost">
         <StampPath>$(SingleFileHostStampFullPath)</StampPath>
         <CommandText>@(_SingleFileHostLinkerArg, '&#x0A;')</CommandText>
-        <FilesText>@(_SingleFileHostFingerprintFile->'%(FullPath)|%(ModifiedTime)', '&#x0A;')&#x0A;@(_NativeLibraryInput->'%(FullPath)|%(ModifiedTime)', '&#x0A;')</FilesText>
+        <FilesText>@(_SingleFileHostFingerprintFile->'%(FullPath)|%(ModifiedTime)', '&#x0A;')&#x0A;@(_NativeLibraryInput->'%(FullPath)|%(ModifiedTime)', '&#x0A;')&#x0A;@(LinkerInput->'%(FullPath)|%(ModifiedTime)', '&#x0A;')</FilesText>
       </_HostVariant>
     </ItemGroup>
 

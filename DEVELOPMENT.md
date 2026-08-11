@@ -11,16 +11,17 @@
 - [`DEPS`](DEPS) 保存上游源码版本和 commit，供检出脚本与 CI 缓存键使用。
 - [`Directory.Build.props`](Directory.Build.props) 保存 MSBuild、NuGet 依赖及包版本所需的版本号。
 
-升级 Runtime、SkiaSharp 或 HarfBuzzSharp 时，应同步检查这两个文件。当前配置为：
+升级 Runtime、ANGLE、SkiaSharp 或 HarfBuzzSharp 时，应同步检查这两个文件。当前配置为：
 
 | 依赖 | 版本 |
 | --- | --- |
 | Avalonia | 12.1.0 |
+| ANGLE | 2.1.27548.20260419 |
 | .NET Runtime | 10.0.10 |
 | SkiaSharp | 3.119.4 |
 | HarfBuzzSharp | 8.3.1.5 |
 
-Runtime 与 SkiaSharp 的缓存键包含版本、上游 commit、目标系统、架构和工具链信息。更新 `DEPS` 后会产生新的缓存键，不会错误复用旧版本缓存。
+Runtime、ANGLE 与 SkiaSharp 的缓存键包含版本、上游 commit、目标系统、架构和工具链信息。更新 `DEPS` 后会产生新的缓存键，不会错误复用旧版本缓存。
 
 ## 环境要求
 
@@ -38,8 +39,8 @@ Windows 构建环境：
 - Windows 11
 - MSVC Build Tools 14.50（VS 2026）
 - Windows SDK 10.0.26100
-- LLVM，默认路径为 `C:\Program Files\LLVM`
-- 可选 Python 包 `colorama`
+- [LLVM](https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.8/LLVM-21.1.8-win64.exe) ，默认路径为 `C:\Program Files\LLVM`
+- [depot_tools](https://chromium.googlesource.com/chromium/tools/depot_tools.git) ，配置环境变量
 
 Linux 构建使用 Clang，并通过 sysroot 对齐 .NET Host、SkiaSharp 和 HarfBuzzSharp 的目标 ABI。背景和工具链说明见 [Linux 构建方法](docs/roadmap/2026-03-13-linux-build-methodology.md)。
 
@@ -48,6 +49,7 @@ Linux 构建使用 Clang，并通过 sysroot 对齐 .NET Host、SkiaSharp 和 Ha
 ```bash
 python scripts/checkout-deps.py runtime
 python scripts/checkout-deps.py skiasharp
+python scripts/checkout-deps.py angle
 ```
 
 版本来自 `DEPS`，无需也不能通过命令行选择其他版本。源码目录包含版本号：
@@ -55,6 +57,7 @@ python scripts/checkout-deps.py skiasharp
 ```text
 repo/runtime-<version>
 repo/skia-<version>
+repo/angle-<version>
 ```
 
 非 CI 环境会使用 `repo/deps-mirror` 保存上游裸仓库缓存。查看当前版本或解析源码目录：
@@ -63,6 +66,7 @@ repo/skia-<version>
 python scripts/checkout-deps.py --list
 python scripts/checkout-deps.py --print-source-dir runtime
 python scripts/checkout-deps.py --print-source-dir skiasharp
+python scripts/checkout-deps.py --print-source-dir angle
 ```
 
 ## 构建入口
@@ -73,6 +77,7 @@ python scripts/checkout-deps.py --print-source-dir skiasharp
 | --- | --- |
 | `hostlibs` | 构建 .NET AppHost / SingleFileHost 静态库 |
 | `skia` | 构建 SkiaSharp / HarfBuzzSharp 静态库 |
+| `angle` | 构建 Windows x64 / arm64 ANGLE 静态库 |
 | `matrix` | 运行通用 Static AppHost 构建集成矩阵 |
 | `link-avalonia` | 生成指定操作系统的 Avalonia 宿主模板 |
 | `avalonia-test` | 运行 Avalonia AppHost 集成测试 |
@@ -126,16 +131,31 @@ python .\scripts\build-skia-harfbuzz.py -v --arch x64 --os windows
 python .\scripts\build-skia-harfbuzz.py -v --arch arm64 --os windows
 ```
 
-### 3. 生成并验证 Avalonia 宿主
+### 3. 构建 ANGLE
+
+先将 Chromium `depot_tools` 加入 `PATH`，然后运行：
+
+```powershell
+python .\scripts\pipeline.py angle -v
+```
+
+或按架构构建：
+
+```powershell
+python .\scripts\build-angle.py -v --arch x64
+python .\scripts\build-angle.py -v --arch arm64
+```
+
+### 4. 生成并验证 Avalonia 宿主
 
 ```powershell
 python .\scripts\pipeline.py link-avalonia -v --os windows
 python .\scripts\pipeline.py avalonia-test -v
 ```
 
-`avalonia-test` 会按需打包平台包，并验证模板激活、动态本机库抑制和可执行文件运行行为。
+`avalonia-test` 会按需打包平台包，并验证模板激活、动态本机库抑制、Windows ANGLE P/Invoke 从宿主解析和可执行文件运行行为。
 
-### 4. 打包
+### 5. 打包
 
 ```powershell
 python .\scripts\pipeline.py pack-avalonia -v --mode windows
@@ -209,6 +229,7 @@ Avalonia 测试包含平台特定用例：Windows 用例在非 Windows 系统跳
 artifacts/
 ├── hostlibs/<runtime-version>/<flavor>/<rid>/
 ├── skiasharp/<skiasharp-version>/<rid>/
+├── angle/<angle-version>/<rid>/
 ├── avalonia-host/<avalonia-target>/<rid>/
 ├── packages/<configuration>/
 └── tmp/
@@ -218,6 +239,7 @@ artifacts/
 
 - `hostlibs`：AppHost / SingleFileHost 静态库、响应文件和链接参数。
 - `skiasharp`：SkiaSharp / HarfBuzzSharp 及其依赖静态库。
+- `angle`：Windows ANGLE complete static libraries 与宿主导出定义文件。
 - `avalonia-host`：已经链接完成、可直接打包的宿主模板。
 - `packages`：生成的 NuGet 包。
 - `tmp`：集成测试工作区和临时 NuGet 缓存。
@@ -229,18 +251,16 @@ artifacts/
 flowchart LR
     subgraph W["Windows lane"]
         direction LR
-        WH["windows-hostlibs<br/>default/no-pgo × x64/arm64"]
+        WH["windows-hostlibs<br/>default × x64/arm64"]
         WS["windows-skia<br/>x64/arm64"]
+        WA["windows-angle<br/>x64/arm64"]
         WLA["windows-link-avalonia<br/>link + test"]
         WM["windows-matrix-test"]
-        WPS["pack-static-apphost"]
-        WPKS["pack-skia-static"]
 
         WH --> WLA
         WS --> WLA
+        WA --> WLA
         WH --> WM
-        WM --> WPS
-        WS --> WPKS
     end
 
     subgraph L["Linux lane"]
@@ -268,12 +288,11 @@ flowchart LR
 
 | Job | 平台 | 主要输出 |
 | --- | --- | --- |
-| `windows-hostlibs` | Windows | 两种 flavor、两种架构的 HostLib 缓存 |
+| `windows-hostlibs` | Windows | 两种架构的 HostLib 缓存 |
 | `windows-skia` | Windows | `win-x64` / `win-arm64` Skia 缓存 |
+| `windows-angle` | Windows | `win-x64` / `win-arm64` ANGLE 静态库缓存 |
 | `windows-matrix-test` | Windows | Static AppHost 集成验证 |
 | `windows-link-avalonia` | Windows | Windows Avalonia 模板及测试结果 |
-| `pack-static-apphost` | Windows | Static AppHost NuGet 包 |
-| `pack-skia-static` | Windows | SkiaSharp Static NuGet 包 |
 | `linux-sysroot` | Linux | Linux sysroot 缓存 |
 | `linux-hostlibs` | Linux | `linux-x64` HostLib 缓存 |
 | `linux-skia` | Linux | `linux-x64` Skia 缓存 |
@@ -283,12 +302,13 @@ flowchart LR
 
 ## 缓存约定
 
-CI 中 `actions/cache` 以 `artifacts/hostlibs` 或 `artifacts/skiasharp` 为缓存根目录，具体版本和 RID 位于其子目录。
+CI 中 `actions/cache` 以 `artifacts/hostlibs`、`artifacts/skiasharp` 或 `artifacts/angle` 为缓存根目录，具体版本和 RID 位于其子目录。
 
 缓存键由 [`scripts/cache_key.py`](scripts/cache_key.py) 生成：
 
 - Runtime：系统、架构、版本、flavor、上游 commit，以及 Windows MSVC 或 Linux Clang 版本。
 - SkiaSharp：系统、架构、版本、上游 commit，以及 Windows MSVC/Clang 或 Linux Clang/GCC 版本。
+- ANGLE：Windows 架构、版本、上游 commit、MSVC 版本，以及构建脚本和 HostForge patch 指纹。
 
 构建 job 使用 `lookup-only` 查询缓存；miss 时完成构建，并由 cache action 的 post step 保存输出。下游链接、测试和打包 job 使用同一缓存键恢复产物。
 

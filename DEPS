@@ -1,12 +1,19 @@
 urls = {
+    "angle": "https://github.com/google/angle",
     "runtime": "https://github.com/dotnet/runtime",
     "skia": "https://github.com/mono/skia",
 }
 
 targets = (
+    "angle",
     "runtime",
     "skiasharp",
 )
+
+angle = {
+    "version": "2.1.27548.20260419",
+    "angle": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833",
+}
 
 runtime = {
     "version": "10.0.10",

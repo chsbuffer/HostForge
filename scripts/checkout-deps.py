@@ -7,21 +7,13 @@ import sys
 from pathlib import Path
 
 
-def color_print(code, text):
-    if no_color:
-        print(text)
-    else:
-        text = text.replace("\n", f"\033[0m\n{code}")
-        print(f"{code}{text}\033[0m")
-
-
 def error(text):
-    color_print("\033[41;39m", f"\n! {text}\n")
+    print(f"\n! {text}\n")
     sys.exit(1)
 
 
 def header(text):
-    color_print("\033[44;39m", f"\n* {text}\n")
+    print(f"\n* {text}\n")
 
 
 def vprint(text):
@@ -32,15 +24,6 @@ def vprint(text):
 # OS detection
 os_name = platform.system().lower()
 is_windows = os_name not in ("linux", "darwin")
-
-no_color = False
-if is_windows:
-    try:
-        import colorama
-
-        colorama.init()
-    except ImportError:
-        no_color = True
 
 if not sys.version_info >= (3, 10):
     error("Requires Python 3.10+")

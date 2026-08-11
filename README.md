@@ -10,7 +10,7 @@ HostForge 将本机静态库重新链接进 .NET `AppHost` / `SingleFileHost`，
 
 | 组件 | 用途 | 当前支持 |
 | --- | --- | --- |
-| [`ChsBuffer.Avalonia.AppHost`](https://www.nuget.org/packages/ChsBuffer.Avalonia.AppHost/) | 已预链接 SkiaSharp / HarfBuzzSharp 的 Avalonia 宿主模板 | Avalonia 12、.NET 10；`win-x64`、`win-arm64`、`linux-x64` |
+| [`ChsBuffer.Avalonia.AppHost`](https://www.nuget.org/packages/ChsBuffer.Avalonia.AppHost/) | 已预链接 ANGLE / SkiaSharp / HarfBuzzSharp 的 Avalonia 宿主模板 | Avalonia 12、.NET 10；`win-x64`、`win-arm64`、`linux-x64` |
 | [`ChsBuffer.AppHost.Static.win-x64`](https://www.nuget.org/packages/ChsBuffer.AppHost.Static.win-x64/) | 在普通 .NET 项目的构建/发布过程中重新链接宿主 | .NET 10、`win-x64` |
 | [`ChsBuffer.SkiaSharp.Static.win-x64`](https://www.nuget.org/packages/ChsBuffer.SkiaSharp.Static.win-x64/) | 提供 SkiaSharp / HarfBuzzSharp 静态链接输入 | `win-x64` |
 
@@ -19,6 +19,7 @@ HostForge 将本机静态库重新链接进 .NET `AppHost` / `SingleFileHost`，
 | 依赖 | 版本 |
 | --- | --- |
 | Avalonia | 12.1.0 |
+| ANGLE | 2.1.27548.20260419 |
 | .NET Runtime | 10.0.10 |
 | SkiaSharp | 3.119.4 |
 | HarfBuzzSharp | 8.3.1.5 |
@@ -60,7 +61,7 @@ flowchart LR
 dotnet publish -c Release
 ```
 
-当目标框架和 RID 存在匹配模板时，包会自动替换 `AppHost` 与 `SingleFileHost`，注入本机库解析器，并从发布目录移除动态 SkiaSharp / HarfBuzzSharp 本机库。
+当目标框架和 RID 存在匹配模板时，包会自动替换 `AppHost` 与 `SingleFileHost`，注入本机库解析器，并从发布目录移除 ANGLE / SkiaSharp / HarfBuzzSharp 动态本机库。
 
 完整行为和可选开关见 [Avalonia AppHost 包文档](src/package-avalonia-apphost/README.md)。通用静态链接用法见 [Static AppHost 包文档](src/package-apphost-static/README.md)。
 

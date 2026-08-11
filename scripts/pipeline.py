@@ -7,21 +7,13 @@ import sys
 from pathlib import Path
 
 
-def color_print(code, text):
-    if no_color:
-        print(text)
-    else:
-        text = text.replace("\n", f"\033[0m\n{code}")
-        print(f"{code}{text}\033[0m")
-
-
 def error(text):
-    color_print("\033[41;39m", f"\n! {text}\n")
+    print(f"\n! {text}\n")
     sys.exit(1)
 
 
 def header(text):
-    color_print("\033[44;39m", f"\n* {text}\n")
+    print(f"\n* {text}\n")
 
 
 def vprint(text):
@@ -32,15 +24,6 @@ def vprint(text):
 # OS detection
 os_name = platform.system().lower()
 is_windows = os_name not in ("linux", "darwin")
-
-no_color = False
-if is_windows:
-    try:
-        import colorama
-
-        colorama.init()
-    except ImportError:
-        no_color = True
 
 if not sys.version_info >= (3, 10):
     error("Requires Python 3.10+")
@@ -74,6 +57,7 @@ def python():
 SCRIPT_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_ROOT.parent
 BUILD_HOSTLIBS_SCRIPT = SCRIPT_ROOT / "build-hostlibs.py"
+BUILD_ANGLE_SCRIPT = SCRIPT_ROOT / "build-angle.py"
 BUILD_SKIA_HARFBUZZ_SCRIPT = SCRIPT_ROOT / "build-skia-harfbuzz.py"
 AVALONIA_APPHOST_LINK_PROJ = (
     REPO_ROOT / "src" / "package-avalonia-apphost" / "AvaloniaAppHost.Link.proj"
@@ -128,6 +112,22 @@ def build_skia_harfbuzz():
     verbose = ["-v"] if args.verbose > 0 else []
     execv([python(), BUILD_SKIA_HARFBUZZ_SCRIPT, *verbose, "-a", "x64"])
     execv([python(), BUILD_SKIA_HARFBUZZ_SCRIPT, *verbose, "-a", "arm64"])
+
+
+def build_angle():
+    header("Build ANGLE static libraries")
+    verbose = ["-v"] if args.verbose > 0 else []
+    execv([python(), BUILD_ANGLE_SCRIPT, *verbose, "-a", "x64"])
+    execv(
+        [
+            python(),
+            BUILD_ANGLE_SCRIPT,
+            *verbose,
+            "-a",
+            "arm64",
+            "--skip-sync-deps",
+        ]
+    )
 
 
 def run_matrix_test():
@@ -292,6 +292,12 @@ def parse_args():
         "-v", "--verbose", action="count", default=0, help="verbose output"
     )
     skia_parser.set_defaults(func=build_skia_harfbuzz)
+
+    angle_parser = subparsers.add_parser("angle", help="build ANGLE static libraries")
+    angle_parser.add_argument(
+        "-v", "--verbose", action="count", default=0, help="verbose output"
+    )
+    angle_parser.set_defaults(func=build_angle)
 
     pack_avalonia_parser = subparsers.add_parser(
         "pack-avalonia", help="pack avalonia apphost only"

@@ -13,14 +13,31 @@ internal static class ModuleInitializer
         "libSkiaSharp",
         "libSkiaSharp.dll",
         "libHarfBuzzSharp",
-        "libHarfBuzzSharp.dll"
+        "libHarfBuzzSharp.dll",
+        "av_libglesv2.dll"
     };
 
     [ModuleInitializer]
     public static void Init()
     {
-        NativeLibrary.SetDllImportResolver(typeof(global::SkiaSharp.SkiaSharpVersion).Assembly, Resolve);
-        NativeLibrary.SetDllImportResolver(typeof(global::HarfBuzzSharp.Blob).Assembly, Resolve);
+        SetResolver(typeof(global::SkiaSharp.SkiaSharpVersion).Assembly);
+        SetResolver(typeof(global::HarfBuzzSharp.Blob).Assembly);
+
+#if !HOSTFORGE_DISABLE_AVALONIA_WIN32_IMPORT_RESOLVER
+        SetResolver(Assembly.Load("Avalonia.Win32"));
+#endif
+    }
+
+    private static void SetResolver(Assembly assembly)
+    {
+        try
+        {
+            NativeLibrary.SetDllImportResolver(assembly, Resolve);
+        }
+        catch (InvalidOperationException)
+        {
+            // Respect a resolver already installed by the application.
+        }
     }
 
     private static IntPtr Resolve(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)

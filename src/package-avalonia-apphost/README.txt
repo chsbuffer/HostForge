@@ -1,7 +1,7 @@
 ChsBuffer.Avalonia.AppHost
 ==========================
 
-Apphost and single-file host templates for Avalonia, prelinked against SkiaSharp and HarfBuzz native libraries, for .NET 10.0 on Windows and Linux.
+Apphost and single-file host templates for Avalonia, prelinked against ANGLE, SkiaSharp and HarfBuzz native libraries, for .NET 10.0 on Windows and Linux.
 
 Supported template targets
 --------------------------
@@ -11,48 +11,6 @@ Supported template targets
 - win-x64
 - win-arm64
 - linux-x64
-
-Package version compatibility
------------------------------
-
-- 12.0.0: supports Avalonia 12 and is prelinked against SkiaSharp 3.119.4 + HarfBuzz 8.3.1.5
-
-Render mode notes
------------------
-
-AngleEgl is not statically linked by this package.
-
-Avalonia on Windows commonly uses a default rendering mode equivalent to:
-
-- AngleEgl
-- Software
-
-If av_libglesv2.dll is not present, the default configuration may leave only software rendering.
-
-To avoid software-only fallback, explicitly include additional rendering backends in your app,
-for example Vulkan or Wgl, in addition to AngleEgl and Software.
-
-Example:
-
-private static AppBuilder BuildAvaloniaApp()
-{
-    return AppBuilder.Configure<App>()
-        .UsePlatformDetect()
-        .LogToTrace()
-        .With(new Win32PlatformOptions
-        {
-            RenderingMode =
-            [
-                Win32RenderingMode.AngleEgl,
-                Win32RenderingMode.Vulkan,
-                Win32RenderingMode.Wgl,
-                Win32RenderingMode.Software
-            ]
-        });
-}
-
-With that configuration, av_libglesv2.dll can be removed when a non-ANGLE backend is available
-on the target machine.
 
 Compatibility and fallback
 --------------------------

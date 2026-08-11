@@ -41,6 +41,7 @@
 
     <PackageAssetsDir>$([MSBuild]::NormalizePath('$(HostLibsRoot)', '$(AvaloniaHostRid)'))</PackageAssetsDir>
     <AvaloniaNativeLibsDir>$([MSBuild]::NormalizePath('$(AvaloniaNativeLibsRoot)', '$(AvaloniaHostRid)'))</AvaloniaNativeLibsDir>
+    <AngleNativeLibsDir>$([MSBuild]::NormalizePath('$(AngleNativeLibsRoot)', '$(AvaloniaHostRid)'))</AngleNativeLibsDir>
 
     <StaticHostAssetsBaseDir>$(HostLibsRoot)</StaticHostAssetsBaseDir>
     <AvaloniaHostOutputDir>$([MSBuild]::NormalizePath('$(AvaloniaAppHostArtifactRoot)', '$(AvaloniaHostRid)'))</AvaloniaHostOutputDir>
@@ -70,16 +71,25 @@
            Text="AvaloniaHostRid is required for _ResolveAvaloniaLinkInputs." />
     <Error Condition="!Exists('$(PackageAssetsDir)')" Text="Host libs directory not found: $(PackageAssetsDir)" />
     <Error Condition="!Exists('$(AvaloniaNativeLibsDir)')" Text="Avalonia native libs directory not found: $(AvaloniaNativeLibsDir)" />
+    <Error Condition="'$(_AvaloniaHostRidIsWindows)' == 'True' and !Exists('$(AngleNativeLibsDir)')"
+           Text="ANGLE native libs directory not found: $(AngleNativeLibsDir)" />
 
     <ItemGroup>
       <_AvaloniaNativeLib Include="$(AvaloniaNativeLibsDir)/*$(_AvaloniaNativeLibExtension)" />
+      <_AngleNativeLib Include="$(AngleNativeLibsDir)/*.lib"
+                       Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'" />
     </ItemGroup>
 
     <Error Condition="'@(_AvaloniaNativeLib)' == ''"
            Text="No $(_AvaloniaNativeLibExtension) files were found in $(AvaloniaNativeLibsDir)." />
+    <Error Condition="'$(_AvaloniaHostRidIsWindows)' == 'True' and '@(_AngleNativeLib)' == ''"
+           Text="No ANGLE static libraries were found in $(AngleNativeLibsDir)." />
+    <Error Condition="'$(_AvaloniaHostRidIsWindows)' == 'True' and !Exists('$(AngleNativeLibsDir)/av_libglesv2.def')"
+           Text="ANGLE export definition file was not found: $(AngleNativeLibsDir)/av_libglesv2.def" />
 
     <ItemGroup>
       <NativeLibrary Include="@(_AvaloniaNativeLib)" />
+      <NativeLibrary Include="@(_AngleNativeLib)" />
       <NativeLibrary Update="@(NativeLibrary)" Condition="'%(NativeLibrary.Filename)' == 'libHarfBuzzSharp'">
        <WholeArchive>true</WholeArchive>
       </NativeLibrary>
@@ -89,7 +99,11 @@
       <NativeLibrary Update="@(NativeLibrary)" Condition="'%(NativeLibrary.Filename)' == 'libSkiaSharp'">
        <WholeArchive>true</WholeArchive>
       </NativeLibrary>
-      <LinkerArg Include="FontSub.lib;opengl32.lib;advapi32.lib;gdi32.lib"
+      <LinkerArg Include="/DEF:&quot;$(AngleNativeLibsDir)/av_libglesv2.def&quot;"
+                 Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'" />
+      <LinkerInput Include="$(AngleNativeLibsDir)/av_libglesv2.def"
+                   Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'" />
+      <LinkerArg Include="FontSub.lib;advapi32.lib;d3d11.lib;dxgi.lib;dxguid.lib;gdi32.lib;setupapi.lib;synchronization.lib;user32.lib"
                  Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'" />
       <LinkerArg Include="--sysroot=&quot;$(_ResolvedSysroot)&quot;"
                  Condition="'$(_AvaloniaHostRidIsWindows)' != 'True' and '$(_ResolvedSysroot)' != ''" />
@@ -111,10 +125,10 @@
     <MSBuild Projects="$(MSBuildProjectFullPath)"
              Targets="_LinkAvaloniaAppHostForRid"
              BuildInParallel="false"
-             Properties="Configuration=$(Configuration);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);AvaloniaHostRid=%(_AvaloniaTargetRid.Identity);Sysroot=$(_ResolvedSysroot);AvaloniaExportsFile=$(_AvaloniaAppHostExportsFile)" />
+             Properties="Configuration=$(Configuration);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AngleNativeLibsRoot=$(AngleNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);AvaloniaHostRid=%(_AvaloniaTargetRid.Identity);Sysroot=$(_ResolvedSysroot);AvaloniaExportsFile=$(_AvaloniaAppHostExportsFile)" />
     <MSBuild Projects="$(MSBuildProjectFullPath)"
              Targets="_LinkAvaloniaSingleFileHostForRid"
              BuildInParallel="false"
-             Properties="Configuration=$(Configuration);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);AvaloniaHostRid=%(_AvaloniaTargetRid.Identity);Sysroot=$(_ResolvedSysroot);AvaloniaExportsFile=$(_AvaloniaSingleFileHostExportsFile)" />
+             Properties="Configuration=$(Configuration);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AngleNativeLibsRoot=$(AngleNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);AvaloniaHostRid=%(_AvaloniaTargetRid.Identity);Sysroot=$(_ResolvedSysroot);AvaloniaExportsFile=$(_AvaloniaSingleFileHostExportsFile)" />
   </Target>
 </Project>

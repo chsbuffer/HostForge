@@ -55,10 +55,10 @@ def tool_version(exe: Path) -> str:
             raise CacheKeyError(f"tool not found: {exe}")
     proc = subprocess.run(
         [str(resolved), "--version"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
         shell=False,
+        check=False
     )
     if proc.returncode != 0:
         raise CacheKeyError(f"Command failed ({proc.returncode}): {resolved} --version")
@@ -138,9 +138,45 @@ def skiasharp_cache_key(
     return f"skiasharp-{os_name}-{skiasharp_version}-{arch}-{digest[:16]}", inputs
 
 
+def angle_cache_key(
+    deps_file: Path,
+    os_name: str,
+    arch: str,
+) -> tuple[str, list[str]]:
+    if os_name != "windows":
+        raise CacheKeyError("ANGLE static libraries are only built for Windows")
+    deps = load_deps(deps_file)
+    entry = deps.get("angle", {})
+    angle_version = entry.get("version")
+    angle_commit = entry.get("angle")
+    if not angle_version or not angle_commit:
+        raise CacheKeyError("DEPS angle entry must define version and angle")
+    inputs = [
+        f"os={os_name}",
+        f"arch={arch}",
+        f"angle_version={angle_version}",
+        f"angle_commit={angle_commit}",
+        f"vctoolsversion={vctools_version()}",
+    ]
+    for input_name in (
+        "build-angle.py",
+        "angle-deps.patch",
+        "angle-static.patch",
+    ):
+        input_file = deps_file.parent / "scripts" / input_name
+        if not input_file.exists():
+            raise CacheKeyError(f"ANGLE build input not found: {input_file}")
+        input_digest = hashlib.sha256(input_file.read_bytes()).hexdigest()
+        inputs.append(f"{input_name}={input_digest}")
+    digest = hashlib.sha256("\n".join(inputs).encode("utf-8")).hexdigest()
+    return f"angle-{os_name}-{angle_version}-{arch}-{digest[:16]}", inputs
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Compute build cache keys")
-    parser.add_argument("--kind", choices=["hostlibs", "skiasharp"], required=True)
+    parser.add_argument(
+        "--kind", choices=["angle", "hostlibs", "skiasharp"], required=True
+    )
     parser.add_argument("--arch", choices=["x64", "arm64"], required=True)
     parser.add_argument("--os", choices=["windows", "linux"], default="windows")
     parser.add_argument(
@@ -172,6 +208,15 @@ def main():
     repo_root = Path(__file__).resolve().parent.parent
     deps_file = repo_root / "DEPS"
     try:
+        if args.kind == "angle":
+            key, inputs = angle_cache_key(
+                deps_file=deps_file,
+                os_name=args.os,
+                arch=args.arch,
+            )
+            print("\n".join(inputs) if args.print_inputs else key)
+            return 0
+
         if args.kind == "hostlibs":
             key, inputs = hostlibs_cache_key(
                 deps_file=deps_file,

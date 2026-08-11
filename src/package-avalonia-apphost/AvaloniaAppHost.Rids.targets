@@ -8,6 +8,9 @@
 -->
 <Project>
   <Target Name="_ResolveAvaloniaKnownRids">
+    <PropertyGroup>
+      <_AvaloniaHostRidsFilter>;$(AvaloniaHostRids);</_AvaloniaHostRidsFilter>
+    </PropertyGroup>
     <ItemGroup>
       <_AvaloniaKnownRid Include="win-x64">
         <TargetOs>windows</TargetOs>
@@ -28,7 +31,7 @@
           DependsOnTargets="_ValidateAvaloniaAppHostTarget;_ResolveAvaloniaKnownRids">
     <ItemGroup>
       <_AvaloniaTargetRid Include="@(_AvaloniaKnownRid)"
-                          Condition="'$(AvaloniaAppHostTarget)' == '%(_AvaloniaKnownRid.TargetOs)'">
+                          Condition="'$(AvaloniaAppHostTarget)' == '%(_AvaloniaKnownRid.TargetOs)' and ('$(AvaloniaHostRids)' == '' or $(_AvaloniaHostRidsFilter.Contains(';%(_AvaloniaKnownRid.Identity);')))">
         <TargetOs>%(_AvaloniaKnownRid.TargetOs)</TargetOs>
         <ExecutableExtension>%(_AvaloniaKnownRid.ExecutableExtension)</ExecutableExtension>
       </_AvaloniaTargetRid>
@@ -42,7 +45,7 @@
           DependsOnTargets="_ValidateAvaloniaAppHostPackageMode;_ResolveAvaloniaKnownRids">
     <ItemGroup>
       <_AvaloniaPackRid Include="@(_AvaloniaKnownRid)"
-                        Condition="'$(AvaloniaAppHostPackageMode)' == 'all' or '$(AvaloniaAppHostPackageMode)' == '%(_AvaloniaKnownRid.TargetOs)'">
+                        Condition="('$(AvaloniaAppHostPackageMode)' == 'all' or '$(AvaloniaAppHostPackageMode)' == '%(_AvaloniaKnownRid.TargetOs)') and ('$(AvaloniaHostRids)' == '' or $(_AvaloniaHostRidsFilter.Contains(';%(_AvaloniaKnownRid.Identity);')))">
         <TargetOs>%(_AvaloniaKnownRid.TargetOs)</TargetOs>
         <ExecutableExtension>%(_AvaloniaKnownRid.ExecutableExtension)</ExecutableExtension>
         <HostOutputDir>$([MSBuild]::NormalizePath('$(AvaloniaAppHostArtifactRoot)', '%(_AvaloniaKnownRid.Identity)'))</HostOutputDir>

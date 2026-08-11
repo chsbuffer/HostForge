@@ -4,6 +4,12 @@ This file is for repository maintainers. The NuGet README is intentionally limit
 
 ## Artifact layout
 
+The linker consumes native inputs from:
+
+- `artifacts/hostlibs/<runtime-version>/<flavor>/<rid>/`
+- `artifacts/skiasharp/<skiasharp-version>/<rid>/`
+- `artifacts/angle/<angle-version>/<rid>/` for Windows
+
 Linked host templates are generated under:
 
 - `artifacts/avalonia-host/<version>/<rid>/`
@@ -52,6 +58,14 @@ Pack one OS:
 ```powershell
 python .\scripts\pipeline.py pack-avalonia -v --mode windows
 python .\scripts\pipeline.py pack-avalonia -v --mode linux
+```
+
+Pack only selected RIDs by passing the optional semicolon-separated `AvaloniaHostRids` property:
+
+```powershell
+dotnet pack .\src\package-avalonia-apphost\AvaloniaAppHost.csproj -c Release `
+  -p:AvaloniaAppHostPackageMode=windows `
+  -p:AvaloniaHostRids=win-x64
 ```
 
 Pack aggregate CI-style package:

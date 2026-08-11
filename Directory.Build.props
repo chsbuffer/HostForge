@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <AvaloniaVersion>12.1.0</AvaloniaVersion>
+    <AngleVersion>2.1.27548.20260419</AngleVersion>
     <SkiaSharpVersion>3.119.4</SkiaSharpVersion>
     <HarfBuzzVersion>8.3.1.5</HarfBuzzVersion>
     <HostLibsVersion>10.0.10</HostLibsVersion>
@@ -11,11 +12,10 @@
     <TargetAvaloniaVersion>12.0</TargetAvaloniaVersion>
     <_Major>0</_Major>
     <_Preview>preview.6</_Preview>
-    <_Meta>runtime-v$(HostLibsVersion)-skiasharp-v$(SkiaSharpVersion)</_Meta>
 
     <AvaloniaAppHostPackageVersion>$(TargetAvaloniaVersion).$(_Major)</AvaloniaAppHostPackageVersion>
     <AvaloniaAppHostPackageVersion Condition="'$(_Preview)' != ''">$(AvaloniaAppHostPackageVersion)-$(_Preview)</AvaloniaAppHostPackageVersion>
-    <AvaloniaAppHostPackageVersion>$(AvaloniaAppHostPackageVersion)+$(_Meta)</AvaloniaAppHostPackageVersion>
+    <AvaloniaAppHostPackageVersion>$(AvaloniaAppHostPackageVersion)</AvaloniaAppHostPackageVersion>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -29,6 +29,7 @@
     <HostLibsBaseRoot>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/hostlibs/$(HostLibsVersion)'))</HostLibsBaseRoot>
     <HostLibsRoot>$([MSBuild]::NormalizePath('$(HostLibsBaseRoot)', '$(HostLibsFlavor)'))</HostLibsRoot>
     <AvaloniaNativeLibsRoot>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/skiasharp/$(SkiaSharpVersion)'))</AvaloniaNativeLibsRoot>
+    <AngleNativeLibsRoot>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/angle/$(AngleVersion)'))</AngleNativeLibsRoot>
   </PropertyGroup>
 
 </Project>

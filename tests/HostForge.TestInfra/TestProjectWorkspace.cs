@@ -23,6 +23,7 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         string runtimeIdentifier,
         bool includeNativeAssetsPackages,
         bool? disableSkiaHarfBuzzRuntimeCopy = null,
+        bool? disableAngleRuntimeCopy = null,
         string avaloniaAppHostPackageMode = "windows",
         CancellationToken cancellationToken = default)
     {
@@ -46,6 +47,7 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
             runtimeIdentifier,
             includeNativeAssetsPackages,
             disableSkiaHarfBuzzRuntimeCopy,
+            disableAngleRuntimeCopy,
             avaloniaAppHostPackageMode);
 
         return new TestProjectWorkspace(rootDirectory, projectDirectory, projectFilePath, projectName);
@@ -85,6 +87,7 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         string runtimeIdentifier,
         bool includeNativeAssetsPackages,
         bool? disableSkiaHarfBuzzRuntimeCopy,
+        bool? disableAngleRuntimeCopy,
         string avaloniaAppHostPackageMode)
     {
         ProjectRootElement project = ProjectRootElement.Create();
@@ -97,6 +100,9 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         propertyGroup.AddProperty("ImplicitUsings", "enable");
         propertyGroup.AddProperty("Nullable", "enable");
         propertyGroup.AddProperty(
+            "DefineConstants",
+            "$(DefineConstants);HOSTFORGE_DISABLE_AVALONIA_WIN32_IMPORT_RESOLVER");
+        propertyGroup.AddProperty(
             "RestoreAdditionalProjectSources",
             "$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)");
 
@@ -107,6 +113,13 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
             propertyGroup.AddProperty(
                 "DisableSkiaHarfBuzzRuntimeCopy",
                 disableSkiaHarfBuzzRuntimeCopy.Value.ToString().ToLowerInvariant());
+        }
+
+        if (disableAngleRuntimeCopy is not null)
+        {
+            propertyGroup.AddProperty(
+                "DisableAngleRuntimeCopy",
+                disableAngleRuntimeCopy.Value.ToString().ToLowerInvariant());
         }
 
         ProjectItemGroupElement itemGroup = project.AddItemGroup();
@@ -135,6 +148,7 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
     {
         if (runtimeIdentifier.StartsWith("win", StringComparison.Ordinal))
         {
+            yield return ("Avalonia.Angle.Windows.Natives", "$(AngleVersion)");
             yield return ("SkiaSharp.NativeAssets.Win32", "$(SkiaSharpVersion)");
             yield return ("HarfBuzzSharp.NativeAssets.Win32", "$(HarfBuzzVersion)");
             yield break;
@@ -153,6 +167,28 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
 
     private static string BuildProgramSource()
     {
-        return "Console.WriteLine($\"SkiaSharpVersion.Native={SkiaSharp.SkiaSharpVersion.Native}\");";
+        return """
+                using System.Runtime.InteropServices;
+
+                if (OperatingSystem.IsWindows())
+                {
+                #if NET10_0
+                    NativeLibrary.SetDllImportResolver(
+                        typeof(AngleNative).Assembly,
+                        static (libraryName, _, _) =>
+                            string.Equals(libraryName, "av_libglesv2.dll", StringComparison.OrdinalIgnoreCase)
+                                ? NativeLibrary.GetMainProgramHandle()
+                                : IntPtr.Zero);
+                #endif
+                    Console.WriteLine($"AngleError=0x{AngleNative.GetError():X}");
+                }
+                Console.WriteLine($"SkiaSharpVersion.Native={SkiaSharp.SkiaSharpVersion.Native}");
+
+                internal static class AngleNative
+                {
+                    [DllImport("av_libglesv2.dll", EntryPoint = "EGL_GetError")]
+                    internal static extern uint GetError();
+                }
+                """;
     }
 }

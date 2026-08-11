@@ -1,6 +1,7 @@
 <Project>
   <PropertyGroup>
     <DisableSkiaHarfBuzzRuntimeCopy Condition="'$(DisableSkiaHarfBuzzRuntimeCopy)' == ''">true</DisableSkiaHarfBuzzRuntimeCopy>
+    <DisableAngleRuntimeCopy Condition="'$(DisableAngleRuntimeCopy)' == ''">true</DisableAngleRuntimeCopy>
     <DetectAvaloniaDesigner Condition="'$(DetectAvaloniaDesigner)' == ''">true</DetectAvaloniaDesigner>
   </PropertyGroup>
 
@@ -9,6 +10,7 @@
     <_AvaloniaModuleInitializer>$([MSBuild]::NormalizePath('$(_AvaloniaPackageRoot)', 'contentFiles/cs/net10.0/ModuleInitializer.cs'))</_AvaloniaModuleInitializer>
     <_AvaloniaSkiaNativeFileNames>;libSkiaSharp.dll;libSkiaSharp.so;</_AvaloniaSkiaNativeFileNames>
     <_AvaloniaHarfBuzzNativeFileNames>;libHarfBuzzSharp.dll;libHarfBuzzSharp.so;</_AvaloniaHarfBuzzNativeFileNames>
+    <_AvaloniaAngleNativeFileNames>;av_libglesv2.dll;</_AvaloniaAngleNativeFileNames>
   </PropertyGroup>
 
   <Target Name="ResolveAvaloniaAppHostActivation"
@@ -42,6 +44,7 @@
           Condition="'$(AvaloniaAppHostActive)' == 'true' and Exists('$(_AvaloniaModuleInitializer)')">
     <PropertyGroup>
         <DefineConstants Condition="'$(DetectAvaloniaDesigner)' == 'true'">$(DefineConstants);DETECT_AVALONIA_DESIGNER</DefineConstants>
+        <DefineConstants Condition="'$(_AvaloniaTemplateRidIsWindows)' != 'True'">$(DefineConstants);HOSTFORGE_DISABLE_AVALONIA_WIN32_IMPORT_RESOLVER</DefineConstants>
     </PropertyGroup>
 
     <ItemGroup>
@@ -55,7 +58,21 @@
           BeforeTargets="PrepareForBuild"
           DependsOnTargets="ResolveAvaloniaAppHostActivation"
           Condition="'$(TargetFramework)' != '' and '$(AvaloniaAppHostActive)' != 'true'">
-    <Warning Text="ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='$(TargetFramework)' RuntimeIdentifier='$(RuntimeIdentifier)'. Expected templates under 'template/$(_AvaloniaTemplateTfm)/$(_AvaloniaTemplateRid)' (or default net10.0/win-x64). Host replacement and Skia/HarfBuzz runtime copy suppression are disabled." />
+    <Warning Text="ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='$(TargetFramework)' RuntimeIdentifier='$(RuntimeIdentifier)'. Expected templates under 'template/$(_AvaloniaTemplateTfm)/$(_AvaloniaTemplateRid)' (or default net10.0/win-x64). Host replacement and ANGLE/Skia/HarfBuzz runtime copy suppression are disabled." />
+  </Target>
+
+  <Target Name="DisableAnglePublishItems"
+          BeforeTargets="_CopyResolvedFilesToPublishPreserveNewest;_CopyResolvedFilesToPublishAlways"
+          DependsOnTargets="ResolveAvaloniaAppHostActivation"
+          Condition="'$(DisableAngleRuntimeCopy)' == 'true' and '$(AvaloniaAppHostActive)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="$(_AvaloniaAngleNativeFileNames.Contains(';%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension);'))" />
+      <_ResolvedFileToPublishPreserveNewest Remove="@(_ResolvedFileToPublishPreserveNewest)"
+                                            Condition="$(_AvaloniaAngleNativeFileNames.Contains(';%(_ResolvedFileToPublishPreserveNewest.Filename)%(_ResolvedFileToPublishPreserveNewest.Extension);'))" />
+      <_ResolvedFileToPublishAlways Remove="@(_ResolvedFileToPublishAlways)"
+                                    Condition="$(_AvaloniaAngleNativeFileNames.Contains(';%(_ResolvedFileToPublishAlways.Filename)%(_ResolvedFileToPublishAlways.Extension);'))" />
+    </ItemGroup>
   </Target>
 
   <Target Name="DisableSkiaHarfBuzzPublishItems"
