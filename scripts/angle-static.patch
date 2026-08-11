@@ -1,7 +1,7 @@
 diff --git a/BUILD.gn b/BUILD.gn
 --- a/BUILD.gn
 +++ b/BUILD.gn
-@@ -1488,6 +1488,11 @@ if (angle_has_frame_capture) {
+@@ -1485,6 +1485,11 @@ if (angle_has_frame_capture) {
    }
  }
  
@@ -13,7 +13,7 @@ diff --git a/BUILD.gn b/BUILD.gn
  angle_static_library("libGLESv2_thin_static") {
    sources = libglesv2_entry_point_sources
    if (angle_enable_cl) {
-@@ -1501,6 +1506,7 @@ angle_static_library("libGLESv2_thin_static") {
+@@ -1498,6 +1503,7 @@ angle_static_library("libGLESv2_thin_static") {
  }
  
  angle_static_library("libGLESv2_static") {
