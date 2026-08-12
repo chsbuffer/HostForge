@@ -21,11 +21,11 @@ jobs:
           - arch: x64
             rid: win-x64
             hostlibs_flavor: default
-            pgo: true
+            pgo: True
           - arch: arm64
             rid: win-arm64
             hostlibs_flavor: default
-            pgo: true
+            pgo: True
 
     steps:
       - name: Checkout repository
