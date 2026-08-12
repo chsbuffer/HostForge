@@ -89,7 +89,7 @@ task build-hostlibs ARCH=arm64
 task build-hostlibs ARCH=x64 PGO=false  # no-pgo flavor
 ```
 
-Conan 的 cache 和 source 目录位于 `build/conan`。
+`CONAN_HOME` 设为 `build/conan` 的绝对路径。本地构建前先 `export CONAN_HOME=$(pwd)/build/conan`（或 PowerShell: `$env:CONAN_HOME = "$PWD\build\conan"`）。
 
 ### 2. 构建 SkiaSharp / HarfBuzzSharp
 

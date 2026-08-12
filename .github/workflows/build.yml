@@ -14,7 +14,7 @@ jobs:
   windows-hostlibs:
     runs-on: windows-2025-vs2026
     env:
-      CONAN_HOME: build/conan
+      CONAN_HOME: ${{ github.workspace }}/build/conan
     strategy:
       matrix:
         include:
@@ -84,7 +84,7 @@ jobs:
   windows-skia:
     runs-on: windows-2025-vs2026
     env:
-      CONAN_HOME: build/conan
+      CONAN_HOME: ${{ github.workspace }}/build/conan
     strategy:
       matrix:
         include:
@@ -129,7 +129,7 @@ jobs:
   windows-angle:
     runs-on: windows-2025-vs2026
     env:
-      CONAN_HOME: build/conan
+      CONAN_HOME: ${{ github.workspace }}/build/conan
     strategy:
       matrix:
         include:
@@ -261,7 +261,7 @@ jobs:
   linux-hostlibs:
     runs-on: ubuntu-latest
     env:
-      CONAN_HOME: build/conan
+      CONAN_HOME: ${{ github.workspace }}/build/conan
     needs:
       - linux-sysroot
 
@@ -337,7 +337,7 @@ jobs:
   linux-skia:
     runs-on: ubuntu-latest
     env:
-      CONAN_HOME: build/conan
+      CONAN_HOME: ${{ github.workspace }}/build/conan
     needs:
       - linux-sysroot
 
