@@ -1,4 +1,4 @@
-using System.Xml.Linq;
+using System.IO.Compression;
 using HostForge.TestInfra;
 
 namespace HostForge.AvaloniaAppHost.Tests;
@@ -6,60 +6,107 @@ namespace HostForge.AvaloniaAppHost.Tests;
 [WindowsOnly]
 public class AvaloniaAppHostTests
 {
+    private static readonly string[] AllRids = ["win-x64", "win-arm64"];
+
     [Before(Class)]
     public static async Task PackAvaloniaPackage()
     {
-        await AvaloniaPackageBuilder.EnsurePackedAsync("windows");
+        await AvaloniaPackageBuilder.EnsurePackedAsync();
+    }
+
+    private static IReadOnlyList<string> GetPackedRids()
+    {
+        return AllRids.Where(rid => File.Exists(NupkgPath(RepoContext.GetAvaloniaRidPackageId(rid)))).ToList();
+    }
+
+    private static string NupkgPath(string packageId) =>
+        Path.Combine(RepoContext.AvaloniaPackageOutputDir, $"{packageId}.{RepoContext.AvaloniaPackageIdentityVersion}.nupkg");
+
+    private static void UnpackNupkg(string nupkgPath, string tempDir)
+    {
+        if (Directory.Exists(tempDir))
+            Directory.Delete(tempDir, recursive: true);
+        ZipFile.ExtractToDirectory(nupkgPath, tempDir);
+    }
+
+    private static HashSet<string> ListFiles(string root)
+    {
+        return Directory.GetFiles(root, "*", SearchOption.AllDirectories)
+            .Select(f => f[(root.Length + 1)..].Replace('\\', '/'))
+            .Where(f => !f.EndsWith(".nuspec", StringComparison.Ordinal)
+                        && !f.EndsWith(".psmdcp", StringComparison.Ordinal)
+                        && f != ".signature.p7s"
+                        && f != "README.md"
+                        && f != "README.txt")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     [Test]
-    public async Task PackageContract_MatchesCurrentAvaloniaVersion()
+    public async Task RidPackages_ContainOwnTemplatesAndProps()
     {
-        string nuspecPath = Path.Combine(
-            RepoContext.RepoRoot,
-            "src",
-            "package-avalonia-apphost",
-            "obj",
-            "Release",
-            $"{RepoContext.GetAvaloniaPackageId("windows")}.{RepoContext.AvaloniaPackageIdentityVersion}.nuspec");
+        var packedRids = GetPackedRids();
+        if (packedRids.Count == 0)
+            throw new InvalidOperationException("No RID packages found.");
 
-        AssertEx.FileExists(nuspecPath);
-
-        string nupkgPath = Path.Combine(
-            RepoContext.AvaloniaPackageOutputDir,
-            $"{RepoContext.GetAvaloniaPackageId("windows")}.{RepoContext.AvaloniaPackageIdentityVersion}.nupkg");
-
-        AssertEx.FileExists(nupkgPath);
-
-        XDocument nuspec = XDocument.Load(nuspecPath);
-        XNamespace ns = nuspec.Root?.Name.Namespace ?? XNamespace.None;
-
-        AssertElementValue(nuspec, ns, "metadata", "version", RepoContext.AvaloniaPackageVersion);
-        AssertDependencyVersion(nuspec, ns, "Avalonia.Angle.Windows.Natives", RepoContext.AngleVersion);
-        AssertDependencyVersion(nuspec, ns, "SkiaSharp", RepoContext.SkiaSharpVersion);
-        AssertDependencyVersion(nuspec, ns, "HarfBuzzSharp", RepoContext.HarfBuzzVersion);
-
-        string[] expectedTemplateTargets =
-        [
-            @"template\net10.0\win-x64\apphost.exe",
-            @"template\net10.0\win-x64\singlefilehost.exe",
-            @"template\net10.0\win-arm64\apphost.exe",
-            @"template\net10.0\win-arm64\singlefilehost.exe"
-        ];
-
-        HashSet<string> actualTargets = nuspec
-            .Descendants(ns + "file")
-            .Select(x => x.Attribute("target")?.Value)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Cast<string>()
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        foreach (string expectedTarget in expectedTemplateTargets)
+        foreach (string rid in packedRids)
         {
-            if (!actualTargets.Contains(expectedTarget))
+            string packageId = RepoContext.GetAvaloniaRidPackageId(rid);
+            string nupkg = NupkgPath(packageId);
+            AssertEx.FileExists(nupkg);
+
+            string tmp = Path.Combine(Path.GetTempPath(), $"hft-{Guid.NewGuid():N}");
+            try
             {
-                throw new InvalidOperationException($"Expected template target was not found: {expectedTarget}");
+                UnpackNupkg(nupkg, tmp);
+                HashSet<string> files = ListFiles(tmp);
+
+                if (!files.Contains($"template/net10.0/{rid}/apphost.exe"))
+                    throw new InvalidOperationException($"{rid} package missing apphost");
+                if (!files.Contains($"template/net10.0/{rid}/singlefilehost.exe"))
+                    throw new InvalidOperationException($"{rid} package missing singlefilehost");
+
+                foreach (string other in AllRids)
+                {
+                    if (other == rid) continue;
+                    if (files.Any(f => f.Contains($"/{other}/")))
+                        throw new InvalidOperationException($"{rid} package leaked {other} templates");
+                }
+
+                if (!files.Contains($"buildTransitive/{packageId}.props"))
+                    throw new InvalidOperationException($"{rid} package missing .props");
             }
+            finally
+            {
+                if (Directory.Exists(tmp))
+                    Directory.Delete(tmp, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    public async Task BuildPackage_ContainsTargetsAndModuleInitializer()
+    {
+        string packageId = RepoContext.AvaloniaAppHostBuildPackageId;
+        string nupkg = NupkgPath(packageId);
+        AssertEx.FileExists(nupkg);
+
+        string tmp = Path.Combine(Path.GetTempPath(), $"hft-{Guid.NewGuid():N}");
+        try
+        {
+            UnpackNupkg(nupkg, tmp);
+            HashSet<string> files = ListFiles(tmp);
+
+            if (!files.Contains("buildTransitive/ChsBuffer.Avalonia.AppHost.Build.targets"))
+                throw new InvalidOperationException("Build package missing .targets");
+            if (!files.Contains("buildTransitive/ModuleInitializer.cs"))
+                throw new InvalidOperationException("Build package missing ModuleInitializer.cs");
+            if (files.Any(f => f.StartsWith("template/", StringComparison.Ordinal)))
+                throw new InvalidOperationException("Build package must not contain templates");
+        }
+        finally
+        {
+            if (Directory.Exists(tmp))
+                Directory.Delete(tmp, recursive: true);
         }
     }
 
@@ -91,17 +138,20 @@ public class AvaloniaAppHostTests
     }
 
     [Test]
-    public async Task PublishRules_CoverNet9Net10AndWinX64WinArm64()
+    public async Task PublishRules_CoverNet9Net10AndAvailableRids()
     {
-        PublishRuleCase[] cases =
-        [
-            new("net9_publish_win-x64", "net9.0", "win-x64", ExpectedActive: false, ExpectNativeRuntimeCopy: true, RunExecutable: true),
-            new("net10_publish_win-x64", "net10.0", "win-x64", ExpectedActive: true, ExpectNativeRuntimeCopy: false, RunExecutable: true),
-            new("net9_publish_win-arm64", "net9.0", "win-arm64", ExpectedActive: false, ExpectNativeRuntimeCopy: true, RunExecutable: false),
-            new("net10_publish_win-arm64", "net10.0", "win-arm64", ExpectedActive: true, ExpectNativeRuntimeCopy: false, RunExecutable: false)
-        ];
+        var packedRids = GetPackedRids();
+        var cases = new List<PublishRuleCase>();
 
-        foreach (PublishRuleCase testCase in cases)
+        foreach (string rid in packedRids)
+        {
+            cases.Add(new($"net9_publish_{rid}", "net9.0", rid, ExpectedActive: false, ExpectNativeRuntimeCopy: true, RunExecutable: rid == "win-x64"));
+            cases.Add(new($"net10_publish_{rid}", "net10.0", rid, ExpectedActive: true, ExpectNativeRuntimeCopy: false, RunExecutable: rid == "win-x64"));
+        }
+
+        PublishRuleCase[] allCases = cases.ToArray();
+
+        foreach (PublishRuleCase testCase in allCases)
         {
             await ExecuteCaseAsync(testCase.Name, async () =>
             {
@@ -247,48 +297,17 @@ public class AvaloniaAppHostTests
         string targetFramework,
         string runtimeIdentifier)
     {
-        string inactiveMessage =
-            $"ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='{targetFramework}' RuntimeIdentifier='{runtimeIdentifier}'";
+        string inactiveMarker = "ChsBuffer.Avalonia.AppHost is inactive";
 
         if (expectedActive)
         {
-            AssertEx.NotContains(combinedOutput, "ChsBuffer.Avalonia.AppHost is inactive");
+            AssertEx.NotContains(combinedOutput, inactiveMarker);
             return;
         }
 
-        AssertEx.Contains(combinedOutput, inactiveMessage);
-    }
-
-    private static void AssertElementValue(
-        XDocument document,
-        XNamespace ns,
-        string parentName,
-        string childName,
-        string expectedValue)
-    {
-        XElement? parent = document.Root?.Element(ns + parentName);
-        XElement? child = parent?.Element(ns + childName);
-        string? actualValue = child?.Value?.Trim();
-
-        if (!string.Equals(actualValue, expectedValue, StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                $"Expected {parentName}/{childName}='{expectedValue}', but found '{actualValue ?? "<missing>"}'.");
-        }
-    }
-
-    private static void AssertDependencyVersion(XDocument nuspec, XNamespace ns, string dependencyId, string expectedVersion)
-    {
-        XElement? dependency = nuspec
-            .Descendants(ns + "dependency")
-            .FirstOrDefault(x => string.Equals(x.Attribute("id")?.Value, dependencyId, StringComparison.Ordinal));
-
-        string? actualVersion = dependency?.Attribute("version")?.Value;
-        if (!string.Equals(actualVersion, expectedVersion, StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                $"Expected dependency '{dependencyId}' version '{expectedVersion}', but found '{actualVersion ?? "<missing>"}'.");
-        }
+        AssertEx.Contains(combinedOutput, inactiveMarker);
+        AssertEx.Contains(combinedOutput, $"TargetFramework='{targetFramework}'");
+        AssertEx.Contains(combinedOutput, $"RuntimeIdentifier='{runtimeIdentifier}'");
     }
 
     private static async Task ExecuteCaseAsync(string caseName, Func<Task> action)

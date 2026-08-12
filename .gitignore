@@ -4,3 +4,5 @@ __pycache__
 [Tt]est[Rr]esults
 .idea/
 .vs/
+/build/
+/repo/

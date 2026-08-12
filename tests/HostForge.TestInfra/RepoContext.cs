@@ -21,6 +21,8 @@ public static class RepoContext
 
     public static string AvaloniaPackageVersion { get; } = ReadProperty("AvaloniaAppHostPackageVersion");
 
+    public static string TargetAvaloniaVersion { get; } = ReadProperty("TargetAvaloniaVersion");
+
     public static string AvaloniaPackageIdentityVersion { get; } = StripSemVerBuildMetadata(AvaloniaPackageVersion);
 
     public static string SkiaSharpVersion { get; } = ReadProperty("SkiaSharpVersion");
@@ -37,17 +39,9 @@ public static class RepoContext
     public static string ArtifactsTestRoot { get; } =
         Path.Combine(RepoRoot, "artifacts", "tmp", "build-tests");
 
-    public static string GetAvaloniaPackageId(string packageMode)
-    {
-        return packageMode switch
-        {
-            "all" => AvaloniaAppHostBasePackageId,
-            "windows" => $"{AvaloniaAppHostBasePackageId}.Windows",
-            "linux" => $"{AvaloniaAppHostBasePackageId}.Linux",
-            _ => throw new InvalidOperationException(
-                $"Unsupported Avalonia package mode '{packageMode}'. Expected 'windows', 'linux', or 'all'.")
-        };
-    }
+    public const string AvaloniaAppHostBuildPackageId = "ChsBuffer.Avalonia.AppHost.Build";
+
+    public static string GetAvaloniaRidPackageId(string rid) => $"{AvaloniaAppHostBasePackageId}.{rid}";
 
     private static string LocateRepoRoot()
     {

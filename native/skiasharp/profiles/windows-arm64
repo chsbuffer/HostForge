@@ -1,0 +1,13 @@
+[settings]
+os=Windows
+arch=armv8
+compiler=clang
+compiler.version=21
+compiler.runtime=static
+compiler.runtime_type=Release
+compiler.runtime_version=v145
+compiler.cppstd=20
+build_type=Release
+
+[conf]
+tools.microsoft:winsdk_version=10.0.26100.0

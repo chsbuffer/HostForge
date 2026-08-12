@@ -29,7 +29,7 @@
 - `apphost.rsp`
 - `singlefilehost.rsp`
 
-`scripts/build-hostlibs.py` 也随之调整，不再重新归档 obj/lib/directives，而是直接从 runtime 的 ninja/link 规则中提取链接输入，复制真实依赖文件，并生成：
+该归档逻辑现由 `native/hostlibs/conanfile.py` 维护：它直接从 runtime 的 ninja/link 规则中提取链接输入，复制真实依赖文件，并生成：
 
 - `*.rsp`
 - `*.linkflags`

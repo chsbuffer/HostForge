@@ -1,0 +1,13 @@
+sources:
+  url: "https://github.com/google/angle"
+  commit: "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"
+
+patches:
+  - patch_file: "patches/angle-deps.patch"
+    patch_description: "Prune unused ANGLE checkout dependencies"
+    patch_type: "build"
+    base_path: "angle"
+  - patch_file: "patches/angle-static.patch"
+    patch_description: "Add complete static ANGLE and GLESv2 targets"
+    patch_type: "build"
+    base_path: "angle"

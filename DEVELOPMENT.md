@@ -6,12 +6,15 @@
 
 ## 版本来源
 
-项目只维护一组当前依赖，不提供多版本并行构建矩阵。
+项目只维护一组当前依赖，不提供多版本并行构建矩阵。三个原生依赖各自维护 Conan recipe；`conanfile.py` 定义包版本、构建和封装，`conandata.yml` 固定上游 commit 与 patch：
 
-- [`DEPS`](DEPS) 保存上游源码版本和 commit，供检出脚本与 CI 缓存键使用。
+- [`native/hostlibs`](native/hostlibs)
+- [`native/skiasharp`](native/skiasharp)
+- [`native/angle`](native/angle)
+
 - [`Directory.Build.props`](Directory.Build.props) 保存 MSBuild、NuGet 依赖及包版本所需的版本号。
 
-升级 Runtime、ANGLE、SkiaSharp 或 HarfBuzzSharp 时，应同步检查这两个文件。当前配置为：
+升级依赖时应同步检查对应源码配置与 `Directory.Build.props` 中的消费版本。当前配置为：
 
 | 依赖 | 版本 |
 | --- | --- |
@@ -21,7 +24,7 @@
 | SkiaSharp | 3.119.4 |
 | HarfBuzzSharp | 8.3.1.5 |
 
-Runtime、ANGLE 与 SkiaSharp 的缓存键包含版本、上游 commit、目标系统、架构和工具链信息。更新 `DEPS` 后会产生新的缓存键，不会错误复用旧版本缓存。
+CI 缓存键覆盖对应 recipe 目录；SkiaSharp 还包含原始 HarfBuzzSharp VCXPROJ 模板，Linux 包还包含 sysroot 标识。Conan package ID 负责区分平台、架构、编译器、runtime 和 HostLibs PGO option。
 
 ## 环境要求
 
@@ -29,6 +32,8 @@ Runtime、ANGLE 与 SkiaSharp 的缓存键包含版本、上游 commit、目标�
 
 - .NET 10 SDK
 - Python 3.10+
+- Task 3.52.0+
+- Conan 2.31.2
 - Git
 - Ninja
 - CMake
@@ -44,126 +49,86 @@ Windows 构建环境：
 
 Linux 构建使用 Clang，并通过 sysroot 对齐 .NET Host、SkiaSharp 和 HarfBuzzSharp 的目标 ABI。背景和工具链说明见 [Linux 构建方法](docs/roadmap/2026-03-13-linux-build-methodology.md)。
 
-## 检出上游源码
+## 上游源码
 
-```bash
-python scripts/checkout-deps.py runtime
-python scripts/checkout-deps.py skiasharp
-python scripts/checkout-deps.py angle
-```
-
-版本来自 `DEPS`，无需也不能通过命令行选择其他版本。源码目录包含版本号：
-
-```text
-repo/runtime-<version>
-repo/skia-<version>
-repo/angle-<version>
-```
-
-非 CI 环境会使用 `repo/deps-mirror` 保存上游裸仓库缓存。查看当前版本或解析源码目录：
-
-```bash
-python scripts/checkout-deps.py --list
-python scripts/checkout-deps.py --print-source-dir runtime
-python scripts/checkout-deps.py --print-source-dir skiasharp
-python scripts/checkout-deps.py --print-source-dir angle
-```
+无需预先检出上游仓库。Conan 在首次构建 recipe revision 时浅检出固定 commit，并将配置无关的源码保存在 source cache；每个 binary configuration 使用独立 build folder。ANGLE 和 SkiaSharp 的 GN 输出位于外部 build folder，Runtime 则为每个 binary 使用隔离的源码副本，避免不同架构或 PGO flavor 共用 Runtime `artifacts/obj`。
 
 ## 构建入口
 
-[`scripts/pipeline.py`](scripts/pipeline.py) 是常用任务入口：
+根目录 [`Taskfile.yml`](Taskfile.yml) 是常用任务入口：
 
 | 命令 | 作用 |
 | --- | --- |
-| `hostlibs` | 构建 .NET AppHost / SingleFileHost 静态库 |
-| `skia` | 构建 SkiaSharp / HarfBuzzSharp 静态库 |
-| `angle` | 构建 Windows x64 / arm64 ANGLE 静态库 |
+| `build-hostlibs` | 构建 .NET AppHost / SingleFileHost 静态库 |
+| `build-skiasharp` | 构建 SkiaSharp / HarfBuzzSharp 静态库 |
+| `build-angle` | 构建 Windows x64 / arm64 ANGLE 静态库 |
 | `matrix` | 运行通用 Static AppHost 构建集成矩阵 |
 | `link-avalonia` | 生成指定操作系统的 Avalonia 宿主模板 |
 | `avalonia-test` | 运行 Avalonia AppHost 集成测试 |
-| `pack-avalonia` | 打包 Avalonia AppHost |
+| `pack-avalonia` | 打包全部 Avalonia AppHost（RID 包 + Build + 元包） |
+| `pack-avalonia-rid` | 打包单个 RID 的 Avalonia AppHost 模板（RID=win-x64\|win-arm64\|linux-x64） |
+| `pack-avalonia-build` | 打包 Build 包（targets + ModuleInitializer） |
+| `pack-avalonia-meta` | 打包元包（依赖所有子包） |
 | `pack-static-apphost` | 打包通用 Static AppHost |
 | `pack-skia-static` | 打包 SkiaSharp 静态库输入 |
 
-运行子命令的 `--help` 可查看平台、RID 或打包模式参数。
+运行 `task --list` 可查看任务；通过 `NAME=value` 传入目标平台、RID 或打包模式。构建任务接受 `ARCH=x64|arm64`、`PGO=true|false`，Linux 构建还需传入 `SYSROOT`。
 
 ## Windows 构建
 
 ### 1. 构建 HostLibs
 
-```powershell
-python .\scripts\pipeline.py hostlibs -v
-```
-
-Windows 下该命令构建以下组合：
+Windows 支持以下组合：
 
 - `default`：`win-x64`、`win-arm64`
 - `no-pgo`：`win-x64`、`win-arm64`
 
-也可以单独调用底层脚本：
-
 ```powershell
-python .\scripts\build-hostlibs.py all -v --arch x64
-python .\scripts\build-hostlibs.py all -v --arch arm64
-python .\scripts\build-hostlibs.py all -v --arch x64 --no-pgo
-python .\scripts\build-hostlibs.py all -v --arch arm64 --no-pgo
+task build-hostlibs ARCH=x64
+task build-hostlibs ARCH=arm64
+task build-hostlibs ARCH=x64 PGO=false  # no-pgo flavor
 ```
 
-在同一份 Runtime 工作树中切换 `default` 和 `no-pgo` 前，需要清理对应 subset 的中间产物。例如当前 Runtime 版本的 x64 工作树：
-
-```powershell
-.\repo\runtime-10.0.10\build.cmd -clean -subset host.native -c Release -a x64
-.\repo\runtime-10.0.10\build.cmd -clean -subset clr.runtime -c Release -a x64
-```
-
-CI 的不同 flavor 位于独立 runner，不受此问题影响。
+Conan 的 cache 和 source 目录位于 `build/conan`。
 
 ### 2. 构建 SkiaSharp / HarfBuzzSharp
 
 ```powershell
-python .\scripts\pipeline.py skia -v
+task build-skiasharp ARCH=x64
+task build-skiasharp ARCH=arm64
 ```
 
-或按架构构建：
-
-```powershell
-python .\scripts\build-skia-harfbuzz.py -v --arch x64 --os windows
-python .\scripts\build-skia-harfbuzz.py -v --arch arm64 --os windows
-```
+Windows HarfBuzzSharp 项目由 [`scripts/libHarfBuzzSharp.vcxproj.in`](scripts/libHarfBuzzSharp.vcxproj.in) 原样导出后实例化，仓库中的上游模板不由 recipe 修改。
 
 ### 3. 构建 ANGLE
 
 先将 Chromium `depot_tools` 加入 `PATH`，然后运行：
 
 ```powershell
-python .\scripts\pipeline.py angle -v
+task build-angle ARCH=x64
+task build-angle ARCH=arm64
 ```
 
-或按架构构建：
-
-```powershell
-python .\scripts\build-angle.py -v --arch x64
-python .\scripts\build-angle.py -v --arch arm64
-```
+recipe 的职责和包内容详见 [`native/angle/README.md`](native/angle/README.md)。
 
 ### 4. 生成并验证 Avalonia 宿主
 
 ```powershell
-python .\scripts\pipeline.py link-avalonia -v --os windows
-python .\scripts\pipeline.py avalonia-test -v
+task link-avalonia TARGET_OS=windows
+task avalonia-test
 ```
 
-`avalonia-test` 会按需打包平台包，并验证模板激活、动态本机库抑制、Windows ANGLE P/Invoke 从宿主解析和可执行文件运行行为。
+`avalonia-test` 会按需打包平台 RID 包和 Build 包，并验证模板激活、动态本机库抑制、Windows ANGLE P/Invoke 从宿主解析和可执行文件运行行为。
 
 ### 5. 打包
 
 ```powershell
-python .\scripts\pipeline.py pack-avalonia -v --mode windows
-python .\scripts\pipeline.py pack-static-apphost -v --rid win-x64
-python .\scripts\pipeline.py pack-skia-static -v --rid win-x64
+task pack-avalonia
+task pack-static-apphost RID=win-x64
+task pack-skia-static RID=win-x64
 ```
 
-`pack-avalonia --mode windows` 会在打包前自动链接 Windows 模板。`--mode all` 不执行链接，仅用于聚合已经生成或下载的 Windows 与 Linux 模板；详细约定见 [Avalonia 打包说明](src/package-avalonia-apphost/DEVELOPMENT.md)。
+`pack-avalonia` 依次打包所有 RID 包、Build 包和元包。也可单独打包某个 RID：`task pack-avalonia-rid RID=win-x64`。详细约定见 [Avalonia 打包说明](src/package-avalonia-apphost/DEVELOPMENT.md)。
 
 ## Linux 构建
 
@@ -172,26 +137,24 @@ Linux 构建目前以 `linux-x64` 为主，并使用 `ROOTFS_DIR` 指向目标 s
 ### 1. 构建 HostLibs
 
 ```bash
-ROOTFS_DIR=repo/rootfs/x64 \
-  python scripts/build-hostlibs.py -v --os linux --arch x64
+task build-hostlibs SYSROOT=build/rootfs/x64
 ```
+
+使用 `native/hostlibs/profiles/linux-x64`，通过 `ROOTFS_DIR` 环境变量传入 sysroot。CI 同时启用 Conan system package manager 安装 Runtime 声明的 Ubuntu 构建依赖。不指定 SYSROOT 时使用系统原生工具链。
 
 ### 2. 构建 SkiaSharp / HarfBuzzSharp
 
 ```bash
-CC=clang CXX=clang++ ROOTFS_DIR=repo/rootfs/x64 \
-  python scripts/build-skia-harfbuzz.py -v --os linux --arch x64
+task build-skiasharp SYSROOT=build/rootfs/x64
 ```
+
+使用 `native/skiasharp/profiles/linux-x64`，同样通过 `ROOTFS_DIR` 环境变量传入 sysroot；可继续用 `CC`、`CXX` 和 `AR` 覆盖 GN 工具链命令。
 
 ### 3. 生成并验证 Avalonia 宿主
 
 ```bash
-python scripts/pipeline.py link-avalonia -v \
-  --os linux \
-  --sysroot repo/rootfs/x64
-
-python scripts/pipeline.py avalonia-test -v \
-  --sysroot repo/rootfs/x64
+task link-avalonia TARGET_OS=linux SYSROOT=build/rootfs/x64
+task avalonia-test SYSROOT=build/rootfs/x64
 ```
 
 ### 4. 验证通用链接流程
@@ -206,13 +169,14 @@ dotnet publish samples/simple-pinvoke/SimplePInvoke.csproj -p:PublishTrimmed=tru
 通用 Static AppHost 集成矩阵：
 
 ```powershell
-python .\scripts\pipeline.py matrix -v
-```
+task matrix```
 
 可通过环境变量调整矩阵测试：
 
 - `HOSTFORGE_MATRIX_SKIP_EXE_RUN=true`：只构建，不运行生成的可执行文件。
 - `HOSTFORGE_MATRIX_NO_CLEAN=true`：保留消费端测试项目的 `bin` / `obj`。
+
+也可在命令行传入对应的 Task 变量：`SKIP_EXE_RUN=true`、`NO_CLEAN=true`。
 
 也可以直接运行测试工程：
 
@@ -280,7 +244,7 @@ flowchart LR
         LH --> LM
     end
 
-    PA["pack-avalonia<br/>mode=all"]
+    PA["pack-avalonia<br/>3 RIDs + Build + meta"]
 
     WLA --> PA
     LLA --> PA
@@ -298,29 +262,22 @@ flowchart LR
 | `linux-skia` | Linux | `linux-x64` Skia 缓存 |
 | `linux-matrix-test` | Linux | Static AppHost 集成验证 |
 | `linux-link-avalonia` | Linux | Linux Avalonia 模板及测试结果 |
-| `pack-avalonia` | Windows | 聚合 Windows / Linux 模板的 Avalonia NuGet 包 |
+| `pack-avalonia` | Windows | 3 个 RID 包 + Build 包 + 元包（ChsBuffer.Avalonia.AppHost） |
 
 ## 缓存约定
 
-CI 中 `actions/cache` 以 `artifacts/hostlibs`、`artifacts/skiasharp` 或 `artifacts/angle` 为缓存根目录，具体版本和 RID 位于其子目录。
-
-缓存键由 [`scripts/cache_key.py`](scripts/cache_key.py) 生成：
-
-- Runtime：系统、架构、版本、flavor、上游 commit，以及 Windows MSVC 或 Linux Clang 版本。
-- SkiaSharp：系统、架构、版本、上游 commit，以及 Windows MSVC/Clang 或 Linux Clang/GCC 版本。
-- ANGLE：Windows 架构、版本、上游 commit、MSVC 版本，以及构建脚本和 HostForge patch 指纹。
-
-构建 job 使用 `lookup-only` 查询缓存；miss 时完成构建，并由 cache action 的 post step 保存输出。下游链接、测试和打包 job 使用同一缓存键恢复产物。
+CI 中 `actions/cache` 以 `artifacts/hostlibs`、`artifacts/skiasharp` 或 `artifacts/angle` 为缓存根目录，键由系统、RID、flavor/sysroot 和对应 recipe 输入的 `hashFiles` 组成。构建 job 在 miss 时创建 Conan binary package，再部署为现有 artifact 布局；无论 cache hit/miss 都上传 workflow artifact，链接和测试 job 只负责下载消费。
 
 ## 仓库结构
 
 ```text
 src/        MSBuild 链接逻辑和三个包工程
-scripts/    依赖检出、原生构建、缓存键和流水线入口
+native/     三个原生依赖的 Conan recipe、profile 和 deployer
+scripts/    项目直接使用的工具和上游模板
 samples/    Avalonia 与简单 P/Invoke 示例
 tests/      TUnit 集成测试及共享测试基础设施
 docs/       设计、方法论和路线文档
-repo/       上游源码、镜像缓存、sysroot 和补丁
+build/      Conan cache、sysroot 等构建期目录
 artifacts/  构建、打包和测试输出
 ```
 

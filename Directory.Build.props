@@ -15,7 +15,6 @@
 
     <AvaloniaAppHostPackageVersion>$(TargetAvaloniaVersion).$(_Major)</AvaloniaAppHostPackageVersion>
     <AvaloniaAppHostPackageVersion Condition="'$(_Preview)' != ''">$(AvaloniaAppHostPackageVersion)-$(_Preview)</AvaloniaAppHostPackageVersion>
-    <AvaloniaAppHostPackageVersion>$(AvaloniaAppHostPackageVersion)</AvaloniaAppHostPackageVersion>
   </PropertyGroup>
 
   <PropertyGroup>

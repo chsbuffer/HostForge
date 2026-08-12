@@ -1,0 +1,237 @@
+version: "3"
+
+vars:
+  VERBOSITY: '{{.VERBOSITY | default "minimal"}}'
+  # Versions: conanfile.py is the canonical source.
+  HOSTLIBS_VERSION: "10.0.10"
+  SKIASHARP_VERSION: "3.119.4"
+  ANGLE_VERSION: "2.1.27548.20260419"
+
+tasks:
+  default:
+    desc: List available repository tasks
+    silent: true
+    cmds:
+      - task --list
+
+  # ── Build native libraries ────────────────────────────────────
+
+  build-hostlibs:
+    desc: Build and deploy HostLibs static libraries (ARCH=x64|arm64, PGO=true|false, SYSROOT=…)
+    vars:
+      ARCH: '{{.ARCH | default "x64"}}'
+      PGO: '{{.PGO | default "true"}}'
+      SYSROOT: '{{.SYSROOT | default ""}}'
+    cmds:
+      - task: _hostlibs-windows
+        vars: {ARCH: "{{.ARCH}}", PGO: "{{.PGO}}"}
+        platforms: [windows]
+      - task: _hostlibs-linux
+        vars: {SYSROOT: "{{.SYSROOT}}"}
+        platforms: [linux]
+
+  _hostlibs-windows:
+    internal: true
+    platforms: [windows]
+    vars:
+      FLAVOR: '{{if eq .PGO "true"}}default{{else}}no-pgo{{end}}'
+    cmds:
+      - python -m pip install --disable-pip-version-check -r native/hostlibs/requirements.txt
+      - conan export native/hostlibs
+      - >-
+        conan install --requires="hostlibs/{{.HOSTLIBS_VERSION}}" --build=missing --no-remote --envs-generation=false
+        -pr:b=native/hostlibs/profiles/windows-{{.ARCH}}
+        -pr:h=native/hostlibs/profiles/windows-{{.ARCH}}
+        -o "hostlibs/*:pgo={{.PGO}}"
+        --deployer=native/hostlibs/deploy.py
+        --deployer-folder=artifacts/hostlibs
+
+  _hostlibs-linux:
+    internal: true
+    platforms: [linux]
+    env:
+      ROOTFS_DIR: '{{.SYSROOT}}'
+    cmds:
+      - python -m pip install --disable-pip-version-check -r native/hostlibs/requirements.txt
+      - conan export native/hostlibs
+      - >-
+        conan install --requires="hostlibs/{{.HOSTLIBS_VERSION}}" --build=missing --no-remote --envs-generation=false
+        -pr:b=native/hostlibs/profiles/linux-x64
+        -pr:h=native/hostlibs/profiles/linux-x64
+        -c tools.system.package_manager:mode=install
+        -c tools.system.package_manager:sudo=True
+        --deployer=native/hostlibs/deploy.py
+        --deployer-folder=artifacts/hostlibs
+
+  build-skiasharp:
+    desc: Build and deploy SkiaSharp + HarfBuzz static libraries (ARCH=x64|arm64, SYSROOT=…)
+    vars:
+      ARCH: '{{.ARCH | default "x64"}}'
+      SYSROOT: '{{.SYSROOT | default ""}}'
+    cmds:
+      - task: _skiasharp-windows
+        vars: {ARCH: "{{.ARCH}}"}
+        platforms: [windows]
+      - task: _skiasharp-linux
+        vars: {SYSROOT: "{{.SYSROOT}}"}
+        platforms: [linux]
+
+  _skiasharp-windows:
+    internal: true
+    platforms: [windows]
+    cmds:
+      - python -m pip install --disable-pip-version-check -r native/skiasharp/requirements.txt
+      - conan export native/skiasharp
+      - >-
+        conan install --requires="skiasharp/{{.SKIASHARP_VERSION}}" --build=missing --no-remote --envs-generation=false
+        -pr:b=native/skiasharp/profiles/windows-{{.ARCH}}
+        -pr:h=native/skiasharp/profiles/windows-{{.ARCH}}
+        --deployer=native/skiasharp/deploy.py
+        --deployer-folder=artifacts/skiasharp
+
+  _skiasharp-linux:
+    internal: true
+    platforms: [linux]
+    env:
+      ROOTFS_DIR: '{{.SYSROOT}}'
+    cmds:
+      - python -m pip install --disable-pip-version-check -r native/skiasharp/requirements.txt
+      - conan export native/skiasharp
+      - >-
+        CC=clang CXX=clang++ conan install --requires="skiasharp/{{.SKIASHARP_VERSION}}" --build=missing --no-remote --envs-generation=false
+        -pr:b=native/skiasharp/profiles/linux-x64
+        -pr:h=native/skiasharp/profiles/linux-x64
+        -c tools.system.package_manager:mode=install
+        -c tools.system.package_manager:sudo=True
+        --deployer=native/skiasharp/deploy.py
+        --deployer-folder=artifacts/skiasharp
+
+  build-angle:
+    desc: Build and deploy ANGLE static libraries (Windows only, ARCH=x64|arm64)
+    platforms: [windows]
+    vars:
+      ARCH: '{{.ARCH | default "x64"}}'
+    cmds:
+      - python -m pip install --disable-pip-version-check -r native/angle/requirements.txt
+      - conan export native/angle
+      - >-
+        conan install --requires="angle/{{.ANGLE_VERSION}}" --build=missing --no-remote --envs-generation=false
+        -pr:b=native/angle/profiles/windows-{{.ARCH}}
+        -pr:h=native/angle/profiles/windows-{{.ARCH}}
+        --deployer=native/angle/deploy.py
+        --deployer-folder=artifacts/angle
+
+  # ── Integration tests & packaging ─────────────────────────────
+
+  matrix:
+    desc: Run the Static AppHost integration matrix
+    vars:
+      SKIP_EXE_RUN: '{{.SKIP_EXE_RUN | default .HOSTFORGE_MATRIX_SKIP_EXE_RUN | default "false"}}'
+      NO_CLEAN: '{{.NO_CLEAN | default .HOSTFORGE_MATRIX_NO_CLEAN | default "false"}}'
+    env:
+      HOSTFORGE_MATRIX_SKIP_EXE_RUN: "{{.SKIP_EXE_RUN}}"
+      HOSTFORGE_MATRIX_NO_CLEAN: "{{.NO_CLEAN}}"
+    cmds:
+      - >-
+        dotnet test
+        --project tests/HostForge.StaticAppHost.Tests/HostForge.StaticAppHost.Tests.csproj
+        -c Release
+        -v:{{.VERBOSITY}}
+
+  link-avalonia:
+    desc: Link Avalonia apphost templates for one target OS
+    requires:
+      vars:
+        - name: TARGET_OS
+          enum: [windows, linux]
+    cmds:
+      - >-
+        dotnet msbuild src/package-avalonia-apphost/AvaloniaAppHost.Link.proj
+        /t:LinkAvaloniaHosts
+        -p:AvaloniaAppHostTarget={{.TARGET_OS}}
+        -p:HostLibsFlavor=default
+        {{if .SYSROOT}}-p:Sysroot="{{.SYSROOT}}"{{end}}
+        -v:{{.VERBOSITY}}
+
+  avalonia-test:
+    desc: Run the Avalonia AppHost integration tests
+    vars:
+      SYSROOT: '{{.SYSROOT | default .ROOTFS_DIR | default ""}}'
+    env:
+      ROOTFS_DIR: "{{.SYSROOT}}"
+    cmds:
+      - >-
+        dotnet test
+        --project tests/HostForge.AvaloniaAppHost.Tests/HostForge.AvaloniaAppHost.Tests.csproj
+        -c Release
+        -v:{{.VERBOSITY}}
+
+  pack-avalonia-rid:
+    desc: Pack one Avalonia AppHost RID package (requires linked templates)
+    requires:
+      vars:
+        - name: RID
+          enum: [win-x64, win-arm64, linux-x64]
+    cmds:
+      - >-
+        dotnet pack src/package-avalonia-apphost/AvaloniaAppHost.Rid.csproj
+        -c Release
+        -p:AvaloniaHostRid={{.RID}}
+        -v:{{.VERBOSITY}}
+
+  pack-avalonia-build:
+    desc: Pack the Avalonia AppHost Build package
+    cmds:
+      - >-
+        dotnet pack src/package-avalonia-apphost/AvaloniaAppHost.Build.csproj
+        -c Release
+        -v:{{.VERBOSITY}}
+
+  pack-avalonia-meta:
+    desc: Pack the meta package (requires all RID + Build packages already packed)
+    cmds:
+      - >-
+        dotnet pack src/package-avalonia-apphost/AvaloniaAppHost.csproj
+        -c Release
+        -v:{{.VERBOSITY}}
+
+  pack-avalonia:
+    desc: Pack all Avalonia AppHost packages (requires linked templates for all RIDs)
+    cmds:
+      - task: pack-avalonia-rid
+        vars: {RID: win-x64}
+      - task: pack-avalonia-rid
+        vars: {RID: win-arm64}
+      - task: pack-avalonia-rid
+        vars: {RID: linux-x64}
+      - task: pack-avalonia-build
+      - task: pack-avalonia-meta
+
+  pack-static-apphost:
+    desc: Pack the generic Static AppHost package
+    vars:
+      RID: '{{.RID | default "win-x64"}}'
+    requires:
+      vars:
+        - name: RID
+          enum: [win-x64]
+    cmds:
+      - >-
+        dotnet pack src/package-apphost-static/AppHostStatic.csproj
+        -p:StaticAppHostRid={{.RID}}
+        -p:HostLibsFlavor=no-pgo
+        -v:{{.VERBOSITY}}
+
+  pack-skia-static:
+    desc: Pack the SkiaSharp static-link inputs
+    vars:
+      RID: '{{.RID | default "win-x64"}}'
+    requires:
+      vars:
+        - name: RID
+          enum: [win-x64]
+    cmds:
+      - >-
+        dotnet pack src/package-skiasharp-static/SkiaSharp.Static.csproj
+        -p:AvaloniaHostRid={{.RID}}
+        -v:{{.VERBOSITY}}

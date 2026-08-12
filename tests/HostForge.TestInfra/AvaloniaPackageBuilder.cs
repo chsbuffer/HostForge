@@ -3,14 +3,12 @@ namespace HostForge.TestInfra;
 public static class AvaloniaPackageBuilder
 {
     private static readonly SemaphoreSlim Lock = new(1, 1);
-    private static readonly HashSet<string> PackedModes = new(StringComparer.Ordinal);
+    private static bool _packed;
     private const string RootfsDirEnvironmentVariableName = "ROOTFS_DIR";
 
-    public static async Task EnsurePackedAsync(
-        string packageMode = "windows",
-        CancellationToken cancellationToken = default)
+    public static async Task EnsurePackedAsync(CancellationToken cancellationToken = default)
     {
-        if (PackedModes.Contains(packageMode))
+        if (_packed)
         {
             return;
         }
@@ -18,42 +16,98 @@ public static class AvaloniaPackageBuilder
         await Lock.WaitAsync(cancellationToken);
         try
         {
-            if (PackedModes.Contains(packageMode))
+            if (_packed)
             {
                 return;
             }
 
-            string project = Path.Combine(
+            string ridProject = Path.Combine(
                 RepoContext.RepoRoot,
                 "src",
                 "package-avalonia-apphost",
-                "AvaloniaAppHost.csproj");
-            string packageCacheDir = Path.Combine(
+                "AvaloniaAppHost.Rid.csproj");
+            string buildProject = Path.Combine(
                 RepoContext.RepoRoot,
-                "artifacts",
-                "tmp",
-                "nuget",
-                "packages",
-                RepoContext.GetAvaloniaPackageId(packageMode).ToLowerInvariant());
+                "src",
+                "package-avalonia-apphost",
+                "AvaloniaAppHost.Build.csproj");
+            string packagesCache = Path.Combine(
+                RepoContext.RepoRoot,
+                "artifacts", "tmp", "nuget", "packages");
 
-            if (Directory.Exists(packageCacheDir))
+            // Discover available RIDs from linked artifacts
+            string artifactRoot = Path.Combine(
+                RepoContext.RepoRoot,
+                "artifacts", "avalonia-host", RepoContext.TargetAvaloniaVersion);
+            string[] knownRids = ["win-x64", "win-arm64", "linux-x64"];
+            var availableRids = new List<string>();
+
+            foreach (string rid in knownRids)
             {
-                Directory.Delete(packageCacheDir, recursive: true);
+                string ridDir = Path.Combine(artifactRoot, rid);
+                string apphostName = rid.StartsWith("win", StringComparison.Ordinal) ? "apphost.exe" : "apphost";
+                string singlefilehostName = rid.StartsWith("win", StringComparison.Ordinal) ? "singlefilehost.exe" : "singlefilehost";
+
+                if (File.Exists(Path.Combine(ridDir, apphostName))
+                    && File.Exists(Path.Combine(ridDir, singlefilehostName)))
+                {
+                    availableRids.Add(rid);
+                }
             }
 
-            CommandResult result = await CommandRunner.RunAsync(
-                "dotnet",
-                $"pack \"{project}\" -c Release -v:minimal -p:AvaloniaAppHostPackageMode={packageMode}{BuildSysrootPropertyArgument()}",
-                RepoContext.RepoRoot,
-                cancellationToken);
-
-            if (result.ExitCode != 0)
+            if (availableRids.Count == 0)
             {
                 throw new InvalidOperationException(
-                    $"Failed to pack Avalonia package for mode '{packageMode}'.{Environment.NewLine}{result.CombinedOutput}");
+                    $"No linked Avalonia apphost templates found under {artifactRoot}.");
             }
 
-            PackedModes.Add(packageMode);
+            // Pack each available RID
+            foreach (string rid in availableRids)
+            {
+                string cacheDir = Path.Combine(
+                    packagesCache,
+                    $"chsbuffer.avalonia.apphost.{rid.ToLowerInvariant()}");
+
+                if (Directory.Exists(cacheDir))
+                {
+                    Directory.Delete(cacheDir, recursive: true);
+                }
+
+                CommandResult result = await CommandRunner.RunAsync(
+                    "dotnet",
+                    $"pack \"{ridProject}\" -c Release -v:minimal -p:AvaloniaHostRid={rid}",
+                    RepoContext.RepoRoot,
+                    cancellationToken);
+
+                if (result.ExitCode != 0)
+                {
+                    throw new InvalidOperationException(
+                        $"Failed to pack Avalonia RID package for '{rid}'.{Environment.NewLine}{result.CombinedOutput}");
+                }
+            }
+
+            // Pack Build package
+            {
+                string cacheDir = Path.Combine(packagesCache, "chsbuffer.avalonia.apphost.build");
+                if (Directory.Exists(cacheDir))
+                {
+                    Directory.Delete(cacheDir, recursive: true);
+                }
+
+                CommandResult result = await CommandRunner.RunAsync(
+                    "dotnet",
+                    $"pack \"{buildProject}\" -c Release -v:minimal{BuildSysrootPropertyArgument()}",
+                    RepoContext.RepoRoot,
+                    cancellationToken);
+
+                if (result.ExitCode != 0)
+                {
+                    throw new InvalidOperationException(
+                        $"Failed to pack Avalonia Build package.{Environment.NewLine}{result.CombinedOutput}");
+                }
+            }
+
+            _packed = true;
         }
         finally
         {

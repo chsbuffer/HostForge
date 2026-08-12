@@ -21,57 +21,58 @@ Examples:
 
 ## Projects
 
-- `AvaloniaAppHost.Link.proj`
-  - links apphost templates for one OS at a time
-- `AvaloniaAppHost.csproj`
-  - packs the NuGet package from linked artifacts
-- `AvaloniaAppHost.Rids.targets`
-  - shared RID definitions for link/pack orchestration
+| Project | Purpose |
+|---|---|
+| `AvaloniaAppHost.Link.proj` | Links apphost templates for one OS at a time (`TARGET_OS=windows\|linux`) |
+| `AvaloniaAppHost.Rids.targets` | Shared RID definitions for link/pack orchestration |
+| `AvaloniaAppHost.Rid.csproj` | Packs one RID's templates + `.props` (`-p:AvaloniaHostRid=win-x64`) |
+| `AvaloniaAppHost.Build.csproj` | Packs `.targets` + `ModuleInitializer.cs` |
+| `AvaloniaAppHost.csproj` | Meta-package: depends on all RID + Build packages |
 
-## Pack modes
+## Package layout
 
-`AvaloniaAppHost.csproj` requires `AvaloniaAppHostPackageMode`:
+Per-RID packages (`ChsBuffer.Avalonia.AppHost.win-x64`, etc.) register their RID via `.props`:
 
-- `windows`
-  - package id: `ChsBuffer.Avalonia.AppHost.Windows`
-  - auto-runs `AvaloniaAppHost.Link.proj` for Windows RIDs
-- `linux`
-  - package id: `ChsBuffer.Avalonia.AppHost.Linux`
-  - auto-runs `AvaloniaAppHost.Link.proj` for Linux RIDs
-- `all`
-  - package id: `ChsBuffer.Avalonia.AppHost`
-  - does not link anything
-  - expects pre-generated artifacts for every required RID
-  - intended for CI aggregate packing
+```xml
+<AvaloniaAppHostRids Include="win-x64">
+  <AppHostTemplateTfm>net10.0</AppHostTemplateTfm>
+  <AppHostTemplatePath>…/template/net10.0/win-x64/apphost.exe</AppHostTemplatePath>
+  <SingleFileHostTemplatePath>…/template/net10.0/win-x64/singlefilehost.exe</SingleFileHostTemplatePath>
+</AvaloniaAppHostRids>
+```
+
+The Build package's `.targets` matches `$(RuntimeIdentifier)` against `@(AvaloniaAppHostRids)`. Consumers install only the RID packages they need plus the Build package; the meta-package `ChsBuffer.Avalonia.AppHost` installs everything.
 
 ## Local commands
 
 Link one OS:
 
 ```powershell
-python .\scripts\pipeline.py link-avalonia -v --os windows
-python .\scripts\pipeline.py link-avalonia -v --os linux --sysroot repo/rootfs/x64
+task link-avalonia TARGET_OS=windows
+task link-avalonia TARGET_OS=linux SYSROOT=build/rootfs/x64
 ```
 
-Pack one OS:
+Pack one RID (requires linked templates for that RID):
 
 ```powershell
-python .\scripts\pipeline.py pack-avalonia -v --mode windows
-python .\scripts\pipeline.py pack-avalonia -v --mode linux
+task pack-avalonia-rid RID=win-x64
+task pack-avalonia-rid RID=linux-x64
 ```
 
-Pack only selected RIDs by passing the optional semicolon-separated `AvaloniaHostRids` property:
+Pack Build package:
 
 ```powershell
-dotnet pack .\src\package-avalonia-apphost\AvaloniaAppHost.csproj -c Release `
-  -p:AvaloniaAppHostPackageMode=windows `
-  -p:AvaloniaHostRids=win-x64
+task pack-avalonia-build
 ```
 
-Pack aggregate CI-style package:
+Pack everything (RIDs + Build + meta):
 
 ```powershell
-python .\scripts\pipeline.py pack-avalonia -v --mode all
+task pack-avalonia
 ```
 
-`all` should only be used after downloading or generating both Windows and Linux artifacts.
+Pack only selected RIDs directly:
+
+```powershell
+dotnet pack src/package-avalonia-apphost/AvaloniaAppHost.Rid.csproj -c Release -p:AvaloniaHostRid=win-x64
+```

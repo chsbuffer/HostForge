@@ -8,7 +8,7 @@ inputs:
   sysroot-path:
     description: Directory to create with debootstrap
     required: false
-    default: repo/rootfs/x64
+    default: build/rootfs/x64
   release:
     description: Ubuntu release passed to debootstrap
     required: false

@@ -2,9 +2,9 @@
   Shared RID definitions for Avalonia apphost link/pack orchestration.
 
   Add a new RID once here, then both:
-  - AvaloniaAppHost.Link.proj RID linking
-  - AvaloniaAppHost.csproj package template collection
-  can consume the same metadata and filtering rules.
+  - AvaloniaAppHost.Link.proj RID linking (_ResolveAvaloniaTargetRids)
+  - AvaloniaAppHost.Rid.csproj template packing (_ResolveAvaloniaSinglePackRid)
+  consume the same metadata and filtering rules.
 -->
 <Project>
   <Target Name="_ResolveAvaloniaKnownRids">
@@ -27,6 +27,23 @@
     </ItemGroup>
   </Target>
 
+  <Target Name="_ResolveAvaloniaSinglePackRid"
+          DependsOnTargets="_ResolveAvaloniaKnownRids">
+    <ItemGroup>
+      <_AvaloniaPackRid Include="@(_AvaloniaKnownRid)"
+                        Condition="'$(AvaloniaHostRid)' == '%(_AvaloniaKnownRid.Identity)'">
+        <TargetOs>%(_AvaloniaKnownRid.TargetOs)</TargetOs>
+        <ExecutableExtension>%(_AvaloniaKnownRid.ExecutableExtension)</ExecutableExtension>
+        <HostOutputDir>$([MSBuild]::NormalizePath('$(AvaloniaAppHostArtifactRoot)', '%(_AvaloniaKnownRid.Identity)'))</HostOutputDir>
+      </_AvaloniaPackRid>
+    </ItemGroup>
+
+    <Error Condition="'$(AvaloniaHostRid)' == ''"
+           Text="AvaloniaHostRid is required." />
+    <Error Condition="'@(_AvaloniaPackRid)' == ''"
+           Text="Unknown AvaloniaHostRid: '$(AvaloniaHostRid)'. Known RIDs: @(_AvaloniaKnownRid->'%(Identity)', ', ')." />
+  </Target>
+
   <Target Name="_ResolveAvaloniaTargetRids"
           DependsOnTargets="_ValidateAvaloniaAppHostTarget;_ResolveAvaloniaKnownRids">
     <ItemGroup>
@@ -39,20 +56,5 @@
 
     <Error Condition="'@(_AvaloniaTargetRid)' == ''"
            Text="No linkable Avalonia apphost RIDs for target '$(AvaloniaAppHostTarget)'." />
-  </Target>
-
-  <Target Name="_ResolveAvaloniaPackRids"
-          DependsOnTargets="_ValidateAvaloniaAppHostPackageMode;_ResolveAvaloniaKnownRids">
-    <ItemGroup>
-      <_AvaloniaPackRid Include="@(_AvaloniaKnownRid)"
-                        Condition="('$(AvaloniaAppHostPackageMode)' == 'all' or '$(AvaloniaAppHostPackageMode)' == '%(_AvaloniaKnownRid.TargetOs)') and ('$(AvaloniaHostRids)' == '' or $(_AvaloniaHostRidsFilter.Contains(';%(_AvaloniaKnownRid.Identity);')))">
-        <TargetOs>%(_AvaloniaKnownRid.TargetOs)</TargetOs>
-        <ExecutableExtension>%(_AvaloniaKnownRid.ExecutableExtension)</ExecutableExtension>
-        <HostOutputDir>$([MSBuild]::NormalizePath('$(AvaloniaAppHostArtifactRoot)', '%(_AvaloniaKnownRid.Identity)'))</HostOutputDir>
-      </_AvaloniaPackRid>
-    </ItemGroup>
-
-    <Error Condition="'@(_AvaloniaPackRid)' == ''"
-           Text="No packable Avalonia apphost RIDs for mode '$(AvaloniaAppHostPackageMode)'." />
   </Target>
 </Project>

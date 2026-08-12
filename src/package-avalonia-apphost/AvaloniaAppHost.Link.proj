@@ -14,7 +14,7 @@
   Optional inputs:
   - `Sysroot`
 
-  This file intentionally does not pack anything. `AvaloniaAppHost.csproj` is the package orchestrator.
+  This file intentionally does not pack anything. `ChsBuffer.Avalonia.AppHost.rid.csproj` and `.Build.csproj` are the package orchestrators.
 -->
 <Project>
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />

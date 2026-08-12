@@ -8,7 +8,7 @@ inputs:
   sysroot-path:
     description: Directory where the sysroot should be unpacked
     required: false
-    default: repo/rootfs/x64
+    default: build/rootfs/x64
 outputs:
   sysroot-path:
     description: Unpacked sysroot directory path

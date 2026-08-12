@@ -1,0 +1,3 @@
+sources:
+  url: "https://github.com/mono/skia"
+  commit: "7dbfc07dd33181f84e0958afb7ee805c6c769f0b"

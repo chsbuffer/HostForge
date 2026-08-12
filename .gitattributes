@@ -1,2 +1,1 @@
-/scripts/angle-deps.patch text eol=lf
-/scripts/angle-static.patch text eol=lf
+/native/angle/patches/*.patch text eol=lf

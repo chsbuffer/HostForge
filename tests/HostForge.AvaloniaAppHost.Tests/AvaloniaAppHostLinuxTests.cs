@@ -8,7 +8,7 @@ public class AvaloniaAppHostLinuxTests
     [Before(Class)]
     public static async Task PackAvaloniaPackage()
     {
-        await AvaloniaPackageBuilder.EnsurePackedAsync("linux");
+        await AvaloniaPackageBuilder.EnsurePackedAsync();
     }
 
     [Test]
@@ -17,8 +17,7 @@ public class AvaloniaAppHostLinuxTests
         await using var project = await TestProjectWorkspace.CreateAsync(
             targetFramework: "net10.0",
             runtimeIdentifier: "linux-x64",
-            includeNativeAssetsPackages: false,
-            avaloniaAppHostPackageMode: "linux");
+            includeNativeAssetsPackages: false);
 
         CommandResult result = await CommandRunner.RunAsync(
             "dotnet",
@@ -60,8 +59,7 @@ public class AvaloniaAppHostLinuxTests
                     targetFramework: "net10.0",
                     runtimeIdentifier: "linux-x64",
                     includeNativeAssetsPackages: true,
-                    disableSkiaHarfBuzzRuntimeCopy: testCase.DisableSkiaHarfBuzzRuntimeCopy,
-                    avaloniaAppHostPackageMode: "linux");
+                    disableSkiaHarfBuzzRuntimeCopy: testCase.DisableSkiaHarfBuzzRuntimeCopy);
 
                 CommandResult result = await CommandRunner.RunAsync(
                     "dotnet",

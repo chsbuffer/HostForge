@@ -24,7 +24,6 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         bool includeNativeAssetsPackages,
         bool? disableSkiaHarfBuzzRuntimeCopy = null,
         bool? disableAngleRuntimeCopy = null,
-        string avaloniaAppHostPackageMode = "windows",
         CancellationToken cancellationToken = default)
     {
         string guid = Guid.NewGuid().ToString("N");
@@ -47,8 +46,7 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
             runtimeIdentifier,
             includeNativeAssetsPackages,
             disableSkiaHarfBuzzRuntimeCopy,
-            disableAngleRuntimeCopy,
-            avaloniaAppHostPackageMode);
+            disableAngleRuntimeCopy);
 
         return new TestProjectWorkspace(rootDirectory, projectDirectory, projectFilePath, projectName);
     }
@@ -87,8 +85,7 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         string runtimeIdentifier,
         bool includeNativeAssetsPackages,
         bool? disableSkiaHarfBuzzRuntimeCopy,
-        bool? disableAngleRuntimeCopy,
-        string avaloniaAppHostPackageMode)
+        bool? disableAngleRuntimeCopy)
     {
         ProjectRootElement project = ProjectRootElement.Create();
         project.Sdk = "Microsoft.NET.Sdk";
@@ -123,7 +120,8 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         }
 
         ProjectItemGroupElement itemGroup = project.AddItemGroup();
-        AddPackageReference(itemGroup, RepoContext.GetAvaloniaPackageId(avaloniaAppHostPackageMode), "$(AvaloniaAppHostPackageVersion)");
+        AddPackageReference(itemGroup, RepoContext.GetAvaloniaRidPackageId(runtimeIdentifier), "$(AvaloniaAppHostPackageVersion)");
+        AddPackageReference(itemGroup, RepoContext.AvaloniaAppHostBuildPackageId, "$(AvaloniaAppHostPackageVersion)");
         AddPackageReference(itemGroup, "SkiaSharp", "$(SkiaSharpVersion)");
         AddPackageReference(itemGroup, "HarfBuzzSharp", "$(HarfBuzzVersion)");
 

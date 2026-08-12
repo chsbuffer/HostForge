@@ -1,0 +1,9 @@
+<Project>
+  <ItemGroup>
+    <AvaloniaAppHostRids Include="linux-x64">
+      <AppHostTemplateTfm>net10.0</AppHostTemplateTfm>
+      <AppHostTemplatePath>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '..', 'template/net10.0/linux-x64/apphost'))</AppHostTemplatePath>
+      <SingleFileHostTemplatePath>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '..', 'template/net10.0/linux-x64/singlefilehost'))</SingleFileHostTemplatePath>
+    </AvaloniaAppHostRids>
+  </ItemGroup>
+</Project>

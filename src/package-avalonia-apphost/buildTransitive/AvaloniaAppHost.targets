@@ -6,8 +6,7 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <_AvaloniaPackageRoot>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '..'))</_AvaloniaPackageRoot>
-    <_AvaloniaModuleInitializer>$([MSBuild]::NormalizePath('$(_AvaloniaPackageRoot)', 'contentFiles/cs/net10.0/ModuleInitializer.cs'))</_AvaloniaModuleInitializer>
+    <_AvaloniaModuleInitializer>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', 'ModuleInitializer.cs'))</_AvaloniaModuleInitializer>
     <_AvaloniaSkiaNativeFileNames>;libSkiaSharp.dll;libSkiaSharp.so;</_AvaloniaSkiaNativeFileNames>
     <_AvaloniaHarfBuzzNativeFileNames>;libHarfBuzzSharp.dll;libHarfBuzzSharp.so;</_AvaloniaHarfBuzzNativeFileNames>
     <_AvaloniaAngleNativeFileNames>;av_libglesv2.dll;</_AvaloniaAngleNativeFileNames>
@@ -23,18 +22,27 @@
       <_AvaloniaTemplateRid Condition="'$(_AvaloniaTemplateRid)' == ''">$(AppHostRuntimeIdentifier)</_AvaloniaTemplateRid>
       <_AvaloniaTemplateRid Condition="'$(_AvaloniaTemplateRid)' == ''">$(DefaultAppHostRuntimeIdentifier)</_AvaloniaTemplateRid>
       <_AvaloniaTemplateRid Condition="'$(_AvaloniaTemplateRid)' == ''">win-x64</_AvaloniaTemplateRid>
+      <_AvaloniaTemplateRidLower>$([System.String]::Copy('$(_AvaloniaTemplateRid)').ToLowerInvariant())</_AvaloniaTemplateRidLower>
+      <_AvaloniaTemplateTfmLower>$([System.String]::Copy('$(_AvaloniaTemplateTfm)').ToLowerInvariant())</_AvaloniaTemplateTfmLower>
       <_AvaloniaTemplateRidIsWindows Condition="'$(_AvaloniaTemplateRid)' != ''">$(_AvaloniaTemplateRid.StartsWith('win'))</_AvaloniaTemplateRidIsWindows>
-      <_AvaloniaTemplateExecutableExtension Condition="'$(_AvaloniaTemplateRidIsWindows)' == 'True'">.exe</_AvaloniaTemplateExecutableExtension>
-      <_AvaloniaTemplateExecutableExtension Condition="'$(_AvaloniaTemplateExecutableExtension)' == ''"></_AvaloniaTemplateExecutableExtension>
+    </PropertyGroup>
 
-      <_AvaloniaAppHostPath>$([MSBuild]::NormalizePath('$(_AvaloniaPackageRoot)', 'template/$(_AvaloniaTemplateTfm)/$(_AvaloniaTemplateRid)/apphost$(_AvaloniaTemplateExecutableExtension)'))</_AvaloniaAppHostPath>
-      <_AvaloniaSingleFileHostPath>$([MSBuild]::NormalizePath('$(_AvaloniaPackageRoot)', 'template/$(_AvaloniaTemplateTfm)/$(_AvaloniaTemplateRid)/singlefilehost$(_AvaloniaTemplateExecutableExtension)'))</_AvaloniaSingleFileHostPath>
+    <ItemGroup>
+      <_AvaloniaMatchedRid Include="@(AvaloniaAppHostRids)"
+        Condition="'$(_AvaloniaTemplateRidLower)' != ''
+                   and $([System.String]::Copy('%(Identity)').ToLowerInvariant()) == '$(_AvaloniaTemplateRidLower)'
+                   and $([System.String]::Copy('%(AppHostTemplateTfm)').ToLowerInvariant()) == '$(_AvaloniaTemplateTfmLower)'" />
+    </ItemGroup>
 
-      <AvaloniaAppHostActive Condition="'$(AvaloniaAppHostActive)' == '' and '$(TargetFramework)' != '' and Exists('$(_AvaloniaAppHostPath)') and Exists('$(_AvaloniaSingleFileHostPath)')">true</AvaloniaAppHostActive>
+    <PropertyGroup>
+      <AvaloniaAppHostActive Condition="'$(AvaloniaAppHostActive)' == '' and '$(TargetFramework)' != ''
+          and '@(_AvaloniaMatchedRid)' != ''
+          and Exists('@(_AvaloniaMatchedRid->'%(AppHostTemplatePath)')')
+          and Exists('@(_AvaloniaMatchedRid->'%(SingleFileHostTemplatePath)')')">true</AvaloniaAppHostActive>
       <AvaloniaAppHostActive Condition="'$(AvaloniaAppHostActive)' == ''">false</AvaloniaAppHostActive>
 
-      <AppHostSourcePath Condition="'$(AvaloniaAppHostActive)' == 'true' and '$(AppHostSourcePath)' == '' and Exists('$(_AvaloniaAppHostPath)')">$(_AvaloniaAppHostPath)</AppHostSourcePath>
-      <SingleFileHostSourcePath Condition="'$(AvaloniaAppHostActive)' == 'true' and '$(SingleFileHostSourcePath)' == '' and Exists('$(_AvaloniaSingleFileHostPath)')">$(_AvaloniaSingleFileHostPath)</SingleFileHostSourcePath>
+      <AppHostSourcePath Condition="'$(AvaloniaAppHostActive)' == 'true' and '$(AppHostSourcePath)' == ''">@(_AvaloniaMatchedRid->'%(AppHostTemplatePath)')</AppHostSourcePath>
+      <SingleFileHostSourcePath Condition="'$(AvaloniaAppHostActive)' == 'true' and '$(SingleFileHostSourcePath)' == ''">@(_AvaloniaMatchedRid->'%(SingleFileHostTemplatePath)')</SingleFileHostSourcePath>
     </PropertyGroup>
   </Target>
 
@@ -58,7 +66,7 @@
           BeforeTargets="PrepareForBuild"
           DependsOnTargets="ResolveAvaloniaAppHostActivation"
           Condition="'$(TargetFramework)' != '' and '$(AvaloniaAppHostActive)' != 'true'">
-    <Warning Text="ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='$(TargetFramework)' RuntimeIdentifier='$(RuntimeIdentifier)'. Expected templates under 'template/$(_AvaloniaTemplateTfm)/$(_AvaloniaTemplateRid)' (or default net10.0/win-x64). Host replacement and ANGLE/Skia/HarfBuzz runtime copy suppression are disabled." />
+    <Warning Text="ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='$(TargetFramework)' RuntimeIdentifier='$(RuntimeIdentifier)'. No matching AvaloniaAppHostRids item for TFM '$(_AvaloniaTemplateTfm)'. Registered: @(AvaloniaAppHostRids->'%(Identity)', ', '). Host replacement and ANGLE/Skia/HarfBuzz runtime copy suppression are disabled." />
   </Target>
 
   <Target Name="DisableAnglePublishItems"
