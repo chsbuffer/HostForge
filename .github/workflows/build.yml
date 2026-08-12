@@ -39,7 +39,7 @@ jobs:
 
       - name: Install uv
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.0.0
 
       - name: Install Task
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
@@ -113,7 +113,7 @@ jobs:
 
       - name: Install uv
         if: steps.cache_skia.outputs.cache-hit != 'true'
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.0.0
 
       - name: Install Task
         if: steps.cache_skia.outputs.cache-hit != 'true'
@@ -159,7 +159,7 @@ jobs:
 
       - name: Install uv
         if: steps.cache_angle.outputs.cache-hit != 'true'
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.0.0
 
       - name: Install Task
         if: steps.cache_angle.outputs.cache-hit != 'true'
@@ -282,7 +282,7 @@ jobs:
           submodules: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.0.0
 
       - name: Install Task
         uses: ./.github/actions/install-task
@@ -360,7 +360,7 @@ jobs:
           submodules: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.0.0
 
       - name: Install Task
         uses: ./.github/actions/install-task
