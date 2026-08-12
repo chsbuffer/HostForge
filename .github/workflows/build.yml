@@ -285,6 +285,12 @@ jobs:
           fetch-depth: 1
           submodules: false
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install Task
+        uses: ./.github/actions/install-task
+
       - name: Restore Linux sysroot
         id: restore_sysroot
         uses: ./.github/actions/sysroot-restore
@@ -297,14 +303,6 @@ jobs:
         with:
           path: artifacts/hostlibs
           key: hostlibs-linux-linux-x64-${{ env.LINUX_SYSROOT_CACHE_KEY }}-${{ hashFiles('native/hostlibs/**') }}
-
-      - name: Install uv
-        if: steps.cache_hostlibs.outputs.cache-hit != 'true'
-        uses: astral-sh/setup-uv@v5
-
-      - name: Install Task
-        if: steps.cache_hostlibs.outputs.cache-hit != 'true'
-        uses: ./.github/actions/install-task
 
       - name: Build and deploy HostLibs
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
@@ -365,6 +363,12 @@ jobs:
           fetch-depth: 1
           submodules: false
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install Task
+        uses: ./.github/actions/install-task
+
       - name: Restore Linux sysroot
         id: restore_sysroot
         uses: ./.github/actions/sysroot-restore
@@ -377,14 +381,6 @@ jobs:
         with:
           path: artifacts/skiasharp
           key: skiasharp-linux-linux-x64-${{ env.LINUX_SYSROOT_CACHE_KEY }}-${{ hashFiles('native/skiasharp/**', 'scripts/libHarfBuzzSharp.vcxproj.in') }}
-
-      - name: Install uv
-        if: steps.cache_skia.outputs.cache-hit != 'true'
-        uses: astral-sh/setup-uv@v5
-
-      - name: Install Task
-        if: steps.cache_skia.outputs.cache-hit != 'true'
-        uses: ./.github/actions/install-task
 
       - name: Build and deploy SkiaSharp
         if: steps.cache_skia.outputs.cache-hit != 'true'

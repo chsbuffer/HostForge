@@ -129,19 +129,12 @@ class HostLibsConan(ConanFile):
     def _build_apphost(self):
         root = self._apphost_build_root()
         if self.settings.os == "Windows":
-            args = f"host.native -ninja -c release -arch {self._target_arch}"
-            cmake_args = ""
+            pre = ""
             if not self.options.pgo:
-                cmake_args = (
-                    f' && cmake -S "{self._runtime_root / "src" / "native" / "corehost"}"'
-                    f' -B "{root}" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF'
-                )
-            self.run(
-                f'"{self._runtime_root / "build.cmd"}" {args} /p:ConfigureOnly=true'
-                f'{cmake_args} && ninja -C "{root}" apphost',
-                cwd=str(self._runtime_root),
-                env="conanbuild",
-            )
+                src = self._runtime_root / "src" / "native" / "corehost"
+                pre = f'cmake -S "{src}" -B "{root}" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF'
+            self._msvc_configure_build("host.native", "apphost", root,
+                                       extra_args="/p:ConfigureOnly=true", pre_ninja=pre)
         else:
             cross = " --cross" if self._sysroot() else ""
             self.run(
@@ -154,21 +147,12 @@ class HostLibsConan(ConanFile):
     def _build_singlefilehost(self):
         root = self._singlefilehost_build_root()
         if self.settings.os == "Windows":
-            args = (
-                f"clr.runtime -ninja -c release -arch {self._target_arch} "
-                "/p:ConfigureOnly=true"
-            )
+            extra = "/p:ConfigureOnly=true"
             if not self.options.pgo:
-                args += (
-                    " /p:CMakeArgs=-DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF"
-                    " /p:NoPgoOptimize=true"
-                )
-            self.run(
-                f'"{self._runtime_root / "build.cmd"}" {args}'
-                f' && ninja -C "{root}" singlefilehost',
-                cwd=str(self._runtime_root),
-                env="conanbuild",
-            )
+                extra += " /p:CMakeArgs=-DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF"
+                extra += " /p:NoPgoOptimize=true"
+            self._msvc_configure_build("clr.runtime", "singlefilehost", root,
+                                       extra_args=extra)
         else:
             cross = " --cross" if self._sysroot() else ""
             self.run(
@@ -177,6 +161,16 @@ class HostLibsConan(ConanFile):
                 cwd=str(self._runtime_root),
                 env="conanbuild",
             )
+
+    def _msvc_configure_build(self, subset, target, build_root, extra_args="", pre_ninja=""):
+        root = str(self._runtime_root)
+        cmd = f'"{root}\\build.cmd" {subset} -ninja -c release -arch {self._target_arch} {extra_args}'
+        if pre_ninja:
+            cmd += f" && {pre_ninja}"
+        if self._target_arch == "arm64":
+            cmd += f' && call "{root}\\eng\\native\\init-vs-env.cmd" arm64'
+        cmd += f' && ninja -C "{build_root}" {target}'
+        self.run(cmd, cwd=root, env="conanbuild")
 
     def _apphost_build_root(self):
         artifacts = self._runtime_root / "artifacts" / "obj"
