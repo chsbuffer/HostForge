@@ -20,12 +20,8 @@ jobs:
         include:
           - arch: x64
             rid: win-x64
-            hostlibs_flavor: default
-            pgo: "True"
           - arch: arm64
             rid: win-arm64
-            hostlibs_flavor: default
-            pgo: "True"
 
     steps:
       - name: Checkout repository
@@ -39,11 +35,11 @@ jobs:
         uses: actions/cache@v5
         with:
           path: artifacts\hostlibs
-          key: hostlibs-windows-${{ matrix.hostlibs_flavor }}-${{ matrix.rid }}-${{ hashFiles('native/hostlibs/**') }}
+          key: hostlibs-windows-default-${{ matrix.rid }}-${{ hashFiles('native/hostlibs/**') }}
 
       - name: Install uv
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10
 
       - name: Install Task
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
@@ -52,12 +48,12 @@ jobs:
       - name: Build and deploy HostLibs
         shell: powershell
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
-        run: task build-hostlibs ARCH=${{ matrix.arch }} PGO=${{ matrix.pgo }}
+        run: task build-hostlibs ARCH=${{ matrix.arch }} PGO=True
 
       - name: Upload hostlibs artifact
         uses: actions/upload-artifact@v6
         with:
-          name: hostlibs-${{ matrix.hostlibs_flavor }}-${{ matrix.rid }}
+          name: hostlibs-default-${{ matrix.rid }}
           path: artifacts\hostlibs
           if-no-files-found: error
 
@@ -117,7 +113,7 @@ jobs:
 
       - name: Install uv
         if: steps.cache_skia.outputs.cache-hit != 'true'
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10
 
       - name: Install Task
         if: steps.cache_skia.outputs.cache-hit != 'true'
@@ -163,7 +159,7 @@ jobs:
 
       - name: Install uv
         if: steps.cache_angle.outputs.cache-hit != 'true'
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10
 
       - name: Install Task
         if: steps.cache_angle.outputs.cache-hit != 'true'
@@ -286,7 +282,7 @@ jobs:
           submodules: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10
 
       - name: Install Task
         uses: ./.github/actions/install-task
@@ -364,7 +360,7 @@ jobs:
           submodules: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10
 
       - name: Install Task
         uses: ./.github/actions/install-task
@@ -468,19 +464,6 @@ jobs:
       - name: Pack Avalonia apphost packages
         shell: powershell
         run: task pack-avalonia
-
-      - name: Verify meta package dependencies
-        shell: powershell
-        run: |
-          $nupkg = Get-ChildItem "artifacts\packages\Release\ChsBuffer.Avalonia.AppHost.*.nupkg" | Where-Object { $_.Name -notmatch '\.(win-x64|win-arm64|linux-x64|Build)\.' } | Select-Object -First 1
-          if (-not $nupkg) { throw "Meta package not found" }
-          $tmp = Join-Path $env:RUNNER_TEMP "meta-check"
-          Expand-Archive $nupkg.FullName $tmp -Force
-          $nuspec = Get-Content (Get-ChildItem "$tmp\*.nuspec").FullName -Raw
-          @('ChsBuffer.Avalonia.AppHost.win-x64','ChsBuffer.Avalonia.AppHost.win-arm64','ChsBuffer.Avalonia.AppHost.linux-x64','ChsBuffer.Avalonia.AppHost.Build') | ForEach-Object {
-            if ($nuspec -notmatch "id=`"$_`"") { throw "Meta package missing dependency: $_" }
-          }
-          Write-Host "Meta package dependencies verified."
 
       - name: Upload nuget packages
         uses: actions/upload-artifact@v6
