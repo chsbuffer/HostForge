@@ -4,5 +4,7 @@ __pycache__
 [Tt]est[Rr]esults
 .idea/
 .vs/
+.venv/
 /build/
 /repo/
+uv.lock

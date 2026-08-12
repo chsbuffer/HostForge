@@ -41,6 +41,10 @@ jobs:
           path: artifacts\hostlibs
           key: hostlibs-windows-${{ matrix.hostlibs_flavor }}-${{ matrix.rid }}-${{ hashFiles('native/hostlibs/**') }}
 
+      - name: Install uv
+        if: steps.cache_hostlibs.outputs.cache-hit != 'true'
+        uses: astral-sh/setup-uv@v5
+
       - name: Install Task
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
         uses: ./.github/actions/install-task
@@ -111,6 +115,10 @@ jobs:
         if: steps.cache_skia.outputs.cache-hit != 'true'
         uses: ./.github/actions/install-llvm
 
+      - name: Install uv
+        if: steps.cache_skia.outputs.cache-hit != 'true'
+        uses: astral-sh/setup-uv@v5
+
       - name: Install Task
         if: steps.cache_skia.outputs.cache-hit != 'true'
         uses: ./.github/actions/install-task
@@ -152,6 +160,10 @@ jobs:
         with:
           path: artifacts\angle
           key: angle-windows-${{ matrix.rid }}-${{ hashFiles('native/angle/**') }}
+
+      - name: Install uv
+        if: steps.cache_angle.outputs.cache-hit != 'true'
+        uses: astral-sh/setup-uv@v5
 
       - name: Install Task
         if: steps.cache_angle.outputs.cache-hit != 'true'
@@ -286,6 +298,10 @@ jobs:
           path: artifacts/hostlibs
           key: hostlibs-linux-linux-x64-${{ env.LINUX_SYSROOT_CACHE_KEY }}-${{ hashFiles('native/hostlibs/**') }}
 
+      - name: Install uv
+        if: steps.cache_hostlibs.outputs.cache-hit != 'true'
+        uses: astral-sh/setup-uv@v5
+
       - name: Install Task
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
         uses: ./.github/actions/install-task
@@ -361,6 +377,10 @@ jobs:
         with:
           path: artifacts/skiasharp
           key: skiasharp-linux-linux-x64-${{ env.LINUX_SYSROOT_CACHE_KEY }}-${{ hashFiles('native/skiasharp/**', 'scripts/libHarfBuzzSharp.vcxproj.in') }}
+
+      - name: Install uv
+        if: steps.cache_skia.outputs.cache-hit != 'true'
+        uses: astral-sh/setup-uv@v5
 
       - name: Install Task
         if: steps.cache_skia.outputs.cache-hit != 'true'

@@ -32,8 +32,8 @@ CI 缓存键覆盖对应 recipe 目录；SkiaSharp 还包含原始 HarfBuzzSharp
 
 - .NET 10 SDK
 - Python 3.10+
+- [uv](https://docs.astral.sh/uv/)
 - Task 3.52.0+
-- Conan 2.31.2
 - Git
 - Ninja
 - CMake

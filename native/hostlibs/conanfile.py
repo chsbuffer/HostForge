@@ -130,19 +130,18 @@ class HostLibsConan(ConanFile):
         root = self._apphost_build_root()
         if self.settings.os == "Windows":
             args = f"host.native -ninja -c release -arch {self._target_arch}"
+            cmake_args = ""
+            if not self.options.pgo:
+                cmake_args = (
+                    f' && cmake -S "{self._runtime_root / "src" / "native" / "corehost"}"'
+                    f' -B "{root}" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF'
+                )
             self.run(
-                f'"{self._runtime_root / "build.cmd"}" {args} /p:ConfigureOnly=true',
+                f'"{self._runtime_root / "build.cmd"}" {args} /p:ConfigureOnly=true'
+                f'{cmake_args} && ninja -C "{root}" apphost',
                 cwd=str(self._runtime_root),
                 env="conanbuild",
             )
-            if not self.options.pgo:
-                self.run(
-                    f'cmake -S "{self._runtime_root / "src" / "native" / "corehost"}" '
-                    f'-B "{root}" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF',
-                    cwd=str(self._runtime_root),
-                    env="conanbuild",
-                )
-            self.run(f'ninja -C "{root}" apphost', env="conanbuild")
         else:
             cross = " --cross" if self._sysroot() else ""
             self.run(
@@ -165,11 +164,11 @@ class HostLibsConan(ConanFile):
                     " /p:NoPgoOptimize=true"
                 )
             self.run(
-                f'"{self._runtime_root / "build.cmd"}" {args}',
+                f'"{self._runtime_root / "build.cmd"}" {args}'
+                f' && ninja -C "{root}" singlefilehost',
                 cwd=str(self._runtime_root),
                 env="conanbuild",
             )
-            self.run(f'ninja -C "{root}" singlefilehost', env="conanbuild")
         else:
             cross = " --cross" if self._sysroot() else ""
             self.run(

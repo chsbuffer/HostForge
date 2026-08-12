@@ -36,10 +36,9 @@ tasks:
     vars:
       FLAVOR: '{{if eq .PGO "True"}}default{{else}}no-pgo{{end}}'
     cmds:
-      - python -m pip install --disable-pip-version-check -r native/hostlibs/requirements.txt
-      - conan export native/hostlibs
+      - uv run conan export native/hostlibs
       - >-
-        conan install --requires="hostlibs/{{.HOSTLIBS_VERSION}}" --build=missing --no-remote --envs-generation=false
+        uv run conan install --requires="hostlibs/{{.HOSTLIBS_VERSION}}" --build=missing --no-remote --envs-generation=false
         -pr:b=native/hostlibs/profiles/windows-{{.ARCH}}
         -pr:h=native/hostlibs/profiles/windows-{{.ARCH}}
         -o "hostlibs/*:pgo={{.PGO}}"
@@ -52,10 +51,9 @@ tasks:
     env:
       ROOTFS_DIR: '{{.SYSROOT}}'
     cmds:
-      - python -m pip install --disable-pip-version-check -r native/hostlibs/requirements.txt
-      - conan export native/hostlibs
+      - uv run conan export native/hostlibs
       - >-
-        conan install --requires="hostlibs/{{.HOSTLIBS_VERSION}}" --build=missing --no-remote --envs-generation=false
+        uv run conan install --requires="hostlibs/{{.HOSTLIBS_VERSION}}" --build=missing --no-remote --envs-generation=false
         -pr:b=native/hostlibs/profiles/linux-x64
         -pr:h=native/hostlibs/profiles/linux-x64
         -c tools.system.package_manager:mode=install
@@ -80,10 +78,9 @@ tasks:
     internal: true
     platforms: [windows]
     cmds:
-      - python -m pip install --disable-pip-version-check -r native/skiasharp/requirements.txt
-      - conan export native/skiasharp
+      - uv run conan export native/skiasharp
       - >-
-        conan install --requires="skiasharp/{{.SKIASHARP_VERSION}}" --build=missing --no-remote --envs-generation=false
+        uv run conan install --requires="skiasharp/{{.SKIASHARP_VERSION}}" --build=missing --no-remote --envs-generation=false
         -pr:b=native/skiasharp/profiles/windows-{{.ARCH}}
         -pr:h=native/skiasharp/profiles/windows-{{.ARCH}}
         --deployer=native/skiasharp/deploy.py
@@ -95,10 +92,9 @@ tasks:
     env:
       ROOTFS_DIR: '{{.SYSROOT}}'
     cmds:
-      - python -m pip install --disable-pip-version-check -r native/skiasharp/requirements.txt
-      - conan export native/skiasharp
+      - uv run conan export native/skiasharp
       - >-
-        CC=clang CXX=clang++ conan install --requires="skiasharp/{{.SKIASHARP_VERSION}}" --build=missing --no-remote --envs-generation=false
+        CC=clang CXX=clang++ uv run conan install --requires="skiasharp/{{.SKIASHARP_VERSION}}" --build=missing --no-remote --envs-generation=false
         -pr:b=native/skiasharp/profiles/linux-x64
         -pr:h=native/skiasharp/profiles/linux-x64
         -c tools.system.package_manager:mode=install
@@ -112,10 +108,9 @@ tasks:
     vars:
       ARCH: '{{.ARCH | default "x64"}}'
     cmds:
-      - python -m pip install --disable-pip-version-check -r native/angle/requirements.txt
-      - conan export native/angle
+      - uv run conan export native/angle
       - >-
-        conan install --requires="angle/{{.ANGLE_VERSION}}" --build=missing --no-remote --envs-generation=false
+        uv run conan install --requires="angle/{{.ANGLE_VERSION}}" --build=missing --no-remote --envs-generation=false
         -pr:b=native/angle/profiles/windows-{{.ARCH}}
         -pr:h=native/angle/profiles/windows-{{.ARCH}}
         --deployer=native/angle/deploy.py
