@@ -2,10 +2,6 @@ version: "3"
 
 vars:
   VERBOSITY: '{{.VERBOSITY | default "minimal"}}'
-  # Versions: conanfile.py is the canonical source.
-  HOSTLIBS_VERSION: "10.0.10"
-  SKIASHARP_VERSION: "3.119.4"
-  ANGLE_VERSION: "2.1.27548.20260419"
 
 tasks:
   default:
@@ -13,8 +9,6 @@ tasks:
     silent: true
     cmds:
       - task --list
-
-  # ── Build native libraries ────────────────────────────────────
 
   build-hostlibs:
     desc: Build and deploy HostLibs static libraries (ARCH=x64|arm64, PGO=true|false, SYSROOT=…)
@@ -38,7 +32,7 @@ tasks:
     cmds:
       - uv run conan export native/hostlibs
       - >-
-        uv run conan install --requires="hostlibs/{{.HOSTLIBS_VERSION}}" --build=missing --no-remote --envs-generation=false
+        uv run conan install --requires="hostlibs/[>=0.0.0]" --build=missing --no-remote --envs-generation=false
         -pr:b=native/hostlibs/profiles/windows-{{.ARCH}}
         -pr:h=native/hostlibs/profiles/windows-{{.ARCH}}
         -o "hostlibs/*:pgo={{.PGO}}"
@@ -53,7 +47,7 @@ tasks:
     cmds:
       - uv run conan export native/hostlibs
       - >-
-        uv run conan install --requires="hostlibs/{{.HOSTLIBS_VERSION}}" --build=missing --no-remote --envs-generation=false
+        uv run conan install --requires="hostlibs/[>=0.0.0]" --build=missing --no-remote --envs-generation=false
         -pr:b=native/hostlibs/profiles/linux-x64
         -pr:h=native/hostlibs/profiles/linux-x64
         -c tools.system.package_manager:mode=install
@@ -80,7 +74,7 @@ tasks:
     cmds:
       - uv run conan export native/skiasharp
       - >-
-        uv run conan install --requires="skiasharp/{{.SKIASHARP_VERSION}}" --build=missing --no-remote --envs-generation=false
+        uv run conan install --requires="skiasharp/[>=0.0.0]" --build=missing --no-remote --envs-generation=false
         -pr:b=native/skiasharp/profiles/windows-{{.ARCH}}
         -pr:h=native/skiasharp/profiles/windows-{{.ARCH}}
         --deployer=native/skiasharp/deploy.py
@@ -94,7 +88,7 @@ tasks:
     cmds:
       - uv run conan export native/skiasharp
       - >-
-        CC=clang CXX=clang++ uv run conan install --requires="skiasharp/{{.SKIASHARP_VERSION}}" --build=missing --no-remote --envs-generation=false
+        CC=clang CXX=clang++ uv run conan install --requires="skiasharp/[>=0.0.0]" --build=missing --no-remote --envs-generation=false
         -pr:b=native/skiasharp/profiles/linux-x64
         -pr:h=native/skiasharp/profiles/linux-x64
         -c tools.system.package_manager:mode=install
@@ -110,7 +104,7 @@ tasks:
     cmds:
       - uv run conan export native/angle
       - >-
-        uv run conan install --requires="angle/{{.ANGLE_VERSION}}" --build=missing --no-remote --envs-generation=false
+        uv run conan install --requires="angle/[>=0.0.0]" --build=missing --no-remote --envs-generation=false
         -pr:b=native/angle/profiles/windows-{{.ARCH}}
         -pr:h=native/angle/profiles/windows-{{.ARCH}}
         --deployer=native/angle/deploy.py

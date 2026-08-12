@@ -1,6 +1,6 @@
 sources:
   url: "https://github.com/google/angle"
-  commit: "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"
+  commit: "chromium/7802"
 
 patches:
   - patch_file: "patches/angle-deps.patch"

@@ -6,25 +6,11 @@
 
 ## 版本来源
 
-项目只维护一组当前依赖，不提供多版本并行构建矩阵。三个原生依赖各自维护 Conan recipe；`conanfile.py` 定义包版本、构建和封装，`conandata.yml` 固定上游 commit 与 patch：
-
 - [`native/hostlibs`](native/hostlibs)
 - [`native/skiasharp`](native/skiasharp)
 - [`native/angle`](native/angle)
+- [`Directory.Build.props`](Directory.Build.props)
 
-- [`Directory.Build.props`](Directory.Build.props) 保存 MSBuild、NuGet 依赖及包版本所需的版本号。
-
-升级依赖时应同步检查对应源码配置与 `Directory.Build.props` 中的消费版本。当前配置为：
-
-| 依赖 | 版本 |
-| --- | --- |
-| Avalonia | 12.1.0 |
-| ANGLE | 2.1.27548.20260419 |
-| .NET Runtime | 10.0.10 |
-| SkiaSharp | 3.119.4 |
-| HarfBuzzSharp | 8.3.1.5 |
-
-CI 缓存键覆盖对应 recipe 目录；SkiaSharp 还包含原始 HarfBuzzSharp VCXPROJ 模板，Linux 包还包含 sysroot 标识。Conan package ID 负责区分平台、架构、编译器、runtime 和 HostLibs PGO option。
 
 ## 环境要求
 

@@ -10,10 +10,11 @@ from conan.tools.microsoft import VCVars
 from conan.tools.scm import Git
 from conan.tools.system.package_manager import Apt
 
+VERSION = "3.119.4"
 
 class SkiaSharpConan(ConanFile):
     name = "skiasharp"
-    version = "3.119.4"
+    version = VERSION
     package_type = "static-library"
     license = "MIT"
     homepage = "https://github.com/mono/skia"
@@ -64,25 +65,20 @@ class SkiaSharpConan(ConanFile):
             Apt(self).install(["clang", "ninja-build"], update=True)
 
     def source(self):
-        source = self.conan_data["sources"]
         mkdir(self, str(self._skia_root))
         git = Git(self, folder=str(self._skia_root))
         git.run("init")
-        git.run(f'remote add origin "{source["url"]}"')
-        git.run(f"fetch --depth 1 origin {source['commit']}")
+        git.run('remote add origin "https://github.com/mono/skia"')
+        git.run(f"fetch --depth 1 origin v{VERSION}")
         git.run("checkout --detach FETCH_HEAD")
 
-        for attempt in range(1, 4):
-            result = self.run(
-                f'"{sys.executable}" tools/git-sync-deps',
-                cwd=str(self._skia_root),
-                ignore_errors=True,
-            )
-            if result == 0:
-                break
-            self.output.warning(f"git-sync-deps failed on attempt {attempt} of 3")
-        else:
-            raise ConanException("git-sync-deps failed after 3 attempts")
+        result = self.run(
+            f'"{sys.executable}" tools/git-sync-deps',
+            cwd=str(self._skia_root),
+            ignore_errors=True,
+        )
+        if result != 0:
+            raise ConanException("git-sync-deps failed")
 
     def generate(self):
         Environment().vars(self).save_script("build_env")

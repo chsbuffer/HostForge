@@ -9,4 +9,4 @@ Runtime build has deeply nested paths and long MSVC command lines.
 
 The deployer preserves the response-file-relative directory tree expected by the
 existing MSBuild targets and writes it below
-`artifacts/hostlibs/10.0.10/<flavor>/<rid>`.
+`artifacts/hostlibs/<runtime-version>/<flavor>/<rid>`.

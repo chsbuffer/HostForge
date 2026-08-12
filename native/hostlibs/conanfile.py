@@ -10,10 +10,11 @@ from conan.tools.microsoft import VCVars
 from conan.tools.scm import Git
 from conan.tools.system.package_manager import Apt
 
+VERSION = "10.0.11"
 
 class HostLibsConan(ConanFile):
     name = "hostlibs"
-    version = "10.0.10"
+    version = VERSION
     package_type = "static-library"
     license = "MIT"
     homepage = "https://github.com/dotnet/runtime"
@@ -78,13 +79,12 @@ class HostLibsConan(ConanFile):
             )
 
     def source(self):
-        source = self.conan_data["sources"]
         runtime = self._runtime_root
         mkdir(self, str(runtime))
         git = Git(self, folder=str(runtime))
         git.run("init")
-        git.run(f'remote add origin "{source["url"]}"')
-        git.run(f"fetch --depth 1 --filter=blob:none origin {source['commit']}")
+        git.run('remote add origin "https://github.com/dotnet/runtime"')
+        git.run(f"fetch --depth 1 --filter=blob:none origin v{self.version}")
         git.run("sparse-checkout init --cone")
         git.run(f"sparse-checkout set {' '.join(self._source_roots)}")
         git.run("checkout --detach FETCH_HEAD")

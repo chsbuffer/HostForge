@@ -5,7 +5,7 @@
     <AngleVersion>2.1.27548.20260419</AngleVersion>
     <SkiaSharpVersion>3.119.4</SkiaSharpVersion>
     <HarfBuzzVersion>8.3.1.5</HarfBuzzVersion>
-    <HostLibsVersion>10.0.10</HostLibsVersion>
+    <HostLibsVersion>10.0.11</HostLibsVersion>
   </PropertyGroup>
 
   <PropertyGroup>

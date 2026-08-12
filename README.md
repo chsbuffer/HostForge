@@ -14,16 +14,6 @@ HostForge 将本机静态库重新链接进 .NET `AppHost` / `SingleFileHost`，
 | [`ChsBuffer.AppHost.Static.win-x64`](https://www.nuget.org/packages/ChsBuffer.AppHost.Static.win-x64/) | 在普通 .NET 项目的构建/发布过程中重新链接宿主 | .NET 10、`win-x64` |
 | [`ChsBuffer.SkiaSharp.Static.win-x64`](https://www.nuget.org/packages/ChsBuffer.SkiaSharp.Static.win-x64/) | 提供 SkiaSharp / HarfBuzzSharp 静态链接输入 | `win-x64` |
 
-当前构建基线：
-
-| 依赖 | 版本 |
-| --- | --- |
-| Avalonia | 12.1.0 |
-| ANGLE | 2.1.27548.20260419 |
-| .NET Runtime | 10.0.10 |
-| SkiaSharp | 3.119.4 |
-| HarfBuzzSharp | 8.3.1.5 |
-
 项目仍处于预览阶段，包版本和构建接口可能继续调整。
 
 ## 工作原理
