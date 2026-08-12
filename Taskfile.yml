@@ -20,7 +20,7 @@ tasks:
     desc: Build and deploy HostLibs static libraries (ARCH=x64|arm64, PGO=true|false, SYSROOT=…)
     vars:
       ARCH: '{{.ARCH | default "x64"}}'
-      PGO: '{{.PGO | default "true"}}'
+      PGO: '{{.PGO | default "True"}}'
       SYSROOT: '{{.SYSROOT | default ""}}'
     cmds:
       - task: _hostlibs-windows
@@ -34,7 +34,7 @@ tasks:
     internal: true
     platforms: [windows]
     vars:
-      FLAVOR: '{{if eq .PGO "true"}}default{{else}}no-pgo{{end}}'
+      FLAVOR: '{{if eq .PGO "True"}}default{{else}}no-pgo{{end}}'
     cmds:
       - python -m pip install --disable-pip-version-check -r native/hostlibs/requirements.txt
       - conan export native/hostlibs

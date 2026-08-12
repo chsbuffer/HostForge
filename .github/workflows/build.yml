@@ -21,11 +21,11 @@ jobs:
           - arch: x64
             rid: win-x64
             hostlibs_flavor: default
-            pgo: True
+            pgo: "True"
           - arch: arm64
             rid: win-arm64
             hostlibs_flavor: default
-            pgo: True
+            pgo: "True"
 
     steps:
       - name: Checkout repository
@@ -100,15 +100,16 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Install LLVM
-        uses: ./.github/actions/install-llvm
-
       - name: Restore SkiaSharp cache
         id: cache_skia
         uses: actions/cache@v5
         with:
           path: artifacts\skiasharp
           key: skiasharp-windows-${{ matrix.rid }}-${{ hashFiles('native/skiasharp/**', 'scripts/libHarfBuzzSharp.vcxproj.in') }}
+
+      - name: Install LLVM
+        if: steps.cache_skia.outputs.cache-hit != 'true'
+        uses: ./.github/actions/install-llvm
 
       - name: Install Task
         if: steps.cache_skia.outputs.cache-hit != 'true'
