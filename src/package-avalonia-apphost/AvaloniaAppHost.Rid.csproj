@@ -1,4 +1,9 @@
 <Project>
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+    <BaseIntermediateOutputPath Condition="'$(AvaloniaHostRid)' != ''">obj/$(MSBuildProjectName).$(AvaloniaHostRid)/</BaseIntermediateOutputPath>
+  </PropertyGroup>
+
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
 
   <PropertyGroup>
@@ -19,7 +24,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <IsPackable>true</IsPackable>
-    <DevelopmentDependency>false</DevelopmentDependency>
+    <DevelopmentDependency>true</DevelopmentDependency>
 
     <AvaloniaTemplateTfm Condition="'$(AvaloniaTemplateTfm)' == ''">net10.0</AvaloniaTemplateTfm>
     <PackageOutputPath>$(AvaloniaAppHostPackageOutputDir)\</PackageOutputPath>
@@ -30,6 +35,7 @@
   <Import Project="$(MSBuildProjectDirectory)\AvaloniaAppHost.Rids.targets" />
 
   <ItemGroup>
+    <ProjectReference Include="AvaloniaAppHost.Build.csproj" />
     <PackageReference Include="SkiaSharp" Version="$(SkiaSharpVersion)" />
     <PackageReference Include="HarfBuzzSharp" Version="$(HarfBuzzVersion)" />
     <PackageReference Include="Avalonia.Angle.Windows.Natives"
@@ -39,8 +45,7 @@
 
   <ItemGroup>
     <None Include="buildTransitive\AvaloniaAppHost.$(AvaloniaHostRid).props" Pack="true" PackagePath="buildTransitive/$(PackageId).props" />
-    <None Include="README.md" Pack="true" PackagePath="" />
-    <None Include="README.txt" Pack="true" PackagePath="" />
+    <None Include="README.$(AvaloniaHostRid).md" Pack="true" PackagePath="README.md" />
   </ItemGroup>
 
   <Target Name="_CollectAvaloniaHostTemplates"

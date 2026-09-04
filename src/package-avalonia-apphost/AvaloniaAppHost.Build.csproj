@@ -1,4 +1,8 @@
 <Project>
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+  </PropertyGroup>
+
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
 
   <PropertyGroup>
@@ -19,7 +23,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <IsPackable>true</IsPackable>
-    <DevelopmentDependency>false</DevelopmentDependency>
+    <DevelopmentDependency>true</DevelopmentDependency>
 
     <PackageOutputPath>$(AvaloniaAppHostPackageOutputDir)\</PackageOutputPath>
   </PropertyGroup>
@@ -29,7 +33,6 @@
   <ItemGroup>
     <None Include="buildTransitive\AvaloniaAppHost.targets" Pack="true" PackagePath="buildTransitive/ChsBuffer.Avalonia.AppHost.Build.targets" />
     <None Include="buildTransitive\ModuleInitializer.cs" Pack="true" PackagePath="buildTransitive/" />
-    <None Include="README.md" Pack="true" PackagePath="" />
-    <None Include="README.txt" Pack="true" PackagePath="" />
+    <None Include="README.Build.md" Pack="true" PackagePath="README.md" />
   </ItemGroup>
 </Project>

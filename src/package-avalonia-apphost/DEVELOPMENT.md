@@ -41,7 +41,7 @@ Per-RID packages (`ChsBuffer.Avalonia.AppHost.win-x64`, etc.) register their RID
 </AvaloniaAppHostRids>
 ```
 
-The Build package's `.targets` matches `$(RuntimeIdentifier)` against `@(AvaloniaAppHostRids)`. Consumers install only the RID packages they need plus the Build package; the meta-package `ChsBuffer.Avalonia.AppHost` installs everything.
+The Build package's `.targets` matches `$(RuntimeIdentifier)` against `@(AvaloniaAppHostRids)`. Each RID package depends on the Build package, so consumers install only the RID packages they need. The meta-package `ChsBuffer.Avalonia.AppHost` installs every supported RID package.
 
 ## Local commands
 

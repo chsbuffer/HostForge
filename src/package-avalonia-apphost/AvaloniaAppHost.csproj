@@ -1,4 +1,8 @@
 <Project>
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+  </PropertyGroup>
+
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
 
   <PropertyGroup>
@@ -19,7 +23,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <IsPackable>true</IsPackable>
-    <DevelopmentDependency>false</DevelopmentDependency>
+    <DevelopmentDependency>true</DevelopmentDependency>
 
     <PackageOutputPath>$(AvaloniaAppHostPackageOutputDir)\</PackageOutputPath>
     <RestoreAdditionalProjectSources>$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)</RestoreAdditionalProjectSources>
@@ -31,7 +35,6 @@
     <PackageReference Include="ChsBuffer.Avalonia.AppHost.win-x64" Version="$(AvaloniaAppHostPackageVersion)" />
     <PackageReference Include="ChsBuffer.Avalonia.AppHost.win-arm64" Version="$(AvaloniaAppHostPackageVersion)" />
     <PackageReference Include="ChsBuffer.Avalonia.AppHost.linux-x64" Version="$(AvaloniaAppHostPackageVersion)" />
-    <PackageReference Include="ChsBuffer.Avalonia.AppHost.Build" Version="$(AvaloniaAppHostPackageVersion)" />
   </ItemGroup>
 
   <ItemGroup>
