@@ -10,7 +10,7 @@ from conan.tools.microsoft import VCVars
 from conan.tools.scm import Git
 from conan.tools.system.package_manager import Apt
 
-VERSION = "10.0.11"
+VERSION = "10.0.12"
 
 class HostLibsConan(ConanFile):
     name = "hostlibs"
