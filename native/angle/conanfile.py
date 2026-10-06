@@ -6,11 +6,11 @@ from conan.tools.env import Environment
 from conan.tools.files import (
     apply_conandata_patches,
     copy,
-    get,
     load,
     save,
 )
 from conan.tools.microsoft import VCVars
+from conan.tools.scm import Git
 
 
 class AngleConan(ConanFile):
@@ -40,11 +40,10 @@ class AngleConan(ConanFile):
 
     def source(self):
         source = self.conan_data["sources"]
-        get(
-            self,
-            f"{source['url']}/archive/refs/heads/{source['commit']}.tar.gz",
-            destination=self._angle_root,
-            strip_root=True,
+        Git(self, folder=self.source_folder).clone(
+            url=source["url"],
+            target="angle",
+            args=["--depth", "1", "--branch", source["branch"]],
         )
         apply_conandata_patches(self)
 
