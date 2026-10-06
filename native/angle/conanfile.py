@@ -6,12 +6,11 @@ from conan.tools.env import Environment
 from conan.tools.files import (
     apply_conandata_patches,
     copy,
+    get,
     load,
-    mkdir,
     save,
 )
 from conan.tools.microsoft import VCVars
-from conan.tools.scm import Git
 
 
 class AngleConan(ConanFile):
@@ -41,27 +40,30 @@ class AngleConan(ConanFile):
 
     def source(self):
         source = self.conan_data["sources"]
-        mkdir(self, self._angle_root)
-        git = Git(self, folder=self._angle_root)
-        git.run("init")
-        git.run(f'remote add origin "{source["url"]}"')
-        git.run(f"fetch --depth 1 origin {source['commit']}")
-        git.run("checkout --detach FETCH_HEAD")
+        get(
+            self,
+            f"{source['url']}/archive/refs/heads/{source['commit']}.tar.gz",
+            destination=self._angle_root,
+            strip_root=True,
+        )
         apply_conandata_patches(self)
-
-        env = self._environment()
-        with env.vars(self).apply():
-            self.run(
-                f'"{sys.executable}" scripts/bootstrap.py',
-                cwd=self._angle_root,
-            )
-            self.run("gclient sync -f -D -R", cwd=self._angle_root)
 
     def generate(self):
         self._environment().vars(self).save_script("angle")
         VCVars(self).generate()
 
     def build(self):
+        env = self._environment()
+        with env.vars(self).apply():
+            self.run(
+                f'"{sys.executable}" scripts/bootstrap.py',
+                cwd=self._angle_root,
+            )
+            self.run(
+                "gclient sync --no-history --shallow",
+                cwd=self._angle_root,
+            )
+
         gn_args = [
             "is_debug=false",
             "is_component_build=false",

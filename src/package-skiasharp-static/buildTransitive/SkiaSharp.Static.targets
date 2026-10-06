@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <_StaticSkiaDynamicFiles>;libSkiaSharp.dll;libHarfBuzzSharp.dll;libSkiaSharp.so;libHarfBuzzSharp.so;</_StaticSkiaDynamicFiles>
+  </PropertyGroup>
+
+  <Target Name="RemoveStaticSkiaSharpRuntimeCopies"
+          AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="$(_StaticSkiaDynamicFiles.Contains(';%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension);'))" />
+    </ItemGroup>
+  </Target>
+</Project>

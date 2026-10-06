@@ -5,8 +5,8 @@
     <NoBuild>true</NoBuild>
     <NoWarn>$(NoWarn);NU5128;NU5129</NoWarn>
     <AvaloniaHostRid Condition="'$(AvaloniaHostRid)' == ''">win-x64</AvaloniaHostRid>
-    <PackageId>ChsBuffer.SkiaSharp.Static.win-x64</PackageId>
-    <Version>$(SkiaSharpVersion)-alpha.1</Version>
+    <PackageId>ChsBuffer.SkiaSharp.Static.$(AvaloniaHostRid)</PackageId>
+    <Version>$(SkiaSharpVersion)</Version>
     <Authors>ChsBuffer</Authors>
     <Description>SkiaSharp static library</Description>
     <PackageTags>skia;harfbuzz</PackageTags>
@@ -22,22 +22,30 @@
     <PackageOutputPath>$(AvaloniaAppHostPackageOutputDir)\</PackageOutputPath>
 
     <AvaloniaNativeLibsDir>$([MSBuild]::NormalizePath('$(AvaloniaNativeLibsRoot)', '$(AvaloniaHostRid)'))</AvaloniaNativeLibsDir>
+    <StaticNativeArch Condition="'$(AvaloniaHostRid)' == 'win-arm64'">arm64</StaticNativeArch>
+    <StaticNativeArch Condition="'$(StaticNativeArch)' == ''">x64</StaticNativeArch>
   </PropertyGroup>
 
   <Target Name="_ValidateAvaloniaHostRid">
-    <Error Condition="'$(AvaloniaHostRid)' != 'win-x64'"
-           Text="AvaloniaHostRid='$(AvaloniaHostRid)' is invalid. Use 'win-x64'." />
+    <Error Condition="'$(AvaloniaHostRid)' != 'win-x64' and '$(AvaloniaHostRid)' != 'win-arm64' and '$(AvaloniaHostRid)' != 'linux-x64'"
+           Text="AvaloniaHostRid='$(AvaloniaHostRid)' is invalid. Use 'win-x64', 'win-arm64', or 'linux-x64'." />
   </Target>
 
   <ItemGroup>
     <None Include="buildTransitive/SkiaSharp.Static.props" Pack="true" PackagePath="buildTransitive/$(PackageId).props" />
+    <None Include="buildTransitive/SkiaSharp.Static.targets" Pack="true" PackagePath="buildTransitive/$(PackageId).targets" />
     <None Include="README.md" Pack="true" PackagePath="" />
   </ItemGroup>
 
   <ItemGroup>
     <None Include="$(AvaloniaNativeLibsDir)/**/*.lib"
+      Condition="'$(AvaloniaHostRid)' == 'win-x64' or '$(AvaloniaHostRid)' == 'win-arm64'"
       Pack="true"
-      PackagePath="build/native/x64/%(FileName)%(Extension)" />
+      PackagePath="build/native/$(StaticNativeArch)/%(FileName)%(Extension)" />
+    <None Include="$(AvaloniaNativeLibsDir)/**/*.a"
+      Condition="'$(AvaloniaHostRid)' == 'linux-x64'"
+      Pack="true"
+      PackagePath="build/native/$(StaticNativeArch)/%(FileName)%(Extension)" />
   </ItemGroup>
 
   <Target Name="_ValidateAvaloniaNativeLibsDir"

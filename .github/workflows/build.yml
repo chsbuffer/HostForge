@@ -61,6 +61,8 @@ jobs:
     runs-on: windows-2025-vs2026
     needs:
       - windows-hostlibs
+      - windows-skia
+      - windows-angle
 
     steps:
       - name: Checkout repository
@@ -74,6 +76,18 @@ jobs:
         with:
           name: hostlibs-default-win-x64
           path: artifacts\hostlibs
+
+      - name: Download SkiaSharp artifact (win-x64)
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: skiasharp-win-x64
+          path: artifacts\skiasharp
+
+      - name: Download ANGLE artifact (win-x64)
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: angle-win-x64
+          path: artifacts\angle
 
       - name: Install Task
         uses: ./.github/actions/install-task
@@ -182,6 +196,52 @@ jobs:
         with:
           name: angle-${{ matrix.rid }}
           path: artifacts\angle
+          if-no-files-found: error
+
+  pack-windows-static-graphics:
+    runs-on: windows-2025-vs2026
+    needs:
+      - windows-skia
+      - windows-angle
+    strategy:
+      matrix:
+        rid: [win-x64, win-arm64]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Install Task
+        uses: ./.github/actions/install-task
+
+      - name: Download SkiaSharp artifact
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: skiasharp-${{ matrix.rid }}
+          path: artifacts\skiasharp
+
+      - name: Download ANGLE artifact
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: angle-${{ matrix.rid }}
+          path: artifacts\angle
+
+      - name: Pack static SkiaSharp libraries
+        shell: powershell
+        run: task pack-skia-static RID=${{ matrix.rid }}
+
+      - name: Pack static ANGLE libraries
+        shell: powershell
+        run: task pack-angle-static RID=${{ matrix.rid }}
+
+      - name: Upload static graphics packages
+        uses: actions/upload-artifact@v6
+        with:
+          name: static-graphics-${{ matrix.rid }}
+          path: artifacts\packages\Release\*.nupkg
           if-no-files-found: error
 
   windows-link-avalonia:
@@ -316,6 +376,7 @@ jobs:
     needs:
       - linux-sysroot
       - linux-hostlibs
+      - linux-skia
 
     steps:
       - name: Checkout repository
@@ -332,16 +393,22 @@ jobs:
         with:
           cache-key: ${{ env.LINUX_SYSROOT_CACHE_KEY }}
 
-      - name: Install LLVM
+      - name: Install matrix dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y llvm
+          sudo apt-get install -y llvm clang zlib1g-dev libfontconfig1-dev python-is-python3
 
       - name: Download HostLibs artifact (linux-x64)
         uses: actions/download-artifact@v8.0.1
         with:
           name: hostlibs-default-linux-x64
           path: artifacts/hostlibs
+
+      - name: Download SkiaSharp artifact (linux-x64)
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: skiasharp-linux-x64
+          path: artifacts/skiasharp
 
       - name: Run matrix integration build
         run: task matrix
@@ -387,6 +454,37 @@ jobs:
         with:
           name: skiasharp-linux-x64
           path: artifacts/skiasharp
+          if-no-files-found: error
+
+  pack-linux-static-graphics:
+    runs-on: ubuntu-latest
+    needs:
+      - linux-skia
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Install Task
+        uses: ./.github/actions/install-task
+
+      - name: Download SkiaSharp artifact (linux-x64)
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: skiasharp-linux-x64
+          path: artifacts/skiasharp
+
+      - name: Pack static SkiaSharp libraries
+        run: task pack-skia-static RID=linux-x64
+
+      - name: Upload static SkiaSharp package
+        uses: actions/upload-artifact@v6
+        with:
+          name: static-graphics-linux-x64
+          path: artifacts/packages/Release/*.nupkg
           if-no-files-found: error
 
   linux-link-avalonia:

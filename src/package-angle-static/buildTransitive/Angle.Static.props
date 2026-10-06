@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup>
+    <_AngleStaticRid Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</_AngleStaticRid>
+    <_AngleStaticRid Condition="'$(_AngleStaticRid)' == '' and '$(AppHostRuntimeIdentifier)' != ''">$(AppHostRuntimeIdentifier)</_AngleStaticRid>
+    <_AngleStaticRid Condition="'$(_AngleStaticRid)' == '' and '$(DefaultAppHostRuntimeIdentifier)' != ''">$(DefaultAppHostRuntimeIdentifier)</_AngleStaticRid>
+    <_AngleStaticArch Condition="'$(_AngleStaticRid)' == 'win-arm64'">arm64</_AngleStaticArch>
+    <_AngleStaticArch Condition="'$(_AngleStaticArch)' == ''">x64</_AngleStaticArch>
+    <_AngleStaticNativeDir>$(MSBuildThisFileDirectory)../build/native/$(_AngleStaticArch)/</_AngleStaticNativeDir>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(_AngleStaticRid)' == 'win-x64' or '$(_AngleStaticRid)' == 'win-arm64'">
+    <DirectPInvoke Include="av_libglesv2" />
+    <NativeLibrary Include="$(_AngleStaticNativeDir)libANGLE_static.lib" />
+    <NativeLibrary Include="$(_AngleStaticNativeDir)libGLESv2_static.lib" />
+    <LinkerArg Include="advapi32.lib;d3d11.lib;dxgi.lib;dxguid.lib;gdi32.lib;setupapi.lib;synchronization.lib;user32.lib" />
+  </ItemGroup>
+</Project>

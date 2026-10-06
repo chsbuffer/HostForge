@@ -1,0 +1,5 @@
+<Project>
+  <ItemGroup Condition="'$(OutputType)' == 'Exe'">
+    <RuntimeHostConfigurationOption Include="HostForgeRepoRoot" Value="$(RepoRoot)" />
+  </ItemGroup>
+</Project>

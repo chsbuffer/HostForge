@@ -1,0 +1,9 @@
+<Project>
+  <Target Name="RemoveStaticAngleRuntimeCopies"
+          AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="'%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'av_libglesv2.dll'" />
+    </ItemGroup>
+  </Target>
+</Project>

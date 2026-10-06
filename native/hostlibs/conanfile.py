@@ -5,9 +5,8 @@ from pathlib import Path
 from conan import ConanFile
 from conan.errors import ConanException
 from conan.tools.env import Environment
-from conan.tools.files import mkdir, save
+from conan.tools.files import get, save
 from conan.tools.microsoft import VCVars
-from conan.tools.scm import Git
 from conan.tools.system.package_manager import Apt
 
 VERSION = "10.0.12"
@@ -28,18 +27,6 @@ class HostLibsConan(ConanFile):
         "x86_64": "x64",
         "armv8": "arm64",
     }
-    _source_roots = (
-        ".config",
-        "docs/design/datacontracts/data",
-        "eng",
-        "src/coreclr",
-        "src/libraries/Common",
-        "src/libraries/Microsoft.NETCore.Platforms",
-        "src/libraries/System.Private.CoreLib",
-        "src/libraries/System.Runtime.InteropServices",
-        "src/native",
-        "src/tasks",
-    )
 
     @property
     def _runtime_root(self):
@@ -79,15 +66,13 @@ class HostLibsConan(ConanFile):
             )
 
     def source(self):
-        runtime = self._runtime_root
-        mkdir(self, str(runtime))
-        git = Git(self, folder=str(runtime))
-        git.run("init")
-        git.run('remote add origin "https://github.com/dotnet/runtime"')
-        git.run(f"fetch --depth 1 --filter=blob:none origin v{self.version}")
-        git.run("sparse-checkout init --cone")
-        git.run(f"sparse-checkout set {' '.join(self._source_roots)}")
-        git.run("checkout --detach FETCH_HEAD")
+        get(
+            self,
+            f"https://github.com/dotnet/runtime/archive/refs/tags/v{self.version}.tar.gz",
+            destination=str(self._runtime_root),
+            strip_root=True,
+            keep_permissions=True,
+        )
 
     def generate(self):
         env = Environment()

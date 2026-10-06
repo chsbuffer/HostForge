@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PublishAot>true</PublishAot>
+    <RuntimeIdentifier Condition="'$(NativeAotMatrixRid)' != ''">$(NativeAotMatrixRid)</RuntimeIdentifier>
+    <RestoreAdditionalProjectSources>$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)</RestoreAdditionalProjectSources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="$(SkiaSharpVersion)" />
+    <PackageReference Include="HarfBuzzSharp" Version="$(HarfBuzzVersion)" />
+    <PackageReference Include="ChsBuffer.SkiaSharp.Static.win-x64" Version="$(SkiaSharpVersion)" Condition="'$(NativeAotMatrixRid)' == 'win-x64'" />
+    <PackageReference Include="ChsBuffer.SkiaSharp.Static.linux-x64" Version="$(SkiaSharpVersion)" Condition="'$(NativeAotMatrixRid)' == 'linux-x64'" />
+    <PackageReference Include="ChsBuffer.Angle.Static.win-x64" Version="$(AngleVersion)" Condition="'$(NativeAotMatrixRid)' == 'win-x64'" />
+  </ItemGroup>
+</Project>

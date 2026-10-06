@@ -17,7 +17,7 @@ public static class RepoContext
 {
     public const string AvaloniaAppHostBasePackageId = "ChsBuffer.Avalonia.AppHost";
 
-    public static string RepoRoot { get; } = LocateRepoRoot();
+    public static string RepoRoot { get; } = ReadRepoRoot();
 
     public static string AvaloniaPackageVersion { get; } = ReadProperty("AvaloniaAppHostPackageVersion");
 
@@ -43,21 +43,13 @@ public static class RepoContext
 
     public static string GetAvaloniaRidPackageId(string rid) => $"{AvaloniaAppHostBasePackageId}.{rid}";
 
-    private static string LocateRepoRoot()
+    private static string ReadRepoRoot()
     {
-        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        string? root = AppContext.GetData("HostForgeRepoRoot") as string;
+        if (string.IsNullOrWhiteSpace(root))
+            throw new InvalidOperationException("The build did not provide HostForgeRepoRoot.");
 
-        while (current is not null)
-        {
-            if (Directory.Exists(Path.Combine(current.FullName, ".git")))
-            {
-                return current.FullName;
-            }
-
-            current = current.Parent;
-        }
-
-        throw new InvalidOperationException("Unable to locate repository root from test process.");
+        return Path.GetFullPath(root);
     }
 
     private static string ReadProperty(string propertyName)

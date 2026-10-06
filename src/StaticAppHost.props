@@ -40,7 +40,9 @@
 
   <PropertyGroup>
     <StaticHostAssetsBaseDir Condition="'$(StaticHostAssetsBaseDir)' == ''">$(MSBuildThisFileDirectory)</StaticHostAssetsBaseDir>
-    <StaticHostAssetsDir Condition="'$(StaticHostAssetsDir)' == ''">$([MSBuild]::NormalizePath('$(StaticHostAssetsBaseDir)', '$(StaticHostRid)'))</StaticHostAssetsDir>
+    <StaticHostAssetsRid>$(StaticHostRid)</StaticHostAssetsRid>
+    <StaticHostAssetsRid Condition="'$(_targetsNonPortableSdkRid)' == 'true'">$(NETCoreSdkPortableRuntimeIdentifier)</StaticHostAssetsRid>
+    <StaticHostAssetsDir Condition="'$(StaticHostAssetsDir)' == ''">$([MSBuild]::NormalizePath('$(StaticHostAssetsBaseDir)', '$(StaticHostAssetsRid)'))</StaticHostAssetsDir>
     <_AppHostRspPath>$([MSBuild]::NormalizePath('$(StaticHostAssetsDir)', 'apphost.rsp'))</_AppHostRspPath>
     <_SingleFileHostRspPath>$([MSBuild]::NormalizePath('$(StaticHostAssetsDir)', 'singlefilehost.rsp'))</_SingleFileHostRspPath>
   </PropertyGroup>

@@ -5,9 +5,8 @@ from pathlib import Path
 from conan import ConanFile
 from conan.errors import ConanException
 from conan.tools.env import Environment
-from conan.tools.files import copy, mkdir, save
+from conan.tools.files import copy, get, save
 from conan.tools.microsoft import VCVars
-from conan.tools.scm import Git
 from conan.tools.system.package_manager import Apt
 
 VERSION = "3.119.4"
@@ -22,6 +21,8 @@ class SkiaSharpConan(ConanFile):
 
     settings = "os", "arch", "compiler", "build_type"
     no_copy_source = True
+    # https://github.com/google/skia/blob/chrome/m150/tools/git-sync-deps
+    exports_sources = "git-sync-deps"
 
     _arch = {
         "x86_64": "x64",
@@ -65,13 +66,22 @@ class SkiaSharpConan(ConanFile):
             Apt(self).install(["clang", "ninja-build"], update=True)
 
     def source(self):
-        mkdir(self, str(self._skia_root))
-        git = Git(self, folder=str(self._skia_root))
-        git.run("init")
-        git.run('remote add origin "https://github.com/mono/skia"')
-        git.run(f"fetch --depth 1 origin v{VERSION}")
-        git.run("checkout --detach FETCH_HEAD")
+        get(
+            self,
+            f"https://github.com/mono/skia/archive/refs/tags/v{VERSION}.tar.gz",
+            destination=str(self._skia_root),
+            strip_root=True,
+            keep_permissions=True,
+        )
+        copy(
+            self,
+            "git-sync-deps",
+            src=self.export_sources_folder,
+            dst=str(self._skia_root / "tools"),
+            overwrite_equal=True,
+        )
 
+        os.environ["GIT_SYNC_DEPS_SKIP_EMSDK"] = "1"
         result = self.run(
             f'"{sys.executable}" tools/git-sync-deps',
             cwd=str(self._skia_root),
@@ -347,5 +357,3 @@ class SkiaSharpConan(ConanFile):
     @staticmethod
     def _gn_text(lines):
         return "\n".join(lines) + "\n"
-
-

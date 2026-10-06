@@ -48,7 +48,8 @@ Linux 构建使用 Clang，并通过 sysroot 对齐 .NET Host、SkiaSharp 和 Ha
 | `build-hostlibs` | 构建 .NET AppHost / SingleFileHost 静态库 |
 | `build-skiasharp` | 构建 SkiaSharp / HarfBuzzSharp 静态库 |
 | `build-angle` | 构建 Windows x64 / arm64 ANGLE 静态库 |
-| `matrix` | 运行通用 Static AppHost 构建集成矩阵 |
+| `matrix` | 运行 Static AppHost 与 NativeAOT 集成矩阵 |
+| `matrix-nativeaot` | 打包本地静态图形库并验证 NativeAOT 发布与运行 |
 | `link-avalonia` | 生成指定操作系统的 Avalonia 宿主模板 |
 | `avalonia-test` | 运行 Avalonia AppHost 集成测试 |
 | `pack-avalonia` | 打包全部 Avalonia AppHost（RID 包 + Build + 元包） |
@@ -56,7 +57,8 @@ Linux 构建使用 Clang，并通过 sysroot 对齐 .NET Host、SkiaSharp 和 Ha
 | `pack-avalonia-build` | 打包 Build 包（targets + ModuleInitializer） |
 | `pack-avalonia-meta` | 打包元包（依赖所有子包） |
 | `pack-static-apphost` | 打包通用 Static AppHost |
-| `pack-skia-static` | 打包 SkiaSharp 静态库输入 |
+| `pack-skia-static` | 打包 SkiaSharp 静态库输入（win-x64、win-arm64 或 linux-x64） |
+| `pack-angle-static` | 打包 Windows ANGLE 静态库输入（win-x64 或 win-arm64） |
 
 运行 `task --list` 可查看任务；通过 `NAME=value` 传入目标平台、RID 或打包模式。构建任务接受 `ARCH=x64|arm64`、`PGO=true|false`，Linux 构建还需传入 `SYSROOT`。
 
@@ -112,6 +114,10 @@ task avalonia-test
 task pack-avalonia
 task pack-static-apphost RID=win-x64
 task pack-skia-static RID=win-x64
+task pack-skia-static RID=win-arm64
+task pack-angle-static RID=win-x64
+task pack-angle-static RID=win-arm64
+task matrix-nativeaot
 ```
 
 `pack-avalonia` 依次打包所有 RID 包、Build 包和元包。也可单独打包某个 RID：`task pack-avalonia-rid RID=win-x64`。详细约定见 [Avalonia 打包说明](src/package-avalonia-apphost/DEVELOPMENT.md)。
@@ -132,6 +138,8 @@ task build-hostlibs SYSROOT=build/rootfs/x64
 
 ```bash
 task build-skiasharp SYSROOT=build/rootfs/x64
+task pack-skia-static RID=linux-x64
+task matrix-nativeaot
 ```
 
 使用 `native/skiasharp/profiles/linux-x64`，同样通过 `ROOTFS_DIR` 环境变量传入 sysroot；可继续用 `CC`、`CXX` 和 `AR` 覆盖 GN 工具链命令。
@@ -152,10 +160,13 @@ dotnet publish samples/simple-pinvoke/SimplePInvoke.csproj -p:PublishTrimmed=tru
 
 ## 测试
 
-通用 Static AppHost 集成矩阵：
+Static AppHost 与 NativeAOT 集成矩阵：
 
 ```powershell
-task matrix```
+task matrix
+```
+
+`matrix-nativeaot` 会打包当前平台的 SkiaSharp 静态库；Windows 还会打包 ANGLE。随后发布并运行 `samples/nativeaot-matrix`，检查 SkiaSharp、HarfBuzzSharp 和 Windows ANGLE 的原生调用，以及发布目录中没有对应动态本机库。运行前需先构建当前平台的原生库。
 
 可通过环境变量调整矩阵测试：
 
@@ -204,13 +215,18 @@ flowchart LR
         WH["windows-hostlibs<br/>default × x64/arm64"]
         WS["windows-skia<br/>x64/arm64"]
         WA["windows-angle<br/>x64/arm64"]
+        WPG["pack-windows-static-graphics<br/>x64/arm64"]
         WLA["windows-link-avalonia<br/>link + test"]
-        WM["windows-matrix-test"]
+        WM["windows-matrix-test<br/>Static AppHost + NativeAOT"]
 
         WH --> WLA
         WS --> WLA
         WA --> WLA
+        WS --> WPG
+        WA --> WPG
         WH --> WM
+        WS --> WM
+        WA --> WM
     end
 
     subgraph L["Linux lane"]
@@ -218,8 +234,9 @@ flowchart LR
         LSY["linux-sysroot"]
         LH["linux-hostlibs"]
         LS["linux-skia"]
+        LPG["pack-linux-static-graphics"]
         LLA["linux-link-avalonia<br/>link + test"]
-        LM["linux-matrix-test"]
+        LM["linux-matrix-test<br/>Static AppHost + NativeAOT"]
 
         LSY --> LH
         LSY --> LS
@@ -227,7 +244,9 @@ flowchart LR
         LSY --> LM
         LH --> LLA
         LS --> LLA
+        LS --> LPG
         LH --> LM
+        LS --> LM
     end
 
     PA["pack-avalonia<br/>3 RIDs + Build + meta"]
@@ -241,12 +260,14 @@ flowchart LR
 | `windows-hostlibs` | Windows | 两种架构的 HostLib 缓存 |
 | `windows-skia` | Windows | `win-x64` / `win-arm64` Skia 缓存 |
 | `windows-angle` | Windows | `win-x64` / `win-arm64` ANGLE 静态库缓存 |
-| `windows-matrix-test` | Windows | Static AppHost 集成验证 |
+| `pack-windows-static-graphics` | Windows | 两种架构的 SkiaSharp 与 ANGLE 静态 NuGet 包 |
+| `windows-matrix-test` | Windows | Static AppHost 与 win-x64 NativeAOT 集成验证 |
 | `windows-link-avalonia` | Windows | Windows Avalonia 模板及测试结果 |
 | `linux-sysroot` | Linux | Linux sysroot 缓存 |
 | `linux-hostlibs` | Linux | `linux-x64` HostLib 缓存 |
 | `linux-skia` | Linux | `linux-x64` Skia 缓存 |
-| `linux-matrix-test` | Linux | Static AppHost 集成验证 |
+| `pack-linux-static-graphics` | Linux | `linux-x64` SkiaSharp 静态 NuGet 包 |
+| `linux-matrix-test` | Linux | Static AppHost 与 linux-x64 NativeAOT 集成验证 |
 | `linux-link-avalonia` | Linux | Linux Avalonia 模板及测试结果 |
 | `pack-avalonia` | Windows | 3 个 RID 包 + Build 包 + 元包（ChsBuffer.Avalonia.AppHost） |
 

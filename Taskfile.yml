@@ -113,7 +113,7 @@ tasks:
   # ── Integration tests & packaging ─────────────────────────────
 
   matrix:
-    desc: Run the Static AppHost integration matrix
+    desc: Run the Static AppHost and NativeAOT integration matrices
     vars:
       SKIP_EXE_RUN: '{{.SKIP_EXE_RUN | default .HOSTFORGE_MATRIX_SKIP_EXE_RUN | default "false"}}'
       NO_CLEAN: '{{.NO_CLEAN | default .HOSTFORGE_MATRIX_NO_CLEAN | default "false"}}'
@@ -126,6 +126,7 @@ tasks:
         --project tests/HostForge.StaticAppHost.Tests/HostForge.StaticAppHost.Tests.csproj
         -c Release
         -v:{{.VERBOSITY}}
+      - task: matrix-nativeaot
 
   link-avalonia:
     desc: Link Avalonia apphost templates for one target OS
@@ -218,9 +219,52 @@ tasks:
     requires:
       vars:
         - name: RID
-          enum: [win-x64]
+          enum: [win-x64, win-arm64, linux-x64]
     cmds:
       - >-
         dotnet pack src/package-skiasharp-static/SkiaSharp.Static.csproj
+        -c Release
         -p:AvaloniaHostRid={{.RID}}
         -v:{{.VERBOSITY}}
+
+  pack-angle-static:
+    desc: Pack the ANGLE static-link inputs
+    platforms: [windows]
+    vars:
+      RID: '{{.RID | default "win-x64"}}'
+    requires:
+      vars:
+        - name: RID
+          enum: [win-x64, win-arm64]
+    cmds:
+      - >-
+        dotnet pack src/package-angle-static/Angle.Static.csproj
+        -c Release
+        -p:AngleHostRid={{.RID}}
+        -v:{{.VERBOSITY}}
+
+  matrix-nativeaot:
+    desc: Publish and run the NativeAOT static graphics matrix on the current OS (win-x64 or linux-x64)
+    cmds:
+      - task: _matrix-nativeaot-windows
+      - task: _matrix-nativeaot-linux
+      - >-
+        dotnet test
+        --project tests/HostForge.NativeAot.Tests/HostForge.NativeAot.Tests.csproj
+        -c Release
+        -v:{{.VERBOSITY}}
+
+  _matrix-nativeaot-windows:
+    internal: true
+    platforms: [windows]
+    cmds:
+      - task: pack-skia-static
+        vars: {RID: win-x64}
+      - task: pack-angle-static
+
+  _matrix-nativeaot-linux:
+    internal: true
+    platforms: [linux]
+    cmds:
+      - task: pack-skia-static
+        vars: {RID: linux-x64}

@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <NoBuild>true</NoBuild>
+    <NoWarn>$(NoWarn);NU5128;NU5129</NoWarn>
+    <AngleHostRid Condition="'$(AngleHostRid)' == ''">win-x64</AngleHostRid>
+    <PackageId>ChsBuffer.Angle.Static.$(AngleHostRid)</PackageId>
+    <Version>$(AngleVersion)</Version>
+    <Authors>ChsBuffer</Authors>
+    <Description>ANGLE static libraries for $(AngleHostRid) NativeAOT and static host linking.</Description>
+    <PackageTags>angle;static;nativeaot</PackageTags>
+    <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageProjectUrl>https://github.com/chsbuffer/HostForge</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/chsbuffer/HostForge</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <IsPackable>true</IsPackable>
+    <PackageOutputPath>$(AvaloniaAppHostPackageOutputDir)\</PackageOutputPath>
+    <AngleNativeLibsDir>$([MSBuild]::NormalizePath('$(AngleNativeLibsRoot)', '$(AngleHostRid)'))</AngleNativeLibsDir>
+    <AngleNativeArch Condition="'$(AngleHostRid)' == 'win-arm64'">arm64</AngleNativeArch>
+    <AngleNativeArch Condition="'$(AngleNativeArch)' == ''">x64</AngleNativeArch>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="buildTransitive/Angle.Static.props" Pack="true" PackagePath="buildTransitive/$(PackageId).props" />
+    <None Include="buildTransitive/Angle.Static.targets" Pack="true" PackagePath="buildTransitive/$(PackageId).targets" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+    <None Include="$(AngleNativeLibsDir)/libANGLE_static.lib" Pack="true" PackagePath="build/native/$(AngleNativeArch)/libANGLE_static.lib" />
+    <None Include="$(AngleNativeLibsDir)/libGLESv2_static.lib" Pack="true" PackagePath="build/native/$(AngleNativeArch)/libGLESv2_static.lib" />
+    <None Include="$(AngleNativeLibsDir)/av_libglesv2.def" Pack="true" PackagePath="build/native/$(AngleNativeArch)/av_libglesv2.def" />
+  </ItemGroup>
+
+  <Target Name="_ValidateAngleNativeLibs" BeforeTargets="_GetPackageFiles">
+    <Error Condition="'$(AngleHostRid)' != 'win-x64' and '$(AngleHostRid)' != 'win-arm64'" Text="AngleHostRid='$(AngleHostRid)' is invalid. Use 'win-x64' or 'win-arm64'." />
+    <Error Condition="!Exists('$(AngleNativeLibsDir)/libANGLE_static.lib')" Text="ANGLE library not found: $(AngleNativeLibsDir)/libANGLE_static.lib" />
+    <Error Condition="!Exists('$(AngleNativeLibsDir)/libGLESv2_static.lib')" Text="ANGLE library not found: $(AngleNativeLibsDir)/libGLESv2_static.lib" />
+    <Error Condition="!Exists('$(AngleNativeLibsDir)/av_libglesv2.def')" Text="ANGLE export definition not found: $(AngleNativeLibsDir)/av_libglesv2.def" />
+  </Target>
+</Project>
