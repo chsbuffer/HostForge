@@ -9,7 +9,7 @@ from conan.tools.files import copy, get, save
 from conan.tools.microsoft import VCVars
 from conan.tools.system.package_manager import Apt
 
-VERSION = "3.119.4"
+VERSION = "4.153.1"
 
 class SkiaSharpConan(ConanFile):
     name = "skiasharp"
@@ -68,7 +68,7 @@ class SkiaSharpConan(ConanFile):
     def source(self):
         get(
             self,
-            f"https://github.com/mono/skia/archive/refs/tags/v{VERSION}.tar.gz",
+            f"https://github.com/mono/skia/archive/refs/heads/release/{VERSION}.tar.gz",
             destination=str(self._skia_root),
             strip_root=True,
             keep_permissions=True,
@@ -229,17 +229,19 @@ class SkiaSharpConan(ConanFile):
                 'target_os = "win"',
                 f'target_cpu = "{self._target_arch}"',
                 "skia_enable_fontmgr_win_gdi = false",
-                "skia_use_dng_sdk = true",
+                "skia_use_dng_sdk = false",
                 "skia_use_harfbuzz = false",
                 "skia_use_icu = false",
-                "skia_use_piex = true",
-                "skia_use_sfntly = false",
+                "skia_use_partition_alloc = false",
+                "skia_use_piex = false",
                 "skia_use_system_expat = false",
+                "skia_use_system_freetype2 = false",
                 "skia_use_system_libjpeg_turbo = false",
                 "skia_use_system_libpng = false",
                 "skia_use_system_libwebp = false",
                 "skia_use_system_zlib = false",
                 "skia_enable_skottie = true",
+                "skia_enable_graphite = true",
                 "skia_use_vulkan = true",
                 'clang_win = "C:/Program Files/LLVM"',
                 'win_vcvars_version = "14.5"',
@@ -261,10 +263,11 @@ class SkiaSharpConan(ConanFile):
                 'target_os = "linux"',
                 f'target_cpu = "{self._target_arch}"',
                 "skia_enable_ganesh = true",
+                "skia_use_dng_sdk = false",
                 "skia_use_harfbuzz = false",
                 "skia_use_icu = false",
-                "skia_use_piex = true",
-                "skia_use_sfntly = false",
+                "skia_use_partition_alloc = false",
+                "skia_use_piex = false",
                 "skia_use_system_expat = false",
                 "skia_use_system_freetype2 = false",
                 "skia_use_system_libjpeg_turbo = false",
@@ -272,6 +275,7 @@ class SkiaSharpConan(ConanFile):
                 "skia_use_system_libwebp = false",
                 "skia_use_system_zlib = false",
                 "skia_enable_skottie = true",
+                "skia_enable_graphite = true",
                 "skia_use_vulkan = true",
                 "skia_enable_tools = false",
                 "is_official_build = true",
@@ -292,7 +296,7 @@ class SkiaSharpConan(ConanFile):
                 "is_official_build = true",
                 "is_static_skiasharp = true",
                 "skia_enable_tools = false",
-                "visibility_hidden = false",
+                "skia_use_partition_alloc = false",
                 f"extra_asmflags = {self._format_gn_list(asmflags)}",
                 f"extra_cflags = {self._format_gn_list(cflags)}",
                 f"extra_ldflags = {self._format_gn_list(ldflags)}",

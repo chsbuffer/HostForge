@@ -6,4 +6,4 @@ Windows and Linux. The Windows HarfBuzz project is instantiated from
 unchanged in its original location.
 
 The deployer restores the package libraries below
-`artifacts/skiasharp/3.119.4/<rid>` for the existing MSBuild projects.
+`artifacts/skiasharp/<SkiaSharpVersion>/<rid>` for the existing MSBuild projects.

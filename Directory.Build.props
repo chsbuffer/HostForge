@@ -3,8 +3,8 @@
   <PropertyGroup>
     <AvaloniaVersion>12.1.0</AvaloniaVersion>
     <AngleVersion>2.1.27548.20260419</AngleVersion>
-    <SkiaSharpVersion>3.119.4</SkiaSharpVersion>
-    <HarfBuzzVersion>8.3.1.5</HarfBuzzVersion>
+    <SkiaSharpVersion>4.153.1</SkiaSharpVersion>
+    <HarfBuzzVersion>14.2.1.301</HarfBuzzVersion>
     <HostLibsVersion>10.0.12</HostLibsVersion>
   </PropertyGroup>
 
@@ -13,7 +13,7 @@
     <_Major>0</_Major>
     <_Preview></_Preview>
 
-    <AvaloniaAppHostPackageVersion>$(TargetAvaloniaVersion).$(_Major)</AvaloniaAppHostPackageVersion>
+    <AvaloniaAppHostPackageVersion>$(TargetAvaloniaVersion).$(_Major).1</AvaloniaAppHostPackageVersion>
     <AvaloniaAppHostPackageVersion Condition="'$(_Preview)' != ''">$(AvaloniaAppHostPackageVersion)-$(_Preview)</AvaloniaAppHostPackageVersion>
   </PropertyGroup>
 
