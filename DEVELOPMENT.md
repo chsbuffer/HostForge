@@ -250,9 +250,15 @@ flowchart LR
     end
 
     PA["pack-avalonia<br/>3 RIDs + Build + meta"]
+    CLEAN["cleanup-packaged-artifacts"]
 
     WLA --> PA
     LLA --> PA
+    WPG --> CLEAN
+    WM --> CLEAN
+    LPG --> CLEAN
+    LM --> CLEAN
+    PA --> CLEAN
 ```
 
 | Job | 平台 | 主要输出 |
@@ -270,10 +276,11 @@ flowchart LR
 | `linux-matrix-test` | Linux | Static AppHost 与 linux-x64 NativeAOT 集成验证 |
 | `linux-link-avalonia` | Linux | Linux Avalonia 模板及测试结果 |
 | `pack-avalonia` | Windows | 3 个 RID 包 + Build 包 + 元包（ChsBuffer.Avalonia.AppHost） |
+| `cleanup-packaged-artifacts` | Linux | 所有消费 job 成功后删除已打包的中间工件 |
 
 ## 缓存约定
 
-CI 中 `actions/cache` 以 `artifacts/hostlibs`、`artifacts/skiasharp` 或 `artifacts/angle` 为缓存根目录，键由系统、RID、flavor/sysroot 和对应 recipe 输入的 `hashFiles` 组成。构建 job 在 miss 时创建 Conan binary package，再部署为现有 artifact 布局；无论 cache hit/miss 都上传 workflow artifact，链接和测试 job 只负责下载消费。
+CI 中 `actions/cache` 以 `artifacts/hostlibs`、`artifacts/skiasharp` 或 `artifacts/angle` 为缓存根目录，键由系统、RID、flavor/sysroot 和对应 recipe 输入的 `hashFiles` 组成。构建 job 在 miss 时创建 Conan binary package，再部署为现有 artifact 布局；无论 cache hit/miss 都上传 workflow artifact，链接和测试 job 只负责下载消费。所有消费 job 成功后，清理 job 删除 `skiasharp-*`、`angle-*` 和 `avalonia-host-*`，保留 NuGet 包和未单独打包的 `hostlibs-default-*`。消费 job 失败时不清理中间工件，便于重新运行失败的 job。
 
 ## 仓库结构
 

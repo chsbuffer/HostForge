@@ -569,3 +569,22 @@ jobs:
           name: nuget-packages-avalonia
           path: artifacts\packages\Release
           if-no-files-found: error
+
+  cleanup-packaged-artifacts:
+    runs-on: ubuntu-latest
+    needs:
+      - windows-matrix-test
+      - linux-matrix-test
+      - pack-windows-static-graphics
+      - pack-linux-static-graphics
+      - pack-avalonia
+    permissions:
+      actions: write
+    steps:
+      - name: Delete packaged build artifacts
+        uses: geekyeggo/delete-artifact@v6
+        with:
+          name: |
+            skiasharp-*
+            angle-*
+            avalonia-host-*
