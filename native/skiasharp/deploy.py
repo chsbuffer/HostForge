@@ -19,7 +19,9 @@ def deploy(graph, output_folder: str, **kwargs):
     version = str(package.ref.version)
     os_name = str(package.settings.os)
     arch = _ARCH[str(package.settings.arch)]
-    rid = f"{'win' if os_name == 'Windows' else 'linux'}-{arch}"
+    rid = f"{ {'Windows': 'win', 'Linux': 'linux', 'Macos': 'osx'}[os_name]}-{arch}"
+    if os_name == "Linux" and package.options.libc == "musl":
+        rid = f"linux-musl-{arch}"
     target = os.path.join(output_folder, version, rid)
 
     mkdir(graph.root.conanfile, target)
@@ -28,5 +30,5 @@ def deploy(graph, output_folder: str, **kwargs):
         "*",
         src=os.path.join(package.package_folder, "lib"),
         dst=target,
-        keep_path=False,
+        keep_path=True,
     )

@@ -3,8 +3,9 @@
   <PropertyGroup>
     <AvaloniaVersion>12.1.0</AvaloniaVersion>
     <AngleVersion>2.1.27548.20260419</AngleVersion>
-    <SkiaSharpVersion>3.119.4</SkiaSharpVersion>
-    <HarfBuzzVersion>8.3.1.5</HarfBuzzVersion>
+    <SkiaSharpVersion Condition="'$(SkiaSharpVersion)' == ''">3.119.4</SkiaSharpVersion>
+    <HarfBuzzVersion Condition="'$(HarfBuzzVersion)' == '' and '$(SkiaSharpVersion)' == '3.119.4'">8.3.1.5</HarfBuzzVersion>
+    <HarfBuzzVersion Condition="'$(HarfBuzzVersion)' == '' and '$(SkiaSharpVersion)' == '4.153.1'">14.2.1.301</HarfBuzzVersion>
     <HostLibsVersion>10.0.12</HostLibsVersion>
   </PropertyGroup>
 

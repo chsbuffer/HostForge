@@ -1,28 +1,59 @@
+import hashlib
+import io
+import json
 import os
+import shutil
 import sys
+import time
 from pathlib import Path
 
 from conan import ConanFile
-from conan.errors import ConanException
+from conan.errors import ConanException, ConanInvalidConfiguration
 from conan.tools.env import Environment
-from conan.tools.files import copy, get, save
+from conan.tools.files import copy, download, get, save
 from conan.tools.microsoft import VCVars
 from conan.tools.system.package_manager import Apt
 
-VERSION = "3.119.4"
+from windows import WindowsBuild
+from linux import LinuxBuild
+from macos import MacosBuild
 
-class SkiaSharpConan(ConanFile):
+VERSIONS = json.loads((Path(__file__).parent / "versions.json").read_text())
+
+class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
     name = "skiasharp"
-    version = VERSION
     package_type = "static-library"
     license = "MIT"
     homepage = "https://github.com/mono/skia"
     description = "SkiaSharp and HarfBuzzSharp static libraries"
 
     settings = "os", "arch", "compiler", "build_type"
-    no_copy_source = True
+    options = {"libc": ["glibc", "musl"]}
+    default_options = {"libc": "glibc"}
+    # Build beside an isolated source copy: GN then emits stable relative paths
+    # instead of Conan's revision-dependent ../skias<hash>/s paths.
     # https://github.com/google/skia/blob/chrome/m150/tools/git-sync-deps
     exports_sources = "git-sync-deps"
+    exports = "windows.py", "linux.py", "macos.py", "versions.json"
+
+    def set_version(self):
+        self.version = self.version or "3.119.4"
+
+    def config_options(self):
+        if self.settings.os != "Linux":
+            self.options.rm_safe("libc")
+
+    def validate(self):
+        if str(self.version) not in VERSIONS:
+            raise ConanInvalidConfiguration(f"Unsupported SkiaSharp version: {self.version}")
+        if str(self.settings.os) not in ("Windows", "Linux", "Macos"):
+            raise ConanInvalidConfiguration("This recipe supports Windows, Linux and macOS")
+        if str(self.settings.arch) not in self._arch:
+            raise ConanInvalidConfiguration("Only x64 and arm64 are supported")
+
+    @property
+    def _modern(self):
+        return str(self.version).startswith("4.")
 
     _arch = {
         "x86_64": "x64",
@@ -43,11 +74,11 @@ class SkiaSharpConan(ConanFile):
 
     @property
     def _skia_build(self):
-        return Path(self.build_folder) / "skia"
+        return Path(self.build_folder) / "out/skia"
 
     @property
     def _harfbuzz_build(self):
-        return Path(self.build_folder) / "harfbuzz"
+        return Path(self.build_folder) / "out/harfbuzz"
 
     @property
     def _target_arch(self):
@@ -62,13 +93,13 @@ class SkiaSharpConan(ConanFile):
         )
 
     def system_requirements(self):
-        if self.settings.os == "Linux":
+        if self.settings.os == "Linux" and shutil.which("apt-get"):
             Apt(self).install(["clang", "ninja-build"], update=True)
 
     def source(self):
         get(
             self,
-            f"https://github.com/mono/skia/archive/refs/tags/v{VERSION}.tar.gz",
+            f"https://github.com/mono/skia/archive/{VERSIONS[str(self.version)][0]}.tar.gz",
             destination=str(self._skia_root),
             strip_root=True,
             keep_permissions=True,
@@ -82,25 +113,52 @@ class SkiaSharpConan(ConanFile):
         )
 
         os.environ["GIT_SYNC_DEPS_SKIP_EMSDK"] = "1"
-        result = self.run(
-            f'"{sys.executable}" tools/git-sync-deps',
-            cwd=str(self._skia_root),
-            ignore_errors=True,
-        )
-        if result != 0:
+        for attempt in range(3):
+            result = self.run(
+                f'"{sys.executable}" tools/git-sync-deps',
+                cwd=str(self._skia_root),
+                ignore_errors=True,
+            )
+            if result == 0:
+                break
+            if attempt < 2:
+                # Already checked-out commits are reused by git-sync-deps.
+                self.output.warning("Dependency download failed; retrying source synchronization")
+                time.sleep(3 * (attempt + 1))
+        else:
             raise ConanException("git-sync-deps failed")
+        if self._modern:
+            upstream = f"https://raw.githubusercontent.com/mono/SkiaSharp/v{self.version}/native/windows/libHarfBuzzSharp"
+            for name in ("libHarfBuzzSharp.vcxproj", "harfbuzz-subset-msvc.cc"):
+                download(self, f"{upstream}/{name}", str(Path(self.source_folder) / name))
 
     def generate(self):
-        Environment().vars(self).save_script("build_env")
-        VCVars(self).generate()
+        env = Environment()
+        env.define("SCCACHE_BASEDIRS", self.build_folder)
+        env.define("SCCACHE_DIRECT", "false")
+        env.vars(self).save_script("build_env")
+        if self.settings.os == "Windows":
+            VCVars(self).generate()
 
     def build(self):
         self._skia_build.mkdir(parents=True, exist_ok=True)
         self._harfbuzz_build.mkdir(parents=True, exist_ok=True)
         if self.settings.os == "Windows":
             self._build_windows()
+        elif self.settings.os == "Macos":
+            self._build_macos()
         else:
             self._build_linux()
+        versions = io.StringIO()
+        if self.settings.os == "Windows":
+            clang = Path(os.environ.get("LLVM_HOME", "C:/Program Files/LLVM")) / "bin/clang-cl.exe"
+            self.run(f'"{clang}" --version', stdout=versions, env="conanbuild")
+            self.run("cl", stdout=versions, stderr=versions, ignore_errors=True, env="conanbuild")
+        else:
+            self.run("clang --version", stdout=versions, env="conanbuild")
+            if self.settings.os == "Macos":
+                self.run("xcrun --sdk macosx --show-sdk-version", stdout=versions)
+        save(self, str(Path(self.build_folder) / "toolchain.txt"), versions.getvalue())
 
     def package(self):
         extension = ".lib" if self.settings.os == "Windows" else ".a"
@@ -130,6 +188,39 @@ class SkiaSharpConan(ConanFile):
             keep_path=False,
         )
 
+        output = Path(self.package_folder) / "lib"
+        for name in (f"{prefix}SkiaSharp{extension}", f"libHarfBuzzSharp{extension}"):
+            if not (output / name).is_file():
+                raise ConanException(f"Required archive was not produced: {name}")
+        if self._modern and self.settings.os == "Linux":
+            root = Path(os.environ["ROOTFS_DIR"])
+            candidates = list((root / "usr/lib").glob("**/libc++.a")) + list((root / "usr/lib64").glob("libc++.a"))
+            if len(candidates) != 1:
+                raise ConanException(f"Expected one target libc++.a, found: {candidates}")
+            copy(self, "libc++.a", src=str(candidates[0].parent), dst=str(output / "cxx"))
+        copy(self, "args.gn", src=str(self._skia_build), dst=str(output))
+        copy(self, "args.gn", src=str(self._harfbuzz_build), dst=str(output / "harfbuzz"))
+        if self.settings.os == "Macos":
+            copy(self, "gn-*.json", src=str(self._skia_build), dst=str(output))
+            copy(self, "gn-*.json", src=str(self._harfbuzz_build), dst=str(output / "harfbuzz"))
+        copy(self, "toolchain.txt", src=self.build_folder, dst=str(output), keep_path=False)
+        copy(self, "LICENSE", src=str(self._skia_root), dst=str(output / "licenses"), keep_path=True)
+        copy(self, "COPYING", src=str(self._skia_root / "third_party/externals/harfbuzz"), dst=str(output / "licenses/harfbuzz"))
+        hashes = {}
+        for file in sorted(output.glob("**/*")):
+            if file.is_file():
+                with file.open("rb") as stream:
+                    digest = hashlib.sha256()
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                hashes[file.relative_to(output).as_posix()] = digest.hexdigest()
+        manifest = {"skiaSharp": str(self.version), "harfBuzzSharp": VERSIONS[str(self.version)][1],
+                    "sourceCommit": VERSIONS[str(self.version)][0], "arch": self._target_arch,
+                    "compiler": str(self.settings.compiler), "compilerVersion": str(self.settings.compiler.version), "sha256": hashes}
+        if self.settings.os == "Linux":
+            manifest["libc"] = str(self.options.libc)
+        save(self, str(output / "manifest.json"), json.dumps(manifest, indent=2) + "\n")
+
     def package_info(self):
         self.cpp_info.includedirs = []
         self.cpp_info.bindirs = []
@@ -138,217 +229,10 @@ class SkiaSharpConan(ConanFile):
             f"{prefix}{library}" for library in self._skia_libraries
         ] + ["libHarfBuzzSharp"]
 
-    def _build_windows(self):
-        save(self, str(self._skia_build / "args.gn"), self._windows_skia_args())
-        gn = self._skia_root / "bin" / "gn.exe"
-        self.run(
-            f'"{gn}" gen "{self._skia_build}" '
-            f'--root="{self._skia_root}" '
-            f'--script-executable="{sys.executable}" --nocolor',
-            cwd=str(self._skia_root),
-            env="conanbuild",
-        )
-        self.run(
-            f'ninja -C "{self._skia_build}" skia SkiaSharp',
-            env="conanbuild",
-        )
-
-        template = (Path(self.source_folder) / "libHarfBuzzSharp.vcxproj.in").read_text(
-            encoding="utf-8-sig"
-        )
-        values = {
-            "VC_TOOLSET_VER": str(
-                self.settings.get_safe("compiler.runtime_version") or "v145"
-            ),
-            "WINDOWS_SDK_VER": str(
-                self.conf.get("tools.microsoft:winsdk_version", default="10.0.26100.0")
-            ),
-            "SKIA_ROOT": str(self._skia_root),
-        }
-        for key, value in values.items():
-            template = template.replace(f"$${key}$$", value)
-
-        project = self._harfbuzz_build / "libHarfBuzzSharp.vcxproj"
-        project.write_text(template, encoding="utf-8-sig")
-        platform = "x64" if self.settings.arch == "x86_64" else "ARM64"
-        self.run(
-            f'msbuild "{project}" -m /p:Configuration=Release /p:Platform={platform}',
-            cwd=str(self._harfbuzz_build),
-            env="conanbuild",
-        )
-
-    def _build_linux(self):
-        save(self, str(self._skia_build / "args.gn"), self._linux_skia_args())
-        gn = self._skia_root / "bin" / "gn"
-        self.run(
-            f'"{gn}" gen "{self._skia_build}" '
-            f'--root="{self._skia_root}" '
-            f'--script-executable="{sys.executable}" --nocolor',
-            cwd=str(self._skia_root),
-            env="conanbuild",
-        )
-        self.run(
-            f'ninja -C "{self._skia_build}" SkiaSharp',
-            cwd=str(self._skia_root),
-            env="conanbuild",
-        )
-
-        save(
-            self,
-            str(self._harfbuzz_build / "args.gn"),
-            self._linux_harfbuzz_args(),
-        )
-        self.run(
-            f'"{gn}" gen "{self._harfbuzz_build}" '
-            f'--root="{self._skia_root}" '
-            f'--script-executable="{sys.executable}" --nocolor',
-            cwd=str(self._skia_root),
-            env="conanbuild",
-        )
-        self.run(
-            f'ninja -C "{self._harfbuzz_build}" HarfBuzzSharp',
-            cwd=str(self._skia_root),
-            env="conanbuild",
-        )
-
-    def _windows_skia_args(self):
-        cflags = [
-            '"-DSKIA_C_DLL"',
-            '"/MT"',
-            '"/EHsc"',
-            '"/Z7"',
-            '"/guard:cf"',
-            '"-D_HAS_AUTO_PTR_ETC=1"',
-            '"-D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS=1"',
-        ]
-        if self.settings.arch == "x86_64":
-            cflags.append('"/arch:AVX2"')
-        ldflags = ['"/DEBUG:FULL"', '"/DEBUGTYPE:CV,FIXUP"', '"/guard:cf"']
-        return self._gn_text(
-            [
-                'target_os = "win"',
-                f'target_cpu = "{self._target_arch}"',
-                "skia_enable_fontmgr_win_gdi = false",
-                "skia_use_dng_sdk = true",
-                "skia_use_harfbuzz = false",
-                "skia_use_icu = false",
-                "skia_use_piex = true",
-                "skia_use_sfntly = false",
-                "skia_use_system_expat = false",
-                "skia_use_system_libjpeg_turbo = false",
-                "skia_use_system_libpng = false",
-                "skia_use_system_libwebp = false",
-                "skia_use_system_zlib = false",
-                "skia_enable_skottie = true",
-                "skia_use_vulkan = true",
-                'clang_win = "C:/Program Files/LLVM"',
-                'win_vcvars_version = "14.5"',
-                "skia_enable_tools = false",
-                "is_official_build = true",
-                "is_static_skiasharp = true",
-                f"extra_cflags = [ {', '.join(cflags)} ]",
-                f"extra_ldflags = [ {', '.join(ldflags)} ]",
-            ]
-        )
-
-    def _linux_skia_args(self):
-        asmflags, cflags, ldflags = self._linux_toolchain_flags()
-        cflags.extend(
-            ['"-DSKIA_C_DLL"', '"-DHAVE_SYSCALL_GETRANDOM"', '"-DXML_DEV_URANDOM"']
-        )
-        return self._gn_text(
-            [
-                'target_os = "linux"',
-                f'target_cpu = "{self._target_arch}"',
-                "skia_enable_ganesh = true",
-                "skia_use_harfbuzz = false",
-                "skia_use_icu = false",
-                "skia_use_piex = true",
-                "skia_use_sfntly = false",
-                "skia_use_system_expat = false",
-                "skia_use_system_freetype2 = false",
-                "skia_use_system_libjpeg_turbo = false",
-                "skia_use_system_libpng = false",
-                "skia_use_system_libwebp = false",
-                "skia_use_system_zlib = false",
-                "skia_enable_skottie = true",
-                "skia_use_vulkan = true",
-                "skia_enable_tools = false",
-                "is_official_build = true",
-                "is_static_skiasharp = true",
-                f"extra_asmflags = {self._format_gn_list(asmflags)}",
-                f"extra_cflags = {self._format_gn_list(cflags)}",
-                f"extra_ldflags = {self._format_gn_list(ldflags)}",
-                *self._compiler_args(),
-            ]
-        )
-
-    def _linux_harfbuzz_args(self):
-        asmflags, cflags, ldflags = self._linux_toolchain_flags()
-        return self._gn_text(
-            [
-                'target_os = "linux"',
-                f'target_cpu = "{self._target_arch}"',
-                "is_official_build = true",
-                "is_static_skiasharp = true",
-                "skia_enable_tools = false",
-                "visibility_hidden = false",
-                f"extra_asmflags = {self._format_gn_list(asmflags)}",
-                f"extra_cflags = {self._format_gn_list(cflags)}",
-                f"extra_ldflags = {self._format_gn_list(ldflags)}",
-                *self._compiler_args(),
-            ]
-        )
-
-    def _linux_toolchain_flags(self):
-        build_variant = os.environ.get("BUILD_VARIANT")
-        sysroot = os.environ.get("ROOTFS_DIR")
-        toolchain_arch = os.environ.get("TOOLCHAIN_ARCH")
-        toolchain_target = os.environ.get("TOOLCHAIN_ARCH_TARGET")
-        if not sysroot and build_variant in ("alpine", "alpinenodeps"):
-            sysroot = "/alpine"
-
-        initial = []
-        if sysroot:
-            initial.append(f'"--sysroot={sysroot}"')
-        if toolchain_target:
-            initial.append(f'"--target={toolchain_target}"')
-
-        binary = []
-        includes = []
-        libraries = []
-        if toolchain_arch:
-            root = f"/usr/{toolchain_arch}"
-            binary.append(f'"-B{root}/bin/"')
-            libraries.append(f'"-L{root}/lib/"')
-            includes.extend(
-                [
-                    f'"-I{root}/include"',
-                    f'"-I{root}/include/c++/current"',
-                    f'"-I{root}/include/c++/current/{toolchain_arch}"',
-                ]
-            )
-
-        asmflags = [*initial, *binary, *includes]
-        if asmflags:
-            asmflags.insert(len(initial), '"-no-integrated-as"')
-        cflags = [*initial, *binary, *includes]
-        ldflags = [*initial, *binary, *libraries]
-        if build_variant in ("alpine", "alpinenodeps"):
-            ldflags.append('"-fuse-ld=lld"')
-        return asmflags, cflags, ldflags
-
-    @staticmethod
-    def _compiler_args():
-        return [
-            f'{name} = "{value}"'
-            for name, value in (
-                ("cc", os.environ.get("CC")),
-                ("cxx", os.environ.get("CXX")),
-                ("ar", os.environ.get("AR")),
-            )
-            if value
-        ]
+    def _version_args(self):
+        if self._modern:
+            return ["skia_use_partition_alloc = false", "skia_enable_graphite = true"]
+        return ["skia_use_piex = true", "skia_use_sfntly = false"]
 
     @staticmethod
     def _format_gn_list(values):
@@ -356,4 +240,6 @@ class SkiaSharpConan(ConanFile):
 
     @staticmethod
     def _gn_text(lines):
+        if wrapper := os.environ.get("HOSTFORGE_COMPILER_CACHE"):
+            lines = [*lines, f"cc_wrapper = {json.dumps(wrapper.replace(chr(92), '/'))}"]
         return "\n".join(lines) + "\n"
