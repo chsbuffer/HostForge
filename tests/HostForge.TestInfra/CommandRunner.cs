@@ -12,7 +12,8 @@ public static class CommandRunner
         string fileName,
         string arguments,
         string workingDirectory,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? environmentVariables = null)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -24,6 +25,11 @@ public static class CommandRunner
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        if (environmentVariables is not null)
+        {
+            foreach ((string name, string value) in environmentVariables)
+                startInfo.Environment[name] = value;
+        }
 
         using var process = new Process { StartInfo = startInfo };
         process.Start();
@@ -31,7 +37,17 @@ public static class CommandRunner
         Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
         Task<string> stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
 
-        await process.WaitForExitAsync(cancellationToken);
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync(CancellationToken.None);
+            throw;
+        }
 
         string stdout = await stdoutTask;
         string stderr = await stderrTask;
