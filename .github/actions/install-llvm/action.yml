@@ -3,12 +3,6 @@ description: Download and install LLVM for Windows
 runs:
   using: composite
   steps:
-    - name: Uninstall LLVM (choco)
-      shell: powershell
-      run: |
-        $ErrorActionPreference = 'Stop'
-        choco uninstall llvm -y
-
     - name: Cache LLVM installer
       uses: actions/cache@v5
       with:
@@ -37,7 +31,13 @@ runs:
 
         # install
         Write-Host "Installing LLVM..."
-        $proc = Start-Process -FilePath $install -ArgumentList '/S' -Wait -PassThru
+        # Install in a private location without uninstalling the runner toolchain.
+        $destination = Join-Path $env:RUNNER_TEMP 'hostforge-llvm'
+        $proc = Start-Process -FilePath $install -ArgumentList @('/S', "/D=$destination") -WindowStyle Hidden -Wait -PassThru
         if ($proc.ExitCode -ne 0) {
           throw "LLVM install failed with exit code $($proc.ExitCode)"
         }
+        & "$destination\bin\clang-cl.exe" --version
+        if ($LASTEXITCODE -ne 0) { throw 'clang-cl is unavailable after installation.' }
+        "LLVM_HOME=$destination" >> $env:GITHUB_ENV
+        "$destination\bin" >> $env:GITHUB_PATH

@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PublishAot>true</PublishAot>
+    <AvaloniaVersion>12.1.3</AvaloniaVersion>
+    <RestoreAdditionalProjectSources Condition="'$(SmokePackageSource)' != ''">$(RestoreAdditionalProjectSources);$(SmokePackageSource)</RestoreAdditionalProjectSources>
+    <SmokeSkiaPackageId Condition="'$(SmokeSkiaPackageId)' == ''">ChsBuffer.SkiaSharp.Static.$(RuntimeIdentifier)</SmokeSkiaPackageId>
+    <SmokeSkiaPackageVersion Condition="'$(SmokeSkiaPackageVersion)' == ''">$(SkiaSharpVersion)</SmokeSkiaPackageVersion>
+    <SmokeAnglePackageId Condition="'$(SmokeAnglePackageId)' == ''">ChsBuffer.Angle.Static.$(RuntimeIdentifier)</SmokeAnglePackageId>
+    <SmokeAnglePackageVersion Condition="'$(SmokeAnglePackageVersion)' == ''">$(AngleVersion)</SmokeAnglePackageVersion>
+    <SmokeAvaloniaNativePackageId Condition="'$(SmokeAvaloniaNativePackageId)' == ''">ChsBuffer.Avalonia.Native.Static.$(RuntimeIdentifier)</SmokeAvaloniaNativePackageId>
+    <SmokeAvaloniaNativePackageVersion Condition="'$(SmokeAvaloniaNativePackageVersion)' == ''">$(AvaloniaVersion)</SmokeAvaloniaNativePackageVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
+    <PackageReference Include="SkiaSharp" Version="$(SkiaSharpVersion)" />
+    <PackageReference Include="HarfBuzzSharp" Version="$(HarfBuzzVersion)" />
+    <!-- Keep Avalonia's transitive native assets aligned with the selected Skia version. -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="$(SkiaSharpVersion)" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="$(SkiaSharpVersion)" />
+    <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="$(SkiaSharpVersion)" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Win32" Version="$(HarfBuzzVersion)" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" Version="$(HarfBuzzVersion)" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.macOS" Version="$(HarfBuzzVersion)" />
+    <PackageReference Include="$(SmokeSkiaPackageId)" Version="$(SmokeSkiaPackageVersion)" Condition="'$(SmokeUseStaticSkia)' == 'true'" />
+    <PackageReference Include="$(SmokeAnglePackageId)" Version="$(SmokeAnglePackageVersion)" Condition="'$(SmokeUseStaticAngle)' == 'true'" />
+    <PackageReference Include="$(SmokeAvaloniaNativePackageId)" Version="$(SmokeAvaloniaNativePackageVersion)" Condition="'$(SmokeUseStaticAvaloniaNative)' == 'true'" />
+    <AssemblyMetadata Include="SkiaPackageVersion" Value="$(SkiaSharpVersion)" />
+    <AssemblyMetadata Include="HarfBuzzPackageVersion" Value="$(HarfBuzzVersion)" />
+    <AssemblyMetadata Include="RuntimeIdentifier" Value="$(RuntimeIdentifier)" />
+  </ItemGroup>
+
+  <Target Name="ValidateSmokeVersions" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(SkiaSharpVersion)' != '3.119.4' and '$(SkiaSharpVersion)' != '4.153.1'" Text="The smoke supports SkiaSharp 3.119.4 and 4.153.1." />
+    <Error Condition="('$(SkiaSharpVersion)' == '3.119.4' and '$(HarfBuzzVersion)' != '8.3.1.5') or ('$(SkiaSharpVersion)' == '4.153.1' and '$(HarfBuzzVersion)' != '14.2.1.301')" Text="The smoke requires the matching HarfBuzzSharp version (8.3.1.5 or 14.2.1.301)." />
+  </Target>
+</Project>

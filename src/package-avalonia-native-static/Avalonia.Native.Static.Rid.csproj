@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="Avalonia.Native.Static.props" />
+  <PropertyGroup>
+    <PackageId>ChsBuffer.Avalonia.Native.Static.$(AvaloniaNativeRid)</PackageId>
+    <_AvaloniaNativeDir>$([MSBuild]::NormalizePath('$(AvaloniaNativeArtifactsRoot)', '$(AvaloniaNativeVersion)', '$(AvaloniaNativeRid)'))</_AvaloniaNativeDir>
+    <_AvaloniaNativeRegistration>$(BaseIntermediateOutputPath)avalonianative/$(PackageId).targets</_AvaloniaNativeRegistration>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Native" Version="$(AvaloniaNativeVersion)" />
+    <None Include="$(_AvaloniaNativeDir)/libAvaloniaNative.a;$(_AvaloniaNativeDir)/manifest.json" Pack="true" PackagePath="build/native/$(AvaloniaNativeRid)/" />
+    <None Include="$(_AvaloniaNativeDir)/licenses/*" Pack="true" PackagePath="licenses/" />
+    <None Include="$(_AvaloniaNativeRegistration)" Pack="true" PackagePath="buildTransitive/$(PackageId).targets" />
+    <None Include="../HostForge.StaticGraphics.targets" Pack="true" PackagePath="build/" />
+  </ItemGroup>
+  <Target Name="_PrepareAvaloniaNativePackage" BeforeTargets="_GetPackageFiles">
+    <Error Condition="'$(AvaloniaNativeRid)' != 'osx-x64' and '$(AvaloniaNativeRid)' != 'osx-arm64'" Text="AvaloniaNativeRid must be osx-x64 or osx-arm64." />
+    <Error Condition="!Exists('$(_AvaloniaNativeDir)/libAvaloniaNative.a') or !Exists('$(_AvaloniaNativeDir)/manifest.json') or !Exists('$(_AvaloniaNativeDir)/licenses/licence.md')" Text="Build the AvaloniaNative payload first: $(_AvaloniaNativeDir)" />
+    <ReadLinesFromFile File="buildTransitive/Avalonia.Native.Static.targets.in">
+      <Output TaskParameter="Lines" ItemName="_AvaloniaNativeTemplate" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_AvaloniaNativeLines Include="@(_AvaloniaNativeTemplate)">
+        <Text>$([System.String]::Copy('%(Identity)').Replace('@RID@', '$(AvaloniaNativeRid)').Replace('@VERSION@', '$(AvaloniaNativeVersion)'))</Text>
+      </_AvaloniaNativeLines>
+    </ItemGroup>
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_AvaloniaNativeRegistration)'))" />
+    <WriteLinesToFile File="$(_AvaloniaNativeRegistration)" Lines="@(_AvaloniaNativeLines->'%(Text)')" Overwrite="true" />
+  </Target>
+</Project>

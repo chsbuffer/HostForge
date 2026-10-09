@@ -1,0 +1,27 @@
+<Project>
+  <PropertyGroup>
+    <AvaloniaNativeVersion Condition="'$(AvaloniaNativeVersion)' == ''">12.1.3</AvaloniaNativeVersion>
+    <PackagingRevision Condition="'$(PackagingRevision)' == ''">0</PackagingRevision>
+    <AvaloniaNativePackageVersion>$(AvaloniaNativeVersion)</AvaloniaNativePackageVersion>
+    <AvaloniaNativePackageVersion Condition="'$(PackagingRevision)' != '0'">$(AvaloniaNativeVersion).$(PackagingRevision)</AvaloniaNativePackageVersion>
+    <TargetFramework>net10.0</TargetFramework>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <NoBuild>true</NoBuild>
+    <NoWarn>$(NoWarn);NU5128;NU5129</NoWarn>
+    <Version>$(AvaloniaNativePackageVersion)</Version>
+    <Authors>ChsBuffer</Authors>
+    <Description>AvaloniaNative static library for macOS NativeAOT</Description>
+    <PackageTags>avalonia;nativeaot;macos</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/chsbuffer/HostForge</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/chsbuffer/HostForge</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+    <PackageOutputPath>$(AvaloniaAppHostPackageOutputDir)</PackageOutputPath>
+    <AvaloniaNativeArtifactsRoot Condition="'$(AvaloniaNativeArtifactsRoot)' == ''">$(RepoRoot)artifacts/avalonianative</AvaloniaNativeArtifactsRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+</Project>

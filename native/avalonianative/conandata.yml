@@ -1,0 +1,5 @@
+sources:
+  "12.1.3":
+    url: "https://codeload.github.com/AvaloniaUI/Avalonia/tar.gz/8eeda4f6f546165b3f72e63c9f42247abb306905"
+    sha256: "9109d00f8cfb7d38962d66ff1eb55fce8b144162111239f8f4f5d57dd91d6fcb"
+    commit: "8eeda4f6f546165b3f72e63c9f42247abb306905"

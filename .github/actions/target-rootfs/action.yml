@@ -1,0 +1,30 @@
+name: target-rootfs
+description: Restore the pinned cross-image rootfs used by Skia, HostLibs and AOT
+outputs:
+  sysroot-path:
+    description: Absolute path to the extracted target rootfs
+    value: ${{ steps.unpack.outputs.sysroot-path }}
+runs:
+  using: composite
+  steps:
+    - id: key
+      shell: bash
+      run: python scripts/native-cache-key.py skiasharp 3.119.4 linux-x64
+    - uses: actions/cache@v5
+      id: cache
+      with:
+        path: artifacts/rootfs/target.tar.gz
+        key: ${{ steps.key.outputs.rootfs-key }}
+    - name: Extract the pinned cross-image rootfs
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        docker build -f native/skiasharp/linux-x64.Dockerfile -t hostforge-rootfs .
+        mkdir -p artifacts/rootfs
+        docker run --rm hostforge-rootfs tar czf - -C /crossrootfs/x64 . > artifacts/rootfs/target.tar.gz
+    - id: unpack
+      shell: bash
+      run: |
+        mkdir -p build/rootfs/x64
+        tar xzf artifacts/rootfs/target.tar.gz -C build/rootfs/x64
+        echo "sysroot-path=$GITHUB_WORKSPACE/build/rootfs/x64" >> "$GITHUB_OUTPUT"

@@ -1,20 +1,50 @@
 # ChsBuffer.SkiaSharp.Static
 
-Provides `win-x64`, `win-arm64`, and `linux-x64` static link inputs for SkiaSharp and HarfBuzzSharp in separate RID packages.
+Static SkiaSharp and HarfBuzzSharp libraries for NativeAOT. Reference the meta
+package alongside Avalonia; managed graphics dependencies are selected automatically:
 
-Through a `buildTransitive` props file, this package:
+```xml
+<PropertyGroup>
+  <PublishAot>true</PublishAot>
+</PropertyGroup>
+<ItemGroup>
+  <PackageReference Include="Avalonia.Desktop" Version="12.1.3" />
+  <PackageReference Include="ChsBuffer.SkiaSharp.Static" Version="3.119.4" />
+</ItemGroup>
+```
 
-- Adds the bundled `.lib` or `.a` files as `NativeLibrary` items
-- Adds `DirectPInvoke` for `libSkiaSharp` and `libHarfBuzzSharp`
-- Marks the SkiaSharp and HarfBuzzSharp libraries as `WholeArchive`
-- Appends the platform libraries required for linking
+Publish with an explicit RID, for example `dotnet publish -c Release -r linux-x64`.
+Use version `4.153.1` for SkiaSharp 4. A single architecture can instead reference
+`ChsBuffer.SkiaSharp.Static.<RID>`.
 
-The `buildTransitive` targets file removes SkiaSharp and HarfBuzzSharp dynamic libraries from the publish file list after `ComputeResolvedFilesToPublishList`.
+Both versions support `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`,
+`linux-musl-x64`, `linux-musl-arm64`, `osx-x64` and `osx-arm64`.
 
-This package does not relink the .NET host by itself. It is intended to be used with NativeAOT or a compatible static AppHost package, both of which can consume `NativeLibrary` items and link them into the final executable.
+| Static package | Minimum managed SkiaSharp | Minimum managed HarfBuzzSharp |
+| --- | --- | --- |
+| 3.119.4 | 3.119.4 | 8.3.1.5 |
+| 4.153.1 | 4.153.1 | 14.2.1.301 |
 
-On Windows, build with `task build-skiasharp ARCH=x64` or `task build-skiasharp ARCH=arm64`, then pack with `task pack-skia-static RID=win-x64` or `task pack-skia-static RID=win-arm64`. On Linux, build with `task build-skiasharp SYSROOT=<path>` and pack with `task pack-skia-static RID=linux-x64`.
+Only NativeAOT with a matching RID activates the integration. The targets add
+`NativeLibrary`, `DirectPInvoke` and system link inputs, and remove corresponding
+dynamic graphics libraries before publishing. Linux archives are grouped to resolve
+mutual dependencies. Payloads, source manifests, GN arguments and licenses are under
+`build/native/<rid>/`.
 
-## Why create this package when `2ndLAB.SkiaSharp.Static` already exists?
+Conflicting native lines fail with `HFG0001`; incompatible managed SkiaSharp
+major.minor or HarfBuzzSharp major.minor.patch fail with `HFG0002` or `HFG0003`.
+An incomplete selected payload fails with `HFG0005`. `HFG1001` warns when an AOT
+build selects a nonempty Windows, Linux or macOS RID without a matching payload.
+Builds without a RID or without NativeAOT remain inactive and silent.
 
-This package exists because the `libHarfBuzzSharp` library in `2ndLAB.SkiaSharp.Static` was not built with whole program optimization disabled.
+Linux requires system fontconfig and libstdc++. SkiaSharp 4 also bundles static
+libc++ with its [LLVM license](https://github.com/llvm/llvm-project/blob/llvmorg-20.1.8/libcxx/LICENSE.TXT).
+The native archives use Ubuntu 18.04 (GLIBC 2.27) or Alpine 3.17 sysroots. Publish
+with the matching sysroot to preserve that ABI baseline; publishing on a newer
+system can raise the final executable's requirements. Avalonia 12 on Linux should
+request Vulkan API 1.3 when using SkiaSharp 4.
+
+macOS links system libc++, AppKit and the required Apple graphics frameworks.
+Metal and OpenGL are enabled. Archive deployment targets are 10.13 for x64 and
+11.0 for arm64; the final application must also satisfy .NET and Avalonia's OS
+requirements. ANGLE on Windows and AvaloniaNative on macOS are separate packages.

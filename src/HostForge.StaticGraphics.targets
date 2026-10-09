@@ -1,0 +1,146 @@
+<Project>
+  <PropertyGroup>
+    <HostForgeStaticGraphicsImported>true</HostForgeStaticGraphicsImported>
+  </PropertyGroup>
+
+  <!-- Run before the SDK snapshots NativeLibrary / LinkerArg in SetupOSSpecificProps. -->
+  <Target Name="HostForgeResolveStaticGraphics"
+          BeforeTargets="SetupOSSpecificProps;PrepareForILLink;ComputeResolvedFilesToPublishList"
+          Condition="'$(PublishAot)' == 'true' and '$(RuntimeIdentifier)' != ''">
+    <PropertyGroup>
+      <_HostForgeIsWindows>$(RuntimeIdentifier.StartsWith('win-'))</_HostForgeIsWindows>
+      <_HostForgeIsLinux>$(RuntimeIdentifier.StartsWith('linux-'))</_HostForgeIsLinux>
+      <_HostForgeIsMusl>$(RuntimeIdentifier.StartsWith('linux-musl-'))</_HostForgeIsMusl>
+      <_HostForgeIsMacOS>$(RuntimeIdentifier.StartsWith('osx-'))</_HostForgeIsMacOS>
+    </PropertyGroup>
+    <ItemGroup>
+      <_HostForgeActive Include="@(HostForgeStaticPackage)" Condition="'%(Rid)' == '$(RuntimeIdentifier)'" />
+      <_HostForgeSkia Include="@(_HostForgeActive)" Condition="'%(Component)' == 'SkiaSharp'" />
+      <_HostForgeSkiaCandidates Include="@(HostForgeStaticPackage)" Condition="'%(Component)' == 'SkiaSharp'" />
+      <_HostForgeAngle Include="@(_HostForgeActive)" Condition="'%(Component)' == 'Angle'" />
+      <_HostForgeAngleCandidates Include="@(HostForgeStaticPackage)" Condition="'%(Component)' == 'Angle'" />
+      <_HostForgeAvaloniaNative Include="@(_HostForgeActive)" Condition="'%(Component)' == 'Avalonia.Native'" />
+      <_HostForgeAvaloniaNativeCandidates Include="@(HostForgeStaticPackage)" Condition="'%(Component)' == 'Avalonia.Native'" />
+      <_HostForgeSkiaLines Include="@(_HostForgeSkia->Metadata('SkiaLine')->Distinct())" />
+    </ItemGroup>
+    <Error Code="HFG0001" Condition="@(_HostForgeSkiaLines->Count()) &gt; 1"
+           Text="More than one static SkiaSharp native version line is active for $(RuntimeIdentifier): @(_HostForgeSkiaLines)." />
+    <Error Code="HFG0001" Condition="@(_HostForgeAvaloniaNative->Count()) &gt; 1"
+           Text="Multiple AvaloniaNative static payloads match $(RuntimeIdentifier): @(_HostForgeAvaloniaNative)." />
+    <Warning Code="HFG1001" Condition="'@(_HostForgeSkiaCandidates)' != '' and '@(_HostForgeSkia)' == '' and ('$(_HostForgeIsWindows)' == 'true' or '$(_HostForgeIsLinux)' == 'true' or '$(_HostForgeIsMacOS)' == 'true')"
+             Text="HostForge static SkiaSharp has no payload for $(RuntimeIdentifier)." />
+    <Warning Code="HFG1001" Condition="'@(_HostForgeAngleCandidates)' != '' and '@(_HostForgeAngle)' == '' and '$(_HostForgeIsWindows)' == 'true'"
+             Text="HostForge static ANGLE has no payload for $(RuntimeIdentifier)." />
+    <Warning Code="HFG1001" Condition="'@(_HostForgeAvaloniaNativeCandidates)' != '' and '@(_HostForgeAvaloniaNative)' == '' and '$(_HostForgeIsMacOS)' == 'true'"
+             Text="HostForge static Avalonia.Native has no payload for $(RuntimeIdentifier)." />
+    <PropertyGroup>
+      <_HostForgeSkiaNativeDir>@(_HostForgeSkia->'%(NativeDir)')</_HostForgeSkiaNativeDir>
+      <_HostForgeAngleNativeDir>@(_HostForgeAngle->'%(NativeDir)')</_HostForgeAngleNativeDir>
+      <_HostForgeAvaloniaNativeDir>@(_HostForgeAvaloniaNative->'%(NativeDir)')</_HostForgeAvaloniaNativeDir>
+      <_HostForgeAvaloniaNativeArchive Condition="'@(_HostForgeAvaloniaNative)' != ''">$([MSBuild]::NormalizePath('$(_HostForgeAvaloniaNativeDir)', 'libAvaloniaNative.a'))</_HostForgeAvaloniaNativeArchive>
+      <LinkStandardCPlusPlusLibrary Condition="'$(_HostForgeIsLinux)' == 'true' and '@(_HostForgeSkia)' != ''">true</LinkStandardCPlusPlusLibrary>
+    </PropertyGroup>
+    <ItemGroup Condition="'@(_HostForgeSkia)' != ''">
+      <DirectPInvoke Include="libSkiaSharp;libSkiaSharp.dll;libSkiaSharp.so;libSkiaSharp.dylib;libHarfBuzzSharp;libHarfBuzzSharp.dll;libHarfBuzzSharp.so;libHarfBuzzSharp.dylib" />
+      <_HostForgeArchives Include="$(_HostForgeSkiaNativeDir)/*.lib;$(_HostForgeSkiaNativeDir)/*.a;$(_HostForgeSkiaNativeDir)/cxx/*.a" />
+      <NativeLibrary Include="@(_HostForgeArchives)" />
+      <LinkerArg Include="FontSub.lib;opengl32.lib;advapi32.lib;gdi32.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib"
+                 Condition="'$(_HostForgeIsWindows)' == 'true'" />
+    </ItemGroup>
+    <ItemGroup Condition="'$(_HostForgeIsMacOS)' == 'true' and '@(_HostForgeSkia)' != ''">
+      <!-- Skia resolves AppKit font weights with dlsym, so undefined symbols alone miss this dependency. -->
+      <NativeFramework Include="AppKit;CoreFoundation;CoreGraphics;CoreServices;CoreText;Foundation;Metal;OpenGL;QuartzCore" />
+      <NativeSystemLibrary Include="c++;objc" />
+    </ItemGroup>
+    <ItemGroup Condition="'@(_HostForgeAngle)' != ''">
+      <DirectPInvoke Include="av_libglesv2;av_libglesv2.dll;av_libGLESv2;av_libGLESv2.dll" />
+      <NativeLibrary Include="$(_HostForgeAngleNativeDir)/libANGLE_static.lib;$(_HostForgeAngleNativeDir)/libGLESv2_static.lib" />
+      <LinkerArg Include="advapi32.lib;d3d11.lib;dxgi.lib;dxguid.lib;gdi32.lib;setupapi.lib;synchronization.lib;user32.lib" />
+    </ItemGroup>
+    <ItemGroup Condition="'@(_HostForgeAvaloniaNative)' != ''">
+      <DirectPInvoke Include="libAvaloniaNative;libAvaloniaNative.dylib;AvaloniaNative;AvaloniaNative.dylib" />
+      <NativeLibrary Include="$(_HostForgeAvaloniaNativeArchive)" />
+      <NativeFramework Include="AppKit;Carbon;CoreFoundation;CoreGraphics;CoreVideo;Foundation;IOSurface;Metal;OpenGL;QuartzCore;UniformTypeIdentifiers" />
+      <NativeSystemLibrary Include="c++;objc" />
+    </ItemGroup>
+    <ItemGroup Condition="'$(_HostForgeIsMacOS)' == 'true'">
+      <_HostForgeFrameworks Include="@(NativeFramework->Distinct())" />
+      <_HostForgeSystemLibraries Include="@(NativeSystemLibrary->Distinct())" />
+      <NativeFramework Remove="@(NativeFramework)" />
+      <NativeSystemLibrary Remove="@(NativeSystemLibrary)" />
+      <NativeFramework Include="@(_HostForgeFrameworks)" />
+      <NativeSystemLibrary Include="@(_HostForgeSystemLibraries)" />
+    </ItemGroup>
+    <Error Code="HFG0005" Condition="'@(_HostForgeSkia)' != '' and !Exists('$(_HostForgeSkiaNativeDir)/manifest.json')"
+           Text="Static graphics payload is incomplete: $(_HostForgeSkiaNativeDir)/manifest.json is missing." />
+    <Error Code="HFG0005" Condition="'@(_HostForgeAngle)' != '' and (!Exists('$(_HostForgeAngleNativeDir)/libANGLE_static.lib') or !Exists('$(_HostForgeAngleNativeDir)/libGLESv2_static.lib'))"
+           Text="Static ANGLE payload is incomplete: $(_HostForgeAngleNativeDir)." />
+    <Error Code="HFG0005" Condition="'@(_HostForgeAvaloniaNative)' != '' and (!Exists('$(_HostForgeAvaloniaNativeArchive)') or !Exists('$(_HostForgeAvaloniaNativeDir)/manifest.json'))"
+           Text="Static AvaloniaNative payload is incomplete: $(_HostForgeAvaloniaNativeDir)." />
+  </Target>
+
+  <!-- Keep the archive as an incremental input and force-load Objective-C registrations. -->
+  <Target Name="HostForgeForceLoadAvaloniaNative" AfterTargets="SetupOSSpecificProps"
+          Condition="'$(PublishAot)' == 'true' and '@(_HostForgeAvaloniaNative)' != ''">
+    <ItemGroup>
+      <LinkerArg Remove="$(_HostForgeAvaloniaNativeArchive)" />
+      <LinkerArg Include="-Wl,-force_load,&quot;$(_HostForgeAvaloniaNativeArchive)&quot;" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="HostForgeGroupStaticArchives" AfterTargets="SetupOSSpecificProps"
+          Condition="'$(PublishAot)' == 'true' and '$(_HostForgeIsLinux)' == 'true' and '@(_HostForgeSkia)' != ''">
+    <ItemGroup>
+      <LinkerArg Remove="@(_HostForgeArchives)" />
+      <LinkerArg Include="-Wl,--start-group" />
+      <LinkerArg Include="@(_HostForgeArchives->'&quot;%(Identity)&quot;')" />
+      <LinkerArg Include="-Wl,--end-group;-lfontconfig;-lstdc++;-lm" />
+      <!-- musl provides dlopen and pthread functions in libc itself. -->
+      <LinkerArg Include="-ldl;-lpthread" Condition="'$(_HostForgeIsMusl)' != 'true'" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="HostForgeValidateStaticGraphics" BeforeTargets="PrepareForILLink;IlcCompile"
+          DependsOnTargets="ResolveReferences;HostForgeResolveStaticGraphics"
+          Condition="'$(PublishAot)' == 'true' and '$(RuntimeIdentifier)' != ''">
+    <ItemGroup>
+      <_HostForgeManagedSkia Include="@(ReferencePath)" Condition="'%(NuGetPackageId)' == 'SkiaSharp'" />
+      <_HostForgeManagedHarfBuzz Include="@(ReferencePath)" Condition="'%(NuGetPackageId)' == 'HarfBuzzSharp'" />
+      <_HostForgeManagedAvalonia Include="@(ReferencePath)" Condition="'%(NuGetPackageId)' == 'Avalonia' or '%(NuGetPackageId)' == 'Avalonia.Native'" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_HostForgeManagedSkiaVersion>@(_HostForgeManagedSkia->'%(NuGetPackageVersion)')</_HostForgeManagedSkiaVersion>
+      <_HostForgeManagedHarfBuzzVersion>@(_HostForgeManagedHarfBuzz->'%(NuGetPackageVersion)')</_HostForgeManagedHarfBuzzVersion>
+      <_HostForgeActualSkiaLine>$([System.Text.RegularExpressions.Regex]::Match('$(_HostForgeManagedSkiaVersion)', '^\d+\.\d+'))</_HostForgeActualSkiaLine>
+      <_HostForgeActualHarfBuzzLine>$([System.Text.RegularExpressions.Regex]::Match('$(_HostForgeManagedHarfBuzzVersion)', '^\d+\.\d+\.\d+'))</_HostForgeActualHarfBuzzLine>
+    </PropertyGroup>
+    <Error Code="HFG0002" Condition="'@(_HostForgeSkia)' != '' and '$(_HostForgeActualSkiaLine)' != '%(_HostForgeSkia.SkiaLine)'"
+           Text="SkiaSharp $(_HostForgeManagedSkiaVersion) does not match static native line %(_HostForgeSkia.SkiaLine)." />
+    <Error Code="HFG0003" Condition="'@(_HostForgeSkia)' != '' and '$(_HostForgeActualHarfBuzzLine)' != '%(_HostForgeSkia.HarfBuzzLine)'"
+           Text="HarfBuzzSharp $(_HostForgeManagedHarfBuzzVersion) does not match static native line %(_HostForgeSkia.HarfBuzzLine)." />
+    <Error Code="HFG0004" Condition="'@(_HostForgeAvaloniaNative)' != '' and '@(_HostForgeManagedAvalonia)' == ''"
+           Text="Cannot verify restored Avalonia packages for static AvaloniaNative %(_HostForgeAvaloniaNative.AvaloniaVersion)." />
+    <Error Code="HFG0004" Condition="'@(_HostForgeAvaloniaNative)' != '' and '%(_HostForgeManagedAvalonia.NuGetPackageVersion)' != '@(_HostForgeAvaloniaNative->'%(AvaloniaVersion)')'"
+           Text="Static AvaloniaNative requires Avalonia/Avalonia.Native @(_HostForgeAvaloniaNative->'%(AvaloniaVersion)'); restored %(_HostForgeManagedAvalonia.NuGetPackageId) %(_HostForgeManagedAvalonia.NuGetPackageVersion)." />
+  </Target>
+
+  <Target Name="HostForgeFilterStaticGraphicsRuntimeCopies"
+          AfterTargets="ComputeResolvedFilesToPublishList"
+          BeforeTargets="_ComputeFilesToBundle;_ComputeResolvedFilesToPublishTypes;GenerateSingleFileBundle"
+          DependsOnTargets="HostForgeResolveStaticGraphics"
+          Condition="'$(PublishAot)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="'@(_HostForgeSkia)' != '' and $([System.Text.RegularExpressions.Regex]::IsMatch('%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)', '(?i)^lib(SkiaSharp|HarfBuzzSharp)\.(dll|so|dylib|pdb)$'))" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="'@(_HostForgeAngle)' != '' and $([System.Text.RegularExpressions.Regex]::IsMatch('%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)', '(?i)^av_libglesv2\.(dll|pdb)$'))" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="'@(_HostForgeAvaloniaNative)' != '' and '%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'libAvaloniaNative.dylib'" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="HostForgeRemoveStaleAvaloniaNativeDynamicAsset" AfterTargets="Publish"
+          Condition="'$(PublishAot)' == 'true' and '@(_HostForgeAvaloniaNative)' != ''">
+    <Delete Files="$(PublishDir)libAvaloniaNative.dylib" />
+  </Target>
+</Project>

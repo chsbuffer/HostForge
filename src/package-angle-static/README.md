@@ -1,9 +1,27 @@
 # ChsBuffer.Angle.Static
 
-Provides separate `win-x64` and `win-arm64` packages with ANGLE `libANGLE_static.lib` and `libGLESv2_static.lib` inputs, plus `av_libglesv2.def` for consumers that export ANGLE entry points from an apphost.
+Static ANGLE libraries for Windows NativeAOT, supporting `win-x64` and `win-arm64`.
+The meta package includes both RIDs; use `ChsBuffer.Angle.Static.<RID>` to restore
+only one architecture.
 
-The `buildTransitive` props adds both libraries as `NativeLibrary` items, adds `DirectPInvoke` for `av_libglesv2`, and adds the required Windows system libraries. Apphost relinking consumers can use the `.def` file to export ANGLE entry points.
+```xml
+<PropertyGroup>
+  <PublishAot>true</PublishAot>
+</PropertyGroup>
+<ItemGroup>
+  <PackageReference Include="ChsBuffer.Angle.Static" Version="2.1.27548.20260419" />
+</ItemGroup>
+```
 
-The `buildTransitive` targets file removes `av_libglesv2.dll` from the publish file list after `ComputeResolvedFilesToPublishList`.
+Publish with `dotnet publish -c Release -r win-x64` or `win-arm64`. This package
+supports Avalonia's `AngleEgl` renderer and works with either supported static
+SkiaSharp version. Linux and macOS use their platform graphics integrations.
 
-Build the native libraries with `task build-angle ARCH=x64` or `task build-angle ARCH=arm64`, then pack with `task pack-angle-static RID=win-x64` or `task pack-angle-static RID=win-arm64`.
+For a matching Windows AOT RID, `buildTransitive` adds `libANGLE_static.lib`,
+`libGLESv2_static.lib`, `DirectPInvoke` names and system libraries, and filters
+`av_libglesv2.dll` from publishing. The archives and `av_libglesv2.def` are under
+`build/native/<rid>/`.
+
+An incomplete selected payload fails with `HFG0005`. A Windows AOT build with a
+nonempty unsupported RID warns with `HFG1001`. Other platforms, builds without a
+RID and non-AOT projects remain inactive and silent.

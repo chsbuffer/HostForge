@@ -1,8 +1,10 @@
 import os
+import re
 import shutil
 from pathlib import Path
 
 from conan import ConanFile
+from conan.tools.build import build_jobs
 from conan.errors import ConanException
 from conan.tools.env import Environment
 from conan.tools.files import get, save
@@ -10,6 +12,7 @@ from conan.tools.microsoft import VCVars
 from conan.tools.system.package_manager import Apt
 
 VERSION = "10.0.12"
+SOURCE_COMMIT = "4271d88e0aebf3d04f188f1334c2220d80555ef6"  # dotnet/runtime v10.0.12
 
 class HostLibsConan(ConanFile):
     name = "hostlibs"
@@ -68,7 +71,7 @@ class HostLibsConan(ConanFile):
     def source(self):
         get(
             self,
-            f"https://github.com/dotnet/runtime/archive/refs/tags/v{self.version}.tar.gz",
+            f"https://github.com/dotnet/runtime/archive/{SOURCE_COMMIT}.tar.gz",
             destination=str(self._runtime_root),
             strip_root=True,
             keep_permissions=True,
@@ -76,6 +79,11 @@ class HostLibsConan(ConanFile):
 
     def generate(self):
         env = Environment()
+        if wrapper := os.environ.get("HOSTFORGE_COMPILER_CACHE"):
+            env.define("CMAKE_C_COMPILER_LAUNCHER", wrapper.replace("\\", "/"))
+            env.define("CMAKE_CXX_COMPILER_LAUNCHER", wrapper.replace("\\", "/"))
+            env.define("SCCACHE_BASEDIRS", self.build_folder)
+            env.define("SCCACHE_DIRECT", "false")
         env.vars(self).save_script("build_env")
         VCVars(self).generate()
 
@@ -124,17 +132,20 @@ class HostLibsConan(ConanFile):
             cross = " --cross" if self._sysroot() else ""
             self.run(
                 f'"{self._runtime_root / "build.sh"}" host.native -ninja '
-                f"-c release -arch {self._target_arch}{cross}",
+                f"-c release -arch {self._target_arch}{cross} -p:ConfigureOnly=true "
+                f"-p:SourceRevisionId={SOURCE_COMMIT}",
                 cwd=str(self._runtime_root),
                 env="conanbuild",
             )
+            self._disable_clang_pch_cache(root)
+            target = self._link_inputs_target(root, "apphost")
+            self.run(f'ninja -C "{root}" -j {build_jobs(self)} {target}', env="conanbuild")
 
     def _build_singlefilehost(self):
         root = self._singlefilehost_build_root()
         if self.settings.os == "Windows":
             extra = "/p:ConfigureOnly=true"
             if not self.options.pgo:
-                extra += " /p:CMakeArgs=-DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF"
                 extra += " /p:NoPgoOptimize=true"
             self._msvc_configure_build("clr.runtime", "singlefilehost", root,
                                        extra_args=extra)
@@ -142,20 +153,81 @@ class HostLibsConan(ConanFile):
             cross = " --cross" if self._sysroot() else ""
             self.run(
                 f'"{self._runtime_root / "build.sh"}" clr.runtime -ninja '
-                f"-c release -arch {self._target_arch}{cross}",
+                f"-c release -arch {self._target_arch}{cross} -p:ConfigureOnly=true "
+                f"-p:SourceRevisionId={SOURCE_COMMIT}",
                 cwd=str(self._runtime_root),
                 env="conanbuild",
             )
+            self._disable_clang_pch_cache(root)
+            target = self._link_inputs_target(root, "singlefilehost")
+            self.run(f'ninja -C "{root}" -j {build_jobs(self)} {target}', env="conanbuild")
+
+    @staticmethod
+    def _link_inputs_target(build_root, name):
+        # The package contains link inputs, not Runtime's final executable.
+        # Keep every explicit, implicit and order-only dependency of that link,
+        # including generated export lists, without performing an unused link.
+        ninja = build_root / "build.ninja"
+        text = ninja.read_text(encoding="utf-8")
+        marker = f": CXX_EXECUTABLE_LINKER__{name}_"
+        for line in text.splitlines():
+            if line.startswith("build ") and marker in line:
+                dependencies = line.split(": ", 1)[1].split(" ", 1)[1]
+                target = f"hostforge-{name}-inputs"
+                ninja.write_text(text + f"\nbuild {target}: phony {dependencies}\n", encoding="utf-8")
+                return target
+        raise ConanException(f"Ninja link inputs not found for {name}")
+
+    def _disable_clang_pch_cache(self, build_root):
+        if not os.environ.get("HOSTFORGE_COMPILER_CACHE"):
+            return
+        # Clang PCH files embed absolute header paths. Recreate them in each
+        # Conan directory; their consumers can still reuse cached objects.
+        ninja = build_root / "build.ninja"
+        blocks = ninja.read_text(encoding="utf-8").split("\n\n")
+        for index, block in enumerate(blocks):
+            if re.search(r"^  FLAGS = .* -emit-pch(?: |$)", block, re.M):
+                blocks[index], count = re.subn(r"^  LAUNCHER =.*$", "  LAUNCHER = ", block, flags=re.M)
+                if count != 1:
+                    raise ConanException("Unexpected CMake launcher rule for Clang PCH")
+        ninja.write_text("\n\n".join(blocks), encoding="utf-8")
 
     def _msvc_configure_build(self, subset, target, build_root, extra_args="", pre_ninja=""):
         root = str(self._runtime_root)
-        cmd = f'"{root}\\build.cmd" {subset} -ninja -c release -arch {self._target_arch} {extra_args}'
+        cmd = (f'"{root}\\build.cmd" {subset} -ninja -c release -arch {self._target_arch} '
+               f'/p:SourceRevisionId={SOURCE_COMMIT} {extra_args}{self._cmake_args()}')
         if pre_ninja:
             cmd += f" && {pre_ninja}"
-        if self._target_arch == "arm64":
-            cmd += f' && call "{root}\\eng\\native\\init-vs-env.cmd" arm64'
-        cmd += f' && ninja -C "{build_root}" {target}'
         self.run(cmd, cwd=root, env="conanbuild")
+        if os.environ.get("HOSTFORGE_COMPILER_CACHE"):
+            # MSVC PCH consumers cannot be cached by sccache. Preserve their
+            # PCH acceleration and shared PDB instead of expanding headers and
+            # debug types into every object. Cache only independent objects.
+            ninja = build_root / "build.ninja"
+            blocks = ninja.read_text(encoding="utf-8").split("\n\n")
+            for index, block in enumerate(blocks):
+                if re.search(r"^  FLAGS = .* /Y[cu]", block, re.M):
+                    blocks[index] = re.sub(r"^  LAUNCHER =.*$", "  LAUNCHER = ", block, flags=re.M)
+                elif re.search(r"^build .*: (?:C|CXX)_COMPILER__", block, re.M):
+                    # Use per-object CodeView and the equivalent dash spelling
+                    # of /Zl, which sccache otherwise parses as an input path.
+                    blocks[index] = re.sub(r"^  FLAGS =.*$", lambda match:
+                                          match.group().replace(" /Zi", " /Z7").replace(" /Zl", " -Zl"),
+                                          block, flags=re.M)
+            ninja.write_text("\n\n".join(blocks), encoding="utf-8")
+        target = self._link_inputs_target(build_root, target)
+        cmd = ""
+        if self._target_arch == "arm64":
+            cmd = f'call "{root}\\eng\\native\\init-vs-env.cmd" arm64 && '
+        cmd += f'ninja -C "{build_root}" -j {build_jobs(self)} {target}'
+        self.run(cmd, cwd=root, env="conanbuild")
+
+    def _cmake_args(self):
+        args = []
+        if self.settings.os == "Windows" and not self.options.pgo:
+            args.append("-DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF")
+        prefix = "/" if self.settings.os == "Windows" else "-"
+        return f' {prefix}p:CMakeArgs="{" ".join(args)}"' if args else ""
 
     def _apphost_build_root(self):
         artifacts = self._runtime_root / "artifacts" / "obj"

@@ -5,15 +5,29 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PublishAot>true</PublishAot>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <CheckAngle Condition="'$(CheckAngle)' == ''">true</CheckAngle>
+    <DefineConstants Condition="'$(CheckAngle)' == 'true'">$(DefineConstants);CHECK_ANGLE</DefineConstants>
     <RuntimeIdentifier Condition="'$(NativeAotMatrixRid)' != ''">$(NativeAotMatrixRid)</RuntimeIdentifier>
+    <RuntimeIdentifiers Condition="'$(UseStaticGraphicsMeta)' == 'true'">win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
     <RestoreAdditionalProjectSources>$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)</RestoreAdditionalProjectSources>
   </PropertyGroup>
+  <ItemGroup Condition="'$(SysRoot)' != ''">
+    <LinkerArg Include="--gcc-toolchain=&quot;$(SysRoot)/usr&quot;" />
+    <LinkerArg Include="-Wl,-rpath-link,&quot;$(SysRoot)/usr/lib/x86_64-linux-gnu&quot;" Condition="'$(RuntimeIdentifier)' == 'linux-x64'" />
+    <LinkerArg Include="-Wl,-rpath-link,&quot;$(SysRoot)/usr/lib/aarch64-linux-gnu&quot;" Condition="'$(RuntimeIdentifier)' == 'linux-arm64'" />
+    <LinkerArg Include="-Wl,-rpath-link,&quot;$(SysRoot)/usr/lib&quot;;-Wl,-rpath-link,&quot;$(SysRoot)/lib&quot;" Condition="$(RuntimeIdentifier.StartsWith('linux-musl-'))" />
+  </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="SkiaSharp" Version="$(SkiaSharpVersion)" />
-    <PackageReference Include="HarfBuzzSharp" Version="$(HarfBuzzVersion)" />
-    <PackageReference Include="ChsBuffer.SkiaSharp.Static.win-x64" Version="$(SkiaSharpVersion)" Condition="'$(NativeAotMatrixRid)' == 'win-x64'" />
-    <PackageReference Include="ChsBuffer.SkiaSharp.Static.linux-x64" Version="$(SkiaSharpVersion)" Condition="'$(NativeAotMatrixRid)' == 'linux-x64'" />
-    <PackageReference Include="ChsBuffer.Angle.Static.win-x64" Version="$(AngleVersion)" Condition="'$(NativeAotMatrixRid)' == 'win-x64'" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.3" />
+    <PackageReference Include="ChsBuffer.SkiaSharp.Static.$(NativeAotMatrixRid)" Version="$(SkiaSharpVersion)" Condition="'$(UseStaticGraphicsMeta)' != 'true'" />
+    <PackageReference Include="ChsBuffer.Angle.Static.$(NativeAotMatrixRid)" Version="$(AngleVersion)" Condition="'$(UseStaticGraphicsMeta)' != 'true' and $(NativeAotMatrixRid.StartsWith('win-')) and '$(CheckAngle)' == 'true'" />
+    <PackageReference Include="ChsBuffer.SkiaSharp.Static" Version="$(SkiaSharpVersion)" Condition="'$(UseStaticGraphicsMeta)' == 'true'" />
+    <PackageReference Include="ChsBuffer.Angle.Static" Version="$(AngleVersion)" Condition="'$(UseStaticGraphicsMeta)' == 'true'" />
+    <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="12.1.3" Condition="'$(UseStaticGraphicsMeta)' == 'true'" />
+    <!-- Only negative tests supply these properties; the normal consumer has no direct managed graphics references. -->
+    <PackageReference Include="SkiaSharp" Version="$(MismatchedSkiaSharpVersion)" Condition="'$(MismatchedSkiaSharpVersion)' != ''" />
+    <PackageReference Include="HarfBuzzSharp" Version="$(MismatchedHarfBuzzVersion)" Condition="'$(MismatchedHarfBuzzVersion)' != ''" />
   </ItemGroup>
 </Project>

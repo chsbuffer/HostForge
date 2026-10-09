@@ -20,17 +20,16 @@
     <IsPackable>true</IsPackable>
     <PackageOutputPath>$(AvaloniaAppHostPackageOutputDir)\</PackageOutputPath>
     <AngleNativeLibsDir>$([MSBuild]::NormalizePath('$(AngleNativeLibsRoot)', '$(AngleHostRid)'))</AngleNativeLibsDir>
-    <AngleNativeArch Condition="'$(AngleHostRid)' == 'win-arm64'">arm64</AngleNativeArch>
-    <AngleNativeArch Condition="'$(AngleNativeArch)' == ''">x64</AngleNativeArch>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="buildTransitive/Angle.Static.props" Pack="true" PackagePath="buildTransitive/$(PackageId).props" />
     <None Include="buildTransitive/Angle.Static.targets" Pack="true" PackagePath="buildTransitive/$(PackageId).targets" />
+    <None Include="../HostForge.StaticGraphics.targets" Pack="true" PackagePath="build/HostForge.StaticGraphics.targets" />
     <None Include="README.md" Pack="true" PackagePath="" />
-    <None Include="$(AngleNativeLibsDir)/libANGLE_static.lib" Pack="true" PackagePath="build/native/$(AngleNativeArch)/libANGLE_static.lib" />
-    <None Include="$(AngleNativeLibsDir)/libGLESv2_static.lib" Pack="true" PackagePath="build/native/$(AngleNativeArch)/libGLESv2_static.lib" />
-    <None Include="$(AngleNativeLibsDir)/av_libglesv2.def" Pack="true" PackagePath="build/native/$(AngleNativeArch)/av_libglesv2.def" />
+    <None Include="$(AngleNativeLibsDir)/libANGLE_static.lib" Pack="true" PackagePath="build/native/$(AngleHostRid)/libANGLE_static.lib" />
+    <None Include="$(AngleNativeLibsDir)/libGLESv2_static.lib" Pack="true" PackagePath="build/native/$(AngleHostRid)/libGLESv2_static.lib" />
+    <None Include="$(AngleNativeLibsDir)/av_libglesv2.def" Pack="true" PackagePath="build/native/$(AngleHostRid)/av_libglesv2.def" />
   </ItemGroup>
 
   <Target Name="_ValidateAngleNativeLibs" BeforeTargets="_GetPackageFiles">

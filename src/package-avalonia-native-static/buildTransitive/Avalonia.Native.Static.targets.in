@@ -1,0 +1,11 @@
+<Project>
+  <ItemGroup>
+    <HostForgeStaticPackage Include="ChsBuffer.Avalonia.Native.Static.@RID@">
+      <Component>Avalonia.Native</Component>
+      <Rid>@RID@</Rid>
+      <AvaloniaVersion>@VERSION@</AvaloniaVersion>
+      <NativeDir>$(MSBuildThisFileDirectory)../build/native/@RID@/</NativeDir>
+    </HostForgeStaticPackage>
+  </ItemGroup>
+  <Import Project="$(MSBuildThisFileDirectory)../build/HostForge.StaticGraphics.targets" Condition="'$(HostForgeStaticGraphicsImported)' != 'true'" />
+</Project>
