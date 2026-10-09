@@ -22,30 +22,32 @@
     <PackageOutputPath>$(AvaloniaAppHostPackageOutputDir)\</PackageOutputPath>
 
     <AvaloniaNativeLibsDir>$([MSBuild]::NormalizePath('$(AvaloniaNativeLibsRoot)', '$(AvaloniaHostRid)'))</AvaloniaNativeLibsDir>
-    <StaticNativeArch Condition="'$(AvaloniaHostRid)' == 'win-arm64'">arm64</StaticNativeArch>
-    <StaticNativeArch Condition="'$(StaticNativeArch)' == ''">x64</StaticNativeArch>
+    <_SkiaLine>$([System.Text.RegularExpressions.Regex]::Match('$(SkiaSharpVersion)', '^\d+\.\d+'))</_SkiaLine>
+    <_HarfBuzzLine>$([System.Text.RegularExpressions.Regex]::Match('$(HarfBuzzVersion)', '^\d+\.\d+\.\d+'))</_HarfBuzzLine>
+    <_VersionProps>$(MSBuildProjectDirectory)/obj/$(PackageId).$(SkiaSharpVersion).Version.props</_VersionProps>
   </PropertyGroup>
 
   <Target Name="_ValidateAvaloniaHostRid">
-    <Error Condition="'$(AvaloniaHostRid)' != 'win-x64' and '$(AvaloniaHostRid)' != 'win-arm64' and '$(AvaloniaHostRid)' != 'linux-x64'"
-           Text="AvaloniaHostRid='$(AvaloniaHostRid)' is invalid. Use 'win-x64', 'win-arm64', or 'linux-x64'." />
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(AvaloniaHostRid)', '^(win|linux|linux-musl|osx)-(x64|arm64)$'))"
+           Text="AvaloniaHostRid='$(AvaloniaHostRid)' is not a supported 64-bit RID." />
   </Target>
 
   <ItemGroup>
     <None Include="buildTransitive/SkiaSharp.Static.props" Pack="true" PackagePath="buildTransitive/$(PackageId).props" />
     <None Include="buildTransitive/SkiaSharp.Static.targets" Pack="true" PackagePath="buildTransitive/$(PackageId).targets" />
+    <None Include="../HostForge.StaticGraphics.targets" Pack="true" PackagePath="build/HostForge.StaticGraphics.targets" />
+    <None Include="$(_VersionProps)" Pack="true" PackagePath="build/SkiaSharp.Version.props" />
     <None Include="README.md" Pack="true" PackagePath="" />
+    <!-- LLVM 20.1.8 libc++ from the pinned Linux cross images. -->
+    <None Include="licenses/libcxx.LICENSE.TXT" Pack="true" PackagePath="licenses/"
+          Condition="$(AvaloniaHostRid.StartsWith('linux-')) and '$(_SkiaLine)' == '4.153'" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="$(AvaloniaNativeLibsDir)/**/*.lib"
-      Condition="'$(AvaloniaHostRid)' == 'win-x64' or '$(AvaloniaHostRid)' == 'win-arm64'"
-      Pack="true"
-      PackagePath="build/native/$(StaticNativeArch)/%(FileName)%(Extension)" />
-    <None Include="$(AvaloniaNativeLibsDir)/**/*.a"
-      Condition="'$(AvaloniaHostRid)' == 'linux-x64'"
-      Pack="true"
-      PackagePath="build/native/$(StaticNativeArch)/%(FileName)%(Extension)" />
+    <None Include="$(AvaloniaNativeLibsDir)/**/*" Pack="true"
+      PackagePath="build/native/$(AvaloniaHostRid)/" />
+    <PackageReference Include="SkiaSharp" Version="$(SkiaSharpVersion)" />
+    <PackageReference Include="HarfBuzzSharp" Version="$(HarfBuzzVersion)" />
   </ItemGroup>
 
   <Target Name="_ValidateAvaloniaNativeLibsDir"
@@ -53,6 +55,25 @@
           DependsOnTargets="_ValidateAvaloniaHostRid">
     <Error Condition="!Exists('$(AvaloniaNativeLibsDir)')"
            Text="Avalonia native libs directory not found: $(AvaloniaNativeLibsDir)" />
+    <Error Condition="!Exists('$(AvaloniaNativeLibsDir)/manifest.json')" Text="Static graphics manifest is missing." />
+    <Error Condition="'$(HarfBuzzVersion)' == ''" Text="No HarfBuzzSharp mapping exists for $(SkiaSharpVersion)." />
+    <!-- Freeze package identity in item metadata; properties are shared across RID imports. -->
+    <PropertyGroup>
+      <_PackageRegistration><![CDATA[
+<Project>
+  <ItemGroup>
+    <HostForgeStaticPackage Include="SkiaSharp-$(AvaloniaHostRid)-$(_SkiaLine)">
+      <Component>SkiaSharp</Component>
+      <Rid>$(AvaloniaHostRid)</Rid>
+      <SkiaLine>$(_SkiaLine)</SkiaLine>
+      <HarfBuzzLine>$(_HarfBuzzLine)</HarfBuzzLine>
+      <NativeDir>%24(MSBuildThisFileDirectory)native/$(AvaloniaHostRid)</NativeDir>
+    </HostForgeStaticPackage>
+  </ItemGroup>
+</Project>
+]]></_PackageRegistration>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(_VersionProps)" Overwrite="true" Lines="$(_PackageRegistration)" />
   </Target>
 
 </Project>

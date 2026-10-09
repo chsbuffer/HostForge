@@ -1,9 +1,4 @@
 <Project>
-  <Target Name="RemoveStaticAngleRuntimeCopies"
-          AfterTargets="ComputeResolvedFilesToPublishList">
-    <ItemGroup>
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
-        Condition="'%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'av_libglesv2.dll'" />
-    </ItemGroup>
-  </Target>
+  <Import Project="$(MSBuildThisFileDirectory)../build/HostForge.StaticGraphics.targets"
+          Condition="'$(HostForgeStaticGraphicsImported)' != 'true'" />
 </Project>

@@ -103,7 +103,7 @@
                  Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'" />
       <LinkerInput Include="$(AngleNativeLibsDir)/av_libglesv2.def"
                    Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'" />
-      <LinkerArg Include="FontSub.lib;advapi32.lib;d3d11.lib;dxgi.lib;dxguid.lib;gdi32.lib;setupapi.lib;synchronization.lib;user32.lib"
+      <LinkerArg Include="FontSub.lib;advapi32.lib;d3d11.lib;d3d12.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;gdi32.lib;setupapi.lib;synchronization.lib;user32.lib"
                  Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'" />
       <LinkerArg Include="--sysroot=&quot;$(_ResolvedSysroot)&quot;"
                  Condition="'$(_AvaloniaHostRidIsWindows)' != 'True' and '$(_ResolvedSysroot)' != ''" />
