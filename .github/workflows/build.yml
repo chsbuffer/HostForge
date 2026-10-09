@@ -2,16 +2,927 @@ name: build
 
 on:
   workflow_dispatch:
+    inputs:
+      components:
+        description: Components to build (all includes existing AppHost regressions)
+        type: choice
+        default: all
+        options: [all, skiasharp, avalonianative, smoke]
+      skia_version:
+        description: SkiaSharp version
+        type: choice
+        default: all
+        options: [all, "3.119.4", "4.153.1"]
+      rid:
+        description: NativeAOT RID subset
+        type: choice
+        default: all
+        options: [all, win-x64, win-arm64, linux-x64, linux-arm64, linux-musl-x64, linux-musl-arm64, osx-x64, osx-arm64]
+      cache_mode:
+        description: 'normal uses both caches; rebuild recompiles with compiler cache; cold ignores both'
+        type: choice
+        default: normal
+        options: [normal, rebuild, cold]
+      smoke_modes:
+        description: 'Smoke modes: default (hosted runner modes), or comma-separated platform modes'
+        type: string
+        default: default
   push:
     branches:
       - main
 
-env:
-  LINUX_SYSROOT_CACHE_KEY: linux-sysroot-bionic-amd64
+concurrency:
+  group: build-${{ github.ref }}-${{ github.ref == 'refs/heads/main' && github.run_id || 'latest' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 # Keep the job graph below in sync with the Mermaid workflow diagram in DEVELOPMENT.md.
 jobs:
+  avalonia-smoke-plan:
+    if: inputs.components == 'smoke'
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - id: matrix
+        env:
+          VERSION: ${{ inputs.skia_version }}
+          RID: ${{ inputs.rid }}
+          MODES: ${{ inputs.smoke_modes }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          versions = ["3.119.4", "4.153.1"] if os.environ["VERSION"] in ("", "all") else [os.environ["VERSION"]]
+          lanes = [
+              ("win-x64", "windows-2025-vs2026", ["AngleEgl", "Vulkan", "Software"], ["AngleEgl", "Vulkan", "Wgl", "Software"]),
+              ("linux-x64", "ubuntu-24.04", ["Vulkan", "Egl", "Glx", "Software"], ["Vulkan", "Egl", "Glx", "Software"]),
+              ("osx-arm64", "macos-15", ["Software"], ["Metal", "OpenGl", "Software"]),
+          ]
+          requested = None if os.environ["MODES"] in ("", "default") else [mode.strip() for mode in os.environ["MODES"].split(",")]
+          matrix, selected = [], set()
+          for rid, runner, defaults, supported in lanes:
+              if os.environ["RID"] not in ("", "all", rid):
+                  continue
+              modes = defaults if requested is None else [mode for mode in requested if mode in supported]
+              selected.update(modes)
+              if modes:
+                  matrix.extend(dict(rid=rid, runner=runner, version=version, modes=",".join(modes)) for version in versions)
+          if not matrix or (requested is not None and (set(requested) - selected or len(requested) != len(set(requested)))):
+              raise SystemExit("No matching smoke lane, duplicate mode, or a mode unsupported by the selected RID")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("matrix=" + json.dumps({"include": matrix}) + "\n")
+          PY
+
+  avalonia-smoke:
+    needs: avalonia-smoke-plan
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix: ${{ fromJSON(needs.avalonia-smoke-plan.outputs.matrix) }}
+    env:
+      HOSTFORGE_SMOKE_REQUIRED: '1'
+      HOSTFORGE_SMOKE_RID: ${{ matrix.rid }}
+      HOSTFORGE_SMOKE_SKIA_VERSION: ${{ matrix.version }}
+      HOSTFORGE_SMOKE_MODES: ${{ matrix.modes }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.401'
+      - name: Install X11 and Mesa software drivers
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang zlib1g-dev libfontconfig1-dev libx11-6 libice6 libsm6 libxcursor1 libxrandr2 libxi6 libxrender1 libxext6 libglib2.0-0t64 xvfb xauth mesa-vulkan-drivers libvulkan1 vulkan-tools libegl1 libgl1-mesa-dri libglx-mesa0
+          for manifest in /usr/share/vulkan/icd.d/lvp_icd*.json; do
+            test -f "$manifest"
+            echo "VK_DRIVER_FILES=$manifest" >> "$GITHUB_ENV"
+            echo "VK_ICD_FILENAMES=$manifest" >> "$GITHUB_ENV"
+          done
+          echo 'LIBGL_ALWAYS_SOFTWARE=1' >> "$GITHUB_ENV"
+          echo 'HOSTFORGE_SMOKE_VULKAN_VERSION=1.3.0' >> "$GITHUB_ENV"
+          echo 'VK_LOADER_DEBUG=error,warn,driver' >> "$GITHUB_ENV"
+      - name: Select Windows software graphics drivers
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          'HOSTFORGE_SMOKE_ANGLE_ADAPTER=Microsoft Basic Render Driver' >> $env:GITHUB_ENV
+          if (($env:HOSTFORGE_SMOKE_MODES -split ',') -contains 'Vulkan') {
+            $chrome = Join-Path $env:ProgramFiles 'Google/Chrome/Application'
+            $icd = Get-ChildItem -LiteralPath $chrome -Directory |
+              ForEach-Object { Join-Path $_.FullName 'vk_swiftshader_icd.json' } |
+              Where-Object { Test-Path -LiteralPath $_ } |
+              Select-Object -First 1
+            if (-not $icd) { throw 'The runner Chrome installation has no SwiftShader ICD.' }
+            $loaderDirectory = Split-Path $icd
+            if (-not (Test-Path (Join-Path $loaderDirectory 'vulkan-1.dll'))) { throw 'Chrome Vulkan loader is missing.' }
+            $loaderDirectory >> $env:GITHUB_PATH
+            "VK_DRIVER_FILES=$icd" >> $env:GITHUB_ENV
+            "VK_ICD_FILENAMES=$icd" >> $env:GITHUB_ENV
+            'VK_LOADER_DEBUG=error,warn,driver' >> $env:GITHUB_ENV
+          }
+      - name: Prove actual Linux renderers
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p artifacts/avalonia-smoke
+          xvfb-run -a vulkaninfo --summary > artifacts/avalonia-smoke/vulkaninfo.log 2>&1
+          xvfb-run -a dotnet test --project tests/HostForge.NativeAot.Tests -c Release --treenode-filter '/*/*/AvaloniaSmokeTests/*'
+      - name: Prove actual Windows renderers
+        if: runner.os == 'Windows'
+        run: dotnet test --project tests/HostForge.NativeAot.Tests -c Release --treenode-filter '/*/*/AvaloniaSmokeTests/*'
+      - name: Prove actual macOS renderers with an awake display
+        if: runner.os == 'macOS'
+        run: caffeinate -u -t 600 dotnet test --project tests/HostForge.NativeAot.Tests -c Release --treenode-filter '/*/*/AvaloniaSmokeTests/*'
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: avalonia-smoke-${{ matrix.version }}-${{ matrix.rid }}
+          path: |
+            artifacts/avalonia-smoke/**/*.json
+            artifacts/avalonia-smoke/**/*.log
+          if-no-files-found: error
+          retention-days: 7
+
+  avalonianative-plan:
+    if: (inputs.components == '' || inputs.components == 'all' || inputs.components == 'avalonianative') && (inputs.rid == '' || inputs.rid == 'all' || inputs.rid == 'osx-x64' || inputs.rid == 'osx-arm64')
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - id: matrix
+        env:
+          RID: ${{ inputs.rid }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          entries = [
+              {"rid": "osx-arm64", "runner": "macos-15"},
+              {"rid": "osx-x64", "runner": "macos-15-intel"},
+          ]
+          selected = [entry for entry in entries if os.environ['RID'] in ('', 'all', entry['rid'])]
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('matrix=' + json.dumps({'include': selected}) + '\n')
+          PY
+
+  avalonianative-macos:
+    needs: avalonianative-plan
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.avalonianative-plan.outputs.matrix) }}
+    env:
+      CONAN_HOME: ${{ github.workspace }}/build/conan
+      DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - uses: astral-sh/setup-uv@v10.0.0
+      - uses: ./.github/actions/install-task
+      - name: Verify Xcode and host architecture
+        env:
+          TARGET_RID: ${{ matrix.rid }}
+        run: |
+          xcodebuild -version
+          xcrun --show-sdk-version
+          uname -sm
+          system_profiler SPDisplaysDataType
+          if [[ "$TARGET_RID" == osx-arm64 ]]; then
+            test "$(uname -m)" = arm64
+          else
+            test "$(uname -m)" = x86_64
+          fi
+      - uses: ./.github/actions/native-cache
+        id: native-cache
+        with:
+          component: avalonianative
+          version: 12.1.3
+          rid: ${{ matrix.rid }}
+          path: artifacts/avalonianative/12.1.3/${{ matrix.rid }}
+          mode: ${{ inputs.cache_mode || 'normal' }}
+          compiler-cache-size: 32M
+          compiler: ccache
+      - name: Build AvaloniaNative from source
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: python scripts/build-with-cache.py task build-avalonianative RID=${{ matrix.rid }}
+      - name: Pack AvaloniaNative
+        id: pack
+        run: task pack-avalonianative RID=${{ matrix.rid }}
+      - name: Enforce NuGet size limit
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for package in Path('artifacts/packages/Release').glob('ChsBuffer.Avalonia.Native.Static.*.nupkg'):
+              size = package.stat().st_size
+              print(f'{package.name}: {size} bytes')
+              assert size < 250_000_000, package
+          PY
+      - name: Publish, inspect linkage and run AvaloniaNative tests
+        run: task test-avalonianative
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: avalonianative-evidence-12.1.3-${{ matrix.rid }}-${{ github.run_attempt }}
+          path: |
+            artifacts/avalonianative/12.1.3/${{ matrix.rid }}/manifest.json
+            artifacts/avalonianative-smoke/${{ matrix.rid }}/*.txt
+            TestResults/
+          retention-days: 14
+      - uses: actions/upload-artifact@v6
+        if: always() && steps.pack.outcome == 'success'
+        with:
+          compression-level: 0
+          name: avalonianative-package-12.1.3-${{ matrix.rid }}
+          path: artifacts/packages/Release/ChsBuffer.Avalonia.Native.Static.${{ matrix.rid }}.12.1.3.nupkg
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v6
+        if: always() && hashFiles('build/cache-stats/build.json') != ''
+        with:
+          name: cache-stats-avalonianative-12.1.3-${{ matrix.rid }}
+          overwrite: true
+          path: build/cache-stats
+          retention-days: 7
+
+  pack-avalonianative-meta:
+    needs: avalonianative-macos
+    if: inputs.rid == '' || inputs.rid == 'all'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - uses: ./.github/actions/install-task
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: avalonianative-package-12.1.3-*
+          path: artifacts/packages/Release
+          merge-multiple: true
+      - run: task pack-avalonianative-meta
+      - uses: actions/upload-artifact@v6
+        with:
+          compression-level: 0
+          name: avalonianative-meta-12.1.3-${{ github.run_attempt }}
+          path: artifacts/packages/Release/ChsBuffer.Avalonia.Native.Static.12.1.3.nupkg
+          if-no-files-found: error
+          retention-days: 14
+
+  native-plan:
+    if: inputs.components != 'smoke' && inputs.components != 'avalonianative'
+    runs-on: ubuntu-24.04
+    outputs:
+      versions: ${{ steps.matrix.outputs.versions }}
+      macos: ${{ steps.matrix.outputs.macos }}
+      windows: ${{ steps.matrix.outputs.windows }}
+      targets: ${{ steps.matrix.outputs.targets }}
+      linux-cross-targets: ${{ steps.matrix.outputs.linux-cross-targets }}
+    steps:
+      - uses: actions/checkout@v6
+      - run: python -m unittest discover -s tests/native -v
+      - id: matrix
+        env:
+          VERSION: ${{ inputs.skia_version }}
+          RID: ${{ inputs.rid }}
+          COMPONENTS: ${{ inputs.components }}
+        run: |
+          if [[ -z "$VERSION" || "$VERSION" == all || ( "$COMPONENTS" == all && ( -z "$RID" || "$RID" == all ) && "$VERSION" != 3.119.4 ) ]]; then
+            echo 'versions=["3.119.4","4.153.1"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "versions=[\"$VERSION\"]" >> "$GITHUB_OUTPUT"
+          fi
+          targets='[{"rid":"linux-arm64","arch":"arm64","runner":"ubuntu-24.04-arm"},{"rid":"linux-musl-x64","arch":"x64","runner":"ubuntu-24.04"},{"rid":"linux-musl-arm64","arch":"arm64","runner":"ubuntu-24.04-arm"}]'
+          echo "linux-cross-targets=$(jq -c --arg rid "$RID" '[.[] | select($rid == "" or $rid == "all" or .rid == $rid)]' <<< "$targets")" >> "$GITHUB_OUTPUT"
+
+          case "$RID" in
+            osx-x64) echo 'macos=[{"rid":"osx-x64","runner":"macos-15-intel"}]' >> "$GITHUB_OUTPUT" ;;
+            osx-arm64) echo 'macos=[{"rid":"osx-arm64","runner":"macos-15"}]' >> "$GITHUB_OUTPUT" ;;
+            *) echo 'macos=[{"rid":"osx-x64","runner":"macos-15-intel"},{"rid":"osx-arm64","runner":"macos-15"}]' >> "$GITHUB_OUTPUT" ;;
+          esac
+          windows='["win-x64","win-arm64"]'
+          echo "windows=$(jq -c --arg rid "$RID" '[.[] | select($rid == "" or $rid == "all" or . == $rid)]' <<< "$windows")" >> "$GITHUB_OUTPUT"
+          echo 'targets=[{"rid":"win-x64","runner":"windows-2025-vs2026"},{"rid":"win-arm64","runner":"windows-11-arm"},{"rid":"linux-x64","runner":"ubuntu-24.04"},{"rid":"linux-arm64","runner":"ubuntu-24.04-arm"},{"rid":"linux-musl-x64","runner":"ubuntu-24.04"},{"rid":"linux-musl-arm64","runner":"ubuntu-24.04-arm"},{"rid":"osx-x64","runner":"macos-15-intel"},{"rid":"osx-arm64","runner":"macos-15"}]' >> "$GITHUB_OUTPUT"
+
+  native-windows:
+    needs: native-plan
+    if: inputs.rid == '' || inputs.rid == 'all' || startsWith(inputs.rid, 'win-')
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.native-plan.outputs.versions) }}
+        rid: ${{ fromJSON(needs.native-plan.outputs.windows) }}
+    env:
+      CONAN_HOME: ${{ github.workspace }}/build/conan
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/native-cache
+        id: native-cache
+        with:
+          component: skiasharp
+          version: ${{ matrix.version }}
+          rid: ${{ matrix.rid }}
+          path: artifacts/skiasharp/${{ matrix.version }}/${{ matrix.rid }}
+          mode: ${{ inputs.cache_mode || 'normal' }}
+          compiler-cache-size: 128M
+          compiler: sccache
+      - uses: astral-sh/setup-uv@v10.0.0
+        if: steps.native-cache.outputs.cache-hit != 'true'
+      - uses: ./.github/actions/install-task
+        if: steps.native-cache.outputs.cache-hit != 'true'
+      - uses: ./.github/actions/install-llvm
+        if: steps.native-cache.outputs.cache-hit != 'true'
+      - name: Build static SkiaSharp and HarfBuzzSharp
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: python scripts/build-with-cache.py task build-skiasharp RID=${{ matrix.rid }} SKIASHARP_VERSION=${{ matrix.version }} JOBS=4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Pack RID package
+        run: dotnet pack src/package-skiasharp-static/SkiaSharp.Static.csproj -c Release -p:AvaloniaHostRid=${{ matrix.rid }} -p:SkiaSharpVersion=${{ matrix.version }}
+      - name: Publish and run NativeAOT, guards and non-AOT activation
+        if: matrix.rid == 'win-x64'
+        env:
+          HOSTFORGE_SKIA_VERSION: ${{ matrix.version }}
+          HOSTFORGE_CHECK_ANGLE: 'false'
+        run: dotnet test --project tests/HostForge.NativeAot.Tests/HostForge.NativeAot.Tests.csproj -c Release
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: native-evidence-${{ matrix.version }}-${{ matrix.rid }}
+          path: |
+            TestResults
+            artifacts/tmp/build-tests/**/publish.log
+            artifacts/tmp/build-tests/**/run.log
+            artifacts/tmp/build-tests/**/guard.log
+          retention-days: 7
+      - uses: actions/upload-artifact@v6
+        with:
+          compression-level: 0
+          name: native-packages-${{ matrix.version }}-${{ matrix.rid }}
+          path: artifacts/packages/Release/*.nupkg
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v6
+        with:
+          name: native-skia-${{ matrix.version }}-${{ matrix.rid }}
+          path: artifacts/skiasharp
+          if-no-files-found: error
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v6
+        if: always() && hashFiles('build/cache-stats/build.json') != ''
+        with:
+          name: cache-stats-skiasharp-${{ matrix.version }}-${{ matrix.rid }}
+          overwrite: true
+          path: build/cache-stats
+          retention-days: 7
+
+  native-windows-arm-test:
+    needs: [native-plan, native-windows]
+    if: ${{ !cancelled() && needs.native-plan.result == 'success' && contains(fromJSON('["success","failure"]'), needs.native-windows.result) && (inputs.rid == '' || inputs.rid == 'all' || inputs.rid == 'win-arm64') }}
+    runs-on: windows-11-arm
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.native-plan.outputs.versions) }}
+    env:
+      HOSTFORGE_NATIVE_RID: win-arm64
+      HOSTFORGE_SKIA_VERSION: ${{ matrix.version }}
+      HOSTFORGE_CHECK_ANGLE: 'false'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: native-packages-${{ matrix.version }}-win-arm64
+          path: artifacts/packages/Release
+      - name: Publish and execute ARM64 NativeAOT
+        run: dotnet test --project tests/HostForge.NativeAot.Tests -c Release
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: native-evidence-${{ matrix.version }}-win-arm64-run
+          path: |
+            TestResults
+            artifacts/tmp/build-tests/**/publish.log
+            artifacts/tmp/build-tests/**/run.log
+            artifacts/tmp/build-tests/**/guard.log
+            artifacts/tmp/build-tests/**/result.json
+          retention-days: 7
+
+  native-linux:
+    needs: native-plan
+    if: inputs.rid == '' || inputs.rid == 'all' || inputs.rid == 'linux-x64'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.native-plan.outputs.versions) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/native-cache
+        id: native-cache
+        with:
+          component: skiasharp
+          version: ${{ matrix.version }}
+          rid: linux-x64
+          path: artifacts/skiasharp/${{ matrix.version }}/linux-x64
+          mode: ${{ inputs.cache_mode || 'normal' }}
+          compiler-cache-size: 64M
+          compiler: sccache
+      - uses: actions/cache@v5
+        id: rootfs-cache
+        with:
+          path: artifacts/rootfs/target.tar.gz
+          key: ${{ steps.native-cache.outputs.rootfs-key }}
+      - name: Prepare pinned LLVM and target sysroot
+        if: steps.native-cache.outputs.cache-hit != 'true' || steps.rootfs-cache.outputs.cache-hit != 'true'
+        run: docker build -f native/skiasharp/linux-x64.Dockerfile -t hostforge-skia .
+      - name: Build static SkiaSharp and HarfBuzzSharp
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        env:
+          SKIA_VERSION: ${{ matrix.version }}
+        run: >-
+          docker run --rm -v "$PWD:/work"
+          -e HOSTFORGE_COMPILER_CACHE=/work/build/tools/sccache/sccache
+          -e SCCACHE_DIR=/work/build/compiler-cache -e SCCACHE_CACHE_SIZE -e SCCACHE_DIRECT=false
+          hostforge-skia python3 scripts/build-with-cache.py task build-skiasharp RID=linux-x64 SKIASHARP_VERSION="$SKIA_VERSION" SYSROOT=/crossrootfs/x64 JOBS=4
+      - name: Export the target sysroot
+        if: steps.rootfs-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p artifacts/rootfs
+          docker run --rm hostforge-skia tar czf - -C /crossrootfs/x64 . > artifacts/rootfs/target.tar.gz
+      - name: Restore target sysroot for NativeAOT
+        run: |
+          sudo mkdir -p build/rootfs/x64
+          sudo chown -R "$(id -u):$(id -g)" build artifacts
+          tar xzf artifacts/rootfs/target.tar.gz -C build/rootfs/x64
+          sudo apt-get update
+          sudo apt-get install -y clang lld fontconfig fonts-dejavu-core
+      - uses: actions/upload-artifact@v6
+        with:
+          name: native-rootfs-${{ matrix.version }}-linux-x64
+          path: artifacts/rootfs/target.tar.gz
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Pack RID package
+        run: dotnet pack src/package-skiasharp-static/SkiaSharp.Static.csproj -c Release -p:AvaloniaHostRid=linux-x64 -p:SkiaSharpVersion=${{ matrix.version }}
+      - name: Publish, run and audit NativeAOT against the target sysroot
+        env:
+          HOSTFORGE_SKIA_VERSION: ${{ matrix.version }}
+          HOSTFORGE_CHECK_ANGLE: 'false'
+          ROOTFS_DIR: ${{ github.workspace }}/build/rootfs/x64
+        run: dotnet test --project tests/HostForge.NativeAot.Tests/HostForge.NativeAot.Tests.csproj -c Release
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: native-evidence-${{ matrix.version }}-linux-x64
+          path: |
+            TestResults
+            artifacts/tmp/build-tests/**/publish.log
+            artifacts/tmp/build-tests/**/run.log
+            artifacts/tmp/build-tests/**/guard.log
+            artifacts/tmp/build-tests/**/readelf.txt
+          retention-days: 7
+      - uses: actions/upload-artifact@v6
+        with:
+          compression-level: 0
+          name: native-packages-${{ matrix.version }}-linux-x64
+          path: artifacts/packages/Release/*.nupkg
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v6
+        with:
+          name: native-skia-${{ matrix.version }}-linux-x64
+          path: artifacts/skiasharp
+          if-no-files-found: error
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v6
+        if: always() && hashFiles('build/cache-stats/build.json') != ''
+        with:
+          name: cache-stats-skiasharp-${{ matrix.version }}-linux-x64
+          overwrite: true
+          path: build/cache-stats
+          retention-days: 7
+
+  native-linux-cross:
+    needs: native-plan
+    if: inputs.rid == '' || inputs.rid == 'all' || contains(fromJSON('["linux-arm64","linux-musl-x64","linux-musl-arm64"]'), inputs.rid)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.native-plan.outputs.versions) }}
+        target: ${{ fromJSON(needs.native-plan.outputs.linux-cross-targets) }}
+    env:
+      TARGET_RID: ${{ matrix.target.rid }}
+      TARGET_ARCH: ${{ matrix.target.arch }}
+      SKIA_VERSION: ${{ matrix.version }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/native-cache
+        id: native-cache
+        with:
+          component: skiasharp
+          version: ${{ matrix.version }}
+          rid: ${{ matrix.target.rid }}
+          path: artifacts/skiasharp/${{ matrix.version }}/${{ matrix.target.rid }}
+          mode: ${{ inputs.cache_mode || 'normal' }}
+          compiler-cache-size: 64M
+          compiler: sccache
+      - uses: actions/cache@v5
+        id: rootfs-cache
+        with:
+          path: artifacts/rootfs/target.tar.gz
+          key: ${{ steps.native-cache.outputs.rootfs-key }}
+      - name: Prepare pinned amd64 cross compiler and target sysroot
+        if: steps.native-cache.outputs.cache-hit != 'true' || steps.rootfs-cache.outputs.cache-hit != 'true'
+        run: docker build -f "native/skiasharp/$TARGET_RID.Dockerfile" -t hostforge-skia-cross .
+      - name: Cross compile static SkiaSharp and HarfBuzzSharp
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: >-
+          docker run --rm -v "$PWD:/work"
+          -e HOSTFORGE_COMPILER_CACHE=/work/build/tools/sccache/sccache
+          -e SCCACHE_DIR=/work/build/compiler-cache -e SCCACHE_CACHE_SIZE -e SCCACHE_DIRECT=false
+          hostforge-skia-cross python3 scripts/build-with-cache.py task build-skiasharp RID="$TARGET_RID" SKIASHARP_VERSION="$SKIA_VERSION" SYSROOT="/crossrootfs/$TARGET_ARCH" JOBS=4
+      - name: Export the matching sysroot for the native AOT runner
+        if: steps.rootfs-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          sudo chown -R "$(id -u):$(id -g)" artifacts
+          mkdir -p artifacts/rootfs
+          docker run --rm hostforge-skia-cross tar czf - -C "/crossrootfs/$TARGET_ARCH" . > artifacts/rootfs/target.tar.gz
+          sudo chown -R "$(id -u):$(id -g)" artifacts
+      - name: Restore ownership of container build outputs
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: sudo chown -R "$(id -u):$(id -g)" artifacts build
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Pack RID package
+        run: dotnet pack src/package-skiasharp-static/SkiaSharp.Static.csproj -c Release -p:AvaloniaHostRid="$TARGET_RID" -p:SkiaSharpVersion="$SKIA_VERSION"
+      - uses: actions/upload-artifact@v6
+        with:
+          compression-level: 0
+          name: native-packages-${{ matrix.version }}-${{ matrix.target.rid }}
+          path: artifacts/packages/Release/*.nupkg
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v6
+        with:
+          name: native-rootfs-${{ matrix.version }}-${{ matrix.target.rid }}
+          path: artifacts/rootfs/target.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v6
+        with:
+          name: native-skia-${{ matrix.version }}-${{ matrix.target.rid }}
+          path: artifacts/skiasharp
+          if-no-files-found: error
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v6
+        if: always() && hashFiles('build/cache-stats/build.json') != ''
+        with:
+          name: cache-stats-skiasharp-${{ matrix.version }}-${{ matrix.target.rid }}
+          overwrite: true
+          path: build/cache-stats
+          retention-days: 7
+
+  native-linux-cross-test:
+    needs: [native-plan, native-linux-cross]
+    if: ${{ !cancelled() && needs.native-plan.result == 'success' && contains(fromJSON('["success","failure"]'), needs.native-linux-cross.result) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.native-plan.outputs.versions) }}
+        target: ${{ fromJSON(needs.native-plan.outputs.linux-cross-targets) }}
+    runs-on: ${{ matrix.target.runner }}
+    timeout-minutes: 30
+    env:
+      HOSTFORGE_NATIVE_RID: ${{ matrix.target.rid }}
+      HOSTFORGE_SKIA_VERSION: ${{ matrix.version }}
+      HOSTFORGE_CHECK_ANGLE: 'false'
+      ROOTFS_DIR: ${{ github.workspace }}/build/rootfs
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: native-packages-${{ matrix.version }}-${{ matrix.target.rid }}
+          path: artifacts/packages/Release
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: native-rootfs-${{ matrix.version }}-${{ matrix.target.rid }}
+          path: artifacts/rootfs
+      - name: Restore target sysroot
+        run: |
+          mkdir -p "$ROOTFS_DIR"
+          tar xzf artifacts/rootfs/target.tar.gz -C "$ROOTFS_DIR"
+      - uses: actions/setup-dotnet@v5
+        if: matrix.target.rid == 'linux-arm64'
+        with:
+          dotnet-version: 10.0.x
+      - name: Publish, run and audit glibc NativeAOT
+        if: matrix.target.rid == 'linux-arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld binutils fontconfig fonts-dejavu-core
+          dotnet test --project tests/HostForge.NativeAot.Tests/HostForge.NativeAot.Tests.csproj -c Release
+      - name: Publish, run and audit musl NativeAOT in native Alpine
+        if: startsWith(matrix.target.rid, 'linux-musl-')
+        run: |
+          docker run --rm -v "$PWD:$PWD" -w "$PWD" \
+            -e ROOTFS_DIR -e HOSTFORGE_NATIVE_RID -e HOSTFORGE_SKIA_VERSION -e HOSTFORGE_CHECK_ANGLE \
+            mcr.microsoft.com/dotnet/sdk@sha256:3f9c03432d664163a90d20e3ed0a3784d0aa82c1b9cbd1a7dd4609fede95669e \
+            sh -eu -c 'apk add --no-cache clang lld llvm binutils fontconfig font-dejavu && dotnet test --project tests/HostForge.NativeAot.Tests/HostForge.NativeAot.Tests.csproj -c Release'
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: native-evidence-${{ matrix.version }}-${{ matrix.target.rid }}
+          path: |
+            TestResults
+            artifacts/tmp/build-tests/**/publish.log
+            artifacts/tmp/build-tests/**/run.log
+            artifacts/tmp/build-tests/**/guard.log
+            artifacts/tmp/build-tests/**/readelf.txt
+            artifacts/tmp/build-tests/**/elf.txt
+          retention-days: 7
+
+  native-macos:
+    needs: native-plan
+    if: inputs.rid == '' || inputs.rid == 'all' || startsWith(inputs.rid, 'osx-')
+    runs-on: ${{ matrix.target.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.native-plan.outputs.versions) }}
+        target: ${{ fromJSON(needs.native-plan.outputs.macos) }}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
+      CONAN_HOME: ${{ github.workspace }}/build/conan
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/native-cache
+        id: native-cache
+        with:
+          component: skiasharp
+          version: ${{ matrix.version }}
+          rid: ${{ matrix.target.rid }}
+          path: artifacts/skiasharp/${{ matrix.version }}/${{ matrix.target.rid }}
+          mode: ${{ inputs.cache_mode || 'normal' }}
+          compiler-cache-size: 64M
+          compiler: sccache
+      - uses: astral-sh/setup-uv@v10.0.0
+        if: steps.native-cache.outputs.cache-hit != 'true'
+      - uses: ./.github/actions/install-task
+        if: steps.native-cache.outputs.cache-hit != 'true'
+      - name: Build static SkiaSharp and HarfBuzzSharp with GN
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: python scripts/build-with-cache.py task build-skiasharp RID=${{ matrix.target.rid }} SKIASHARP_VERSION=${{ matrix.version }} JOBS=4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Pack RID package
+        run: dotnet pack src/package-skiasharp-static/SkiaSharp.Static.csproj -c Release -p:AvaloniaHostRid=${{ matrix.target.rid }} -p:SkiaSharpVersion=${{ matrix.version }}
+      - name: Publish, run and audit Mach-O NativeAOT
+        env:
+          HOSTFORGE_NATIVE_RID: ${{ matrix.target.rid }}
+          HOSTFORGE_SKIA_VERSION: ${{ matrix.version }}
+          HOSTFORGE_CHECK_ANGLE: 'false'
+        run: dotnet test --project tests/HostForge.NativeAot.Tests/HostForge.NativeAot.Tests.csproj -c Release
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: native-evidence-${{ matrix.version }}-${{ matrix.target.rid }}
+          path: |
+            TestResults
+            artifacts/tmp/build-tests/**/publish.log
+            artifacts/tmp/build-tests/**/run.log
+            artifacts/tmp/build-tests/**/guard.log
+            artifacts/tmp/build-tests/**/*.macho.txt
+            artifacts/tmp/build-tests/**/result.json
+            artifacts/tmp/build-tests/**/publish.binlog
+          retention-days: 7
+      - uses: actions/upload-artifact@v6
+        with:
+          compression-level: 0
+          name: native-packages-${{ matrix.version }}-${{ matrix.target.rid }}
+          path: artifacts/packages/Release/*.nupkg
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v6
+        with:
+          name: native-skia-${{ matrix.version }}-${{ matrix.target.rid }}
+          path: artifacts/skiasharp
+          if-no-files-found: error
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v6
+        if: always() && hashFiles('build/cache-stats/build.json') != ''
+        with:
+          name: cache-stats-skiasharp-${{ matrix.version }}-${{ matrix.target.rid }}
+          overwrite: true
+          path: build/cache-stats
+          retention-days: 7
+
+  native-meta-pack:
+    needs: [native-plan, native-windows, native-linux, native-linux-cross, native-macos, windows-angle, avalonianative-macos]
+    if: inputs.rid == '' || inputs.rid == 'all'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - uses: ./.github/actions/install-task
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: native-packages-*
+          merge-multiple: true
+          path: artifacts/packages/Release
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: avalonianative-package-*
+          merge-multiple: true
+          path: artifacts/packages/Release
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: angle-*
+          merge-multiple: true
+          path: artifacts/angle
+      - name: Pack complete meta packages and enforce the NuGet size limit
+        env:
+          VERSIONS: ${{ needs.native-plan.outputs.versions }}
+        run: |
+          task pack-angle-static RID=win-x64
+          task pack-angle-static RID=win-arm64
+          for version in $(jq -r '.[]' <<< "$VERSIONS"); do
+            task pack-graphics-meta COMPONENT=SkiaSharp SKIASHARP_VERSION="$version"
+          done
+          task pack-graphics-meta COMPONENT=Angle
+          task pack-graphics-meta COMPONENT=Avalonia.Native
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          records = []
+          for package in sorted(pathlib.Path("artifacts/packages/Release").glob("*.nupkg")):
+              size = package.stat().st_size
+              assert size < 250_000_000, (package, size)
+              records.append({"package": package.name, "bytes": size, "sha256": hashlib.sha256(package.read_bytes()).hexdigest()})
+          pathlib.Path("artifacts/packages/Release/package-sizes.json").write_text(json.dumps(records, indent=2))
+          PY
+      - uses: actions/upload-artifact@v6
+        with:
+          compression-level: 0
+          name: native-meta-feed
+          path: artifacts/packages/Release/*
+          if-no-files-found: error
+          retention-days: 7
+
+  native-meta-test:
+    needs: [native-plan, native-meta-pack]
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.native-plan.outputs.versions) }}
+        target: ${{ fromJSON(needs.native-plan.outputs.targets) }}
+    runs-on: ${{ matrix.target.runner }}
+    timeout-minutes: 40
+    env:
+      HOSTFORGE_NATIVE_RID: ${{ matrix.target.rid }}
+      HOSTFORGE_SKIA_VERSION: ${{ matrix.version }}
+      HOSTFORGE_TEST_META: 'true'
+      HOSTFORGE_CHECK_ANGLE: ${{ startsWith(matrix.target.rid, 'win-') && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        if: ${{ !startsWith(matrix.target.rid, 'linux-musl-') }}
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: native-meta-feed
+          path: artifacts/packages/Release
+      - uses: actions/download-artifact@v8.0.1
+        if: runner.os == 'Linux'
+        with:
+          name: native-rootfs-${{ matrix.version }}-${{ matrix.target.rid }}
+          path: artifacts/rootfs
+      - name: Restore the target Linux sysroot
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p build/rootfs
+          tar xzf artifacts/rootfs/target.tar.gz -C build/rootfs
+          echo "ROOTFS_DIR=$GITHUB_WORKSPACE/build/rootfs" >> "$GITHUB_ENV"
+      - name: Install glibc link and runtime dependencies
+        if: runner.os == 'Linux' && !startsWith(matrix.target.rid, 'linux-musl-')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld binutils fontconfig fonts-dejavu-core
+      - name: Build without RID and publish and run both RID and three-meta consumers
+        if: ${{ !startsWith(matrix.target.rid, 'linux-musl-') }}
+        run: dotnet test --project tests/HostForge.NativeAot.Tests -c Release
+      - name: Build and publish the three-meta consumer in native Alpine
+        if: startsWith(matrix.target.rid, 'linux-musl-')
+        run: |
+          docker run --rm -v "$PWD:$PWD" -w "$PWD" \
+            -e ROOTFS_DIR -e HOSTFORGE_NATIVE_RID -e HOSTFORGE_SKIA_VERSION -e HOSTFORGE_CHECK_ANGLE -e HOSTFORGE_TEST_META \
+            mcr.microsoft.com/dotnet/sdk@sha256:3f9c03432d664163a90d20e3ed0a3784d0aa82c1b9cbd1a7dd4609fede95669e \
+            sh -eu -c 'apk add --no-cache clang lld llvm binutils fontconfig font-dejavu && dotnet test --project tests/HostForge.NativeAot.Tests -c Release'
+      - name: Prepare Mesa software drivers for static Avalonia
+        if: matrix.target.rid == 'linux-x64'
+        run: |
+          sudo apt-get install -y libfontconfig1-dev libx11-6 libice6 libsm6 libxcursor1 libxrandr2 libxi6 libxrender1 libxext6 libglib2.0-0t64 xvfb xauth mesa-vulkan-drivers libvulkan1 libegl1 libgl1-mesa-dri libglx-mesa0
+          for manifest in /usr/share/vulkan/icd.d/lvp_icd*.json; do
+            test -f "$manifest"
+            echo "VK_DRIVER_FILES=$manifest" >> "$GITHUB_ENV"
+            echo "VK_ICD_FILENAMES=$manifest" >> "$GITHUB_ENV"
+          done
+      - name: Prove static Skia Vulkan, EGL and GLX rendering
+        if: matrix.target.rid == 'linux-x64'
+        env:
+          HOSTFORGE_SMOKE_REQUIRED: '1'
+          HOSTFORGE_SMOKE_SKIA_VERSION: ${{ matrix.version }}
+          HOSTFORGE_SMOKE_MODES: Vulkan,Egl,Glx
+          HOSTFORGE_SMOKE_VULKAN_VERSION: 1.3.0
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          SmokeUseStaticSkia: 'true'
+          SmokePackageSource: ${{ github.workspace }}/artifacts/packages/Release
+        run: xvfb-run -a dotnet test --project tests/HostForge.NativeAot.Tests -c Release --treenode-filter '/*/*/AvaloniaSmokeTests/*'
+      - name: Prove static Skia and ANGLE rendering with WARP
+        if: runner.os == 'Windows'
+        continue-on-error: ${{ matrix.target.rid == 'win-arm64' }}
+        env:
+          HOSTFORGE_SMOKE_REQUIRED: '1'
+          HOSTFORGE_SMOKE_SKIA_VERSION: ${{ matrix.version }}
+          HOSTFORGE_SMOKE_MODES: AngleEgl
+          HOSTFORGE_SMOKE_ANGLE_ADAPTER: Microsoft Basic Render Driver
+          SmokeUseStaticSkia: 'true'
+          SmokeUseStaticAngle: 'true'
+          SmokePackageSource: ${{ github.workspace }}/artifacts/packages/Release
+        run: dotnet test --project tests/HostForge.NativeAot.Tests -c Release --treenode-filter '/*/*/AvaloniaSmokeTests/*'
+      - name: Select Metal when the macOS runner exposes a device
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p build
+          cat > build/metal-device.m <<'OBJC'
+          #import <Metal/Metal.h>
+          int main(void) { return MTLCreateSystemDefaultDevice() ? 0 : 1; }
+          OBJC
+          xcrun clang -fobjc-arc build/metal-device.m -framework Metal -framework Foundation -o build/metal-device
+          if build/metal-device; then
+            echo 'HOSTFORGE_SMOKE_MODES=Metal' >> "$GITHUB_ENV"
+          else
+            echo 'HOSTFORGE_SMOKE_MODES=Software' >> "$GITHUB_ENV"
+            echo 'The hosted macOS runner exposes no Metal device; exercising Software.' | tee build/metal-availability.log
+          fi
+      - name: Draw with static Skia and static AvaloniaNative
+        if: runner.os == 'macOS'
+        env:
+          HOSTFORGE_SMOKE_REQUIRED: '1'
+          HOSTFORGE_SMOKE_SKIA_VERSION: ${{ matrix.version }}
+          SmokeUseStaticSkia: 'true'
+          SmokeUseStaticAvaloniaNative: 'true'
+          SmokePackageSource: ${{ github.workspace }}/artifacts/packages/Release
+        run: dotnet test --project tests/HostForge.NativeAot.Tests -c Release --treenode-filter '/*/*/AvaloniaSmokeTests/*'
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: native-meta-evidence-${{ matrix.version }}-${{ matrix.target.rid }}
+          path: |
+            TestResults
+            build/metal-availability.log
+            artifacts/avalonia-smoke/**/*.json
+            artifacts/avalonia-smoke/**/*.log
+            artifacts/tmp/build-tests/**/build.log
+            artifacts/tmp/build-tests/**/publish.log
+            artifacts/tmp/build-tests/**/run.log
+            artifacts/tmp/build-tests/**/guard.log
+            artifacts/tmp/build-tests/**/readelf.txt
+            artifacts/tmp/build-tests/**/elf.txt
+            artifacts/tmp/build-tests/**/*.macho.txt
+            artifacts/tmp/build-tests/**/result.json
+          retention-days: 7
+
   windows-hostlibs:
+    if: github.event_name == 'push' || (inputs.components == 'all' && (inputs.rid == '' || inputs.rid == 'all'))
     runs-on: windows-2025-vs2026
     env:
       CONAN_HOME: ${{ github.workspace }}/build/conan
@@ -30,12 +941,16 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Restore HostLibs cache
+      - uses: ./.github/actions/native-cache
         id: cache_hostlibs
-        uses: actions/cache@v5
         with:
-          path: artifacts\hostlibs
-          key: hostlibs-windows-default-${{ matrix.rid }}-${{ hashFiles('native/hostlibs/**') }}
+          component: hostlibs
+          version: 10.0.12
+          rid: ${{ matrix.rid }}
+          path: artifacts/hostlibs
+          mode: ${{ inputs.cache_mode || 'normal' }}
+          compiler-cache-size: 256M
+          compiler: sccache
 
       - name: Install uv
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
@@ -48,7 +963,7 @@ jobs:
       - name: Build and deploy HostLibs
         shell: powershell
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
-        run: task build-hostlibs ARCH=${{ matrix.arch }} PGO=True
+        run: python scripts/build-with-cache.py task build-hostlibs ARCH=${{ matrix.arch }} PGO=True JOBS=4
 
       - name: Upload hostlibs artifact
         uses: actions/upload-artifact@v6
@@ -57,11 +972,19 @@ jobs:
           path: artifacts\hostlibs
           if-no-files-found: error
 
+      - uses: actions/upload-artifact@v6
+        if: always() && hashFiles('build/cache-stats/build.json') != ''
+        with:
+          name: cache-stats-hostlibs-10.0.12-${{ matrix.rid }}
+          overwrite: true
+          path: build/cache-stats
+          retention-days: 7
+
   windows-matrix-test:
     runs-on: windows-2025-vs2026
     needs:
       - windows-hostlibs
-      - windows-skia
+      - native-windows
       - windows-angle
 
     steps:
@@ -80,7 +1003,7 @@ jobs:
       - name: Download SkiaSharp artifact (win-x64)
         uses: actions/download-artifact@v8.0.1
         with:
-          name: skiasharp-win-x64
+          name: native-skia-3.119.4-win-x64
           path: artifacts\skiasharp
 
       - name: Download ANGLE artifact (win-x64)
@@ -95,57 +1018,8 @@ jobs:
       - name: Run matrix integration build
         shell: powershell
         run: task matrix
-  windows-skia:
-    runs-on: windows-2025-vs2026
-    env:
-      CONAN_HOME: ${{ github.workspace }}/build/conan
-    strategy:
-      matrix:
-        include:
-          - arch: x64
-            rid: win-x64
-          - arch: arm64
-            rid: win-arm64
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-          submodules: false
-
-      - name: Restore SkiaSharp cache
-        id: cache_skia
-        uses: actions/cache@v5
-        with:
-          path: artifacts\skiasharp
-          key: skiasharp-windows-${{ matrix.rid }}-${{ hashFiles('native/skiasharp/**', 'scripts/libHarfBuzzSharp.vcxproj.in') }}
-
-      - name: Install LLVM
-        if: steps.cache_skia.outputs.cache-hit != 'true'
-        uses: ./.github/actions/install-llvm
-
-      - name: Install uv
-        if: steps.cache_skia.outputs.cache-hit != 'true'
-        uses: astral-sh/setup-uv@v10.0.0
-
-      - name: Install Task
-        if: steps.cache_skia.outputs.cache-hit != 'true'
-        uses: ./.github/actions/install-task
-
-      - name: Build and deploy SkiaSharp
-        shell: powershell
-        if: steps.cache_skia.outputs.cache-hit != 'true'
-        run: task build-skiasharp ARCH=${{ matrix.arch }}
-
-      - name: Upload skiasharp artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: skiasharp-${{ matrix.rid }}
-          path: artifacts\skiasharp
-          if-no-files-found: error
-
   windows-angle:
+    if: github.event_name == 'push' || (inputs.components == 'all' && (inputs.rid == '' || inputs.rid == 'all'))
     runs-on: windows-2025-vs2026
     env:
       CONAN_HOME: ${{ github.workspace }}/build/conan
@@ -164,12 +1038,16 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Restore ANGLE cache
+      - uses: ./.github/actions/native-cache
         id: cache_angle
-        uses: actions/cache@v5
         with:
-          path: artifacts\angle
-          key: angle-windows-${{ matrix.rid }}-${{ hashFiles('native/angle/**') }}
+          component: angle
+          version: 2.1.27548.20260419
+          rid: ${{ matrix.rid }}
+          path: artifacts/angle
+          mode: ${{ inputs.cache_mode || 'normal' }}
+          compiler-cache-size: 64M
+          compiler: sccache
 
       - name: Install uv
         if: steps.cache_angle.outputs.cache-hit != 'true'
@@ -189,7 +1067,7 @@ jobs:
       - name: Build and deploy ANGLE
         shell: powershell
         if: steps.cache_angle.outputs.cache-hit != 'true'
-        run: task build-angle ARCH=${{ matrix.arch }}
+        run: python scripts/build-with-cache.py task build-angle ARCH=${{ matrix.arch }} JOBS=4
 
       - name: Upload ANGLE artifact
         uses: actions/upload-artifact@v6
@@ -198,10 +1076,19 @@ jobs:
           path: artifacts\angle
           if-no-files-found: error
 
+      - uses: actions/upload-artifact@v6
+        if: always() && hashFiles('build/cache-stats/build.json') != ''
+        with:
+          name: cache-stats-angle-2.1.27548.20260419-${{ matrix.rid }}
+          overwrite: true
+          path: build/cache-stats
+          retention-days: 7
+
   pack-windows-static-graphics:
+    if: github.event_name == 'push' || (inputs.components == 'all' && (inputs.rid == '' || inputs.rid == 'all'))
     runs-on: windows-2025-vs2026
     needs:
-      - windows-skia
+      - native-windows
       - windows-angle
     strategy:
       matrix:
@@ -220,7 +1107,7 @@ jobs:
       - name: Download SkiaSharp artifact
         uses: actions/download-artifact@v8.0.1
         with:
-          name: skiasharp-${{ matrix.rid }}
+          name: native-skia-3.119.4-${{ matrix.rid }}
           path: artifacts\skiasharp
 
       - name: Download ANGLE artifact
@@ -248,7 +1135,7 @@ jobs:
     runs-on: windows-2025-vs2026
     needs:
       - windows-hostlibs
-      - windows-skia
+      - native-windows
       - windows-angle
     steps:
       - name: Checkout repository
@@ -257,11 +1144,14 @@ jobs:
           fetch-depth: 1
           submodules: false
 
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.x
+
       - name: Install Task
         uses: ./.github/actions/install-task
-
-      - name: Install LLVM
-        uses: ./.github/actions/install-llvm
 
       - name: Download HostLibs artifact (win-x64)
         uses: actions/download-artifact@v8.0.1
@@ -278,13 +1168,13 @@ jobs:
       - name: Download SkiaSharp artifact (win-x64)
         uses: actions/download-artifact@v8.0.1
         with:
-          name: skiasharp-win-x64
+          name: native-skia-3.119.4-win-x64
           path: artifacts\skiasharp
 
       - name: Download SkiaSharp artifact (win-arm64)
         uses: actions/download-artifact@v8.0.1
         with:
-          name: skiasharp-win-arm64
+          name: native-skia-3.119.4-win-arm64
           path: artifacts\skiasharp
 
       - name: Download ANGLE artifact (win-x64)
@@ -313,6 +1203,7 @@ jobs:
         shell: powershell
         run: task avalonia-test
   linux-sysroot:
+    if: github.event_name == 'push' || (inputs.components == 'all' && (inputs.rid == '' || inputs.rid == 'all'))
     runs-on: ubuntu-latest
 
     steps:
@@ -322,10 +1213,8 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Build and cache Linux sysroot
-        uses: ./.github/actions/sysroot-cache
-        with:
-          cache-key: ${{ env.LINUX_SYSROOT_CACHE_KEY }}
+      - name: Prepare the shared bionic cross rootfs
+        uses: ./.github/actions/target-rootfs
 
   linux-hostlibs:
     runs-on: ubuntu-latest
@@ -349,20 +1238,22 @@ jobs:
 
       - name: Restore Linux sysroot
         id: restore_sysroot
-        uses: ./.github/actions/sysroot-restore
-        with:
-          cache-key: ${{ env.LINUX_SYSROOT_CACHE_KEY }}
+        uses: ./.github/actions/target-rootfs
 
-      - name: Restore HostLibs cache
+      - uses: ./.github/actions/native-cache
         id: cache_hostlibs
-        uses: actions/cache@v5
         with:
+          component: hostlibs
+          version: 10.0.12
+          rid: linux-x64
           path: artifacts/hostlibs
-          key: hostlibs-linux-linux-x64-${{ env.LINUX_SYSROOT_CACHE_KEY }}-${{ hashFiles('native/hostlibs/**') }}
+          mode: ${{ inputs.cache_mode || 'normal' }}
+          compiler-cache-size: 512M
+          compiler: sccache
 
       - name: Build and deploy HostLibs
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
-        run: task build-hostlibs SYSROOT="${{ steps.restore_sysroot.outputs.sysroot-path }}"
+        run: python scripts/build-with-cache.py task build-hostlibs SYSROOT="${{ steps.restore_sysroot.outputs.sysroot-path }}" JOBS=4
 
       - name: Upload hostlibs artifact
         uses: actions/upload-artifact@v6
@@ -371,12 +1262,20 @@ jobs:
           path: artifacts/hostlibs
           if-no-files-found: error
 
+      - uses: actions/upload-artifact@v6
+        if: always() && hashFiles('build/cache-stats/build.json') != ''
+        with:
+          name: cache-stats-hostlibs-10.0.12-linux-x64
+          overwrite: true
+          path: build/cache-stats
+          retention-days: 7
+
   linux-matrix-test:
     runs-on: ubuntu-latest
     needs:
       - linux-sysroot
       - linux-hostlibs
-      - linux-skia
+      - native-linux
 
     steps:
       - name: Checkout repository
@@ -389,9 +1288,7 @@ jobs:
         uses: ./.github/actions/install-task
 
       - name: Restore Linux sysroot
-        uses: ./.github/actions/sysroot-restore
-        with:
-          cache-key: ${{ env.LINUX_SYSROOT_CACHE_KEY }}
+        uses: ./.github/actions/target-rootfs
 
       - name: Install matrix dependencies
         run: |
@@ -407,59 +1304,16 @@ jobs:
       - name: Download SkiaSharp artifact (linux-x64)
         uses: actions/download-artifact@v8.0.1
         with:
-          name: skiasharp-linux-x64
+          name: native-skia-3.119.4-linux-x64
           path: artifacts/skiasharp
 
       - name: Run matrix integration build
         run: task matrix
-  linux-skia:
-    runs-on: ubuntu-latest
-    env:
-      CONAN_HOME: ${{ github.workspace }}/build/conan
-    needs:
-      - linux-sysroot
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-          submodules: false
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.0.0
-
-      - name: Install Task
-        uses: ./.github/actions/install-task
-
-      - name: Restore Linux sysroot
-        id: restore_sysroot
-        uses: ./.github/actions/sysroot-restore
-        with:
-          cache-key: ${{ env.LINUX_SYSROOT_CACHE_KEY }}
-
-      - name: Restore SkiaSharp cache
-        id: cache_skia
-        uses: actions/cache@v5
-        with:
-          path: artifacts/skiasharp
-          key: skiasharp-linux-linux-x64-${{ env.LINUX_SYSROOT_CACHE_KEY }}-${{ hashFiles('native/skiasharp/**', 'scripts/libHarfBuzzSharp.vcxproj.in') }}
-
-      - name: Build and deploy SkiaSharp
-        if: steps.cache_skia.outputs.cache-hit != 'true'
-        run: task build-skiasharp SYSROOT="${{ steps.restore_sysroot.outputs.sysroot-path }}"
-
-      - name: Upload skia artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: skiasharp-linux-x64
-          path: artifacts/skiasharp
-          if-no-files-found: error
-
   pack-linux-static-graphics:
+    if: github.event_name == 'push' || (inputs.components == 'all' && (inputs.rid == '' || inputs.rid == 'all'))
     runs-on: ubuntu-latest
     needs:
-      - linux-skia
+      - native-linux
 
     steps:
       - name: Checkout repository
@@ -474,7 +1328,7 @@ jobs:
       - name: Download SkiaSharp artifact (linux-x64)
         uses: actions/download-artifact@v8.0.1
         with:
-          name: skiasharp-linux-x64
+          name: native-skia-3.119.4-linux-x64
           path: artifacts/skiasharp
 
       - name: Pack static SkiaSharp libraries
@@ -492,7 +1346,7 @@ jobs:
     needs:
       - linux-sysroot
       - linux-hostlibs
-      - linux-skia
+      - native-linux
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -505,9 +1359,7 @@ jobs:
 
       - name: Restore Linux sysroot
         id: restore_sysroot
-        uses: ./.github/actions/sysroot-restore
-        with:
-          cache-key: ${{ env.LINUX_SYSROOT_CACHE_KEY }}
+        uses: ./.github/actions/target-rootfs
 
       - name: Download HostLibs artifact (linux-x64)
         uses: actions/download-artifact@v8.0.1
@@ -518,7 +1370,7 @@ jobs:
       - name: Download SkiaSharp artifact (linux-x64)
         uses: actions/download-artifact@v8.0.1
         with:
-          name: skiasharp-linux-x64
+          name: native-skia-3.119.4-linux-x64
           path: artifacts/skiasharp
 
       - name: Link Avalonia apphost templates for Linux
@@ -573,6 +1425,11 @@ jobs:
   cleanup-packaged-artifacts:
     runs-on: ubuntu-latest
     needs:
+      - native-linux-cross-test
+      - native-windows-arm-test
+      - native-meta-test
+      - native-macos
+      - pack-avalonianative-meta
       - windows-matrix-test
       - linux-matrix-test
       - pack-windows-static-graphics
@@ -585,6 +1442,7 @@ jobs:
         uses: geekyeggo/delete-artifact@v6
         with:
           name: |
-            skiasharp-*
+            native-skia-*
+            native-rootfs-*
             angle-*
             avalonia-host-*
