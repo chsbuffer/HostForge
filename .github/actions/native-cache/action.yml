@@ -1,0 +1,79 @@
+name: native-cache
+description: Restore one native payload and its bounded compiler cache
+inputs:
+  component:
+    description: Native component name
+    required: true
+  version:
+    description: Upstream component version
+    required: true
+  rid:
+    description: Target runtime identifier
+    required: true
+  path:
+    description: Deployed native payload directory
+    required: true
+  mode:
+    default: normal
+    description: normal uses both caches; rebuild ignores payloads; cold ignores both
+  compiler-cache-size:
+    description: Maximum local compiler cache size
+    default: 128M
+  compiler:
+    description: Compiler cache implementation
+    default: sccache
+outputs:
+  cache-hit:
+    description: Whether the payload was restored without rebuilding
+    value: ${{ inputs.mode == 'normal' && steps.payload.outputs.cache-hit == 'true' }}
+  rootfs-key:
+    description: Fingerprint of the selected Linux target sysroot
+    value: ${{ steps.key.outputs.rootfs-key }}
+runs:
+  using: composite
+  steps:
+    - id: key
+      shell: bash
+      env:
+        COMPONENT: ${{ inputs.component }}
+        VERSION: ${{ inputs.version }}
+        RID: ${{ inputs.rid }}
+      run: python scripts/native-cache-key.py "$COMPONENT" "$VERSION" "$RID"
+    - uses: actions/cache@v5
+      id: payload
+      with:
+        path: ${{ inputs.path }}
+        key: ${{ steps.key.outputs.key }}
+        lookup-only: ${{ inputs.mode != 'normal' }}
+    - uses: actions/cache@v5
+      if: inputs.mode != 'normal' || steps.payload.outputs.cache-hit != 'true'
+      with:
+        path: build/compiler-cache
+        key: ${{ steps.key.outputs.compiler-prefix }}${{ steps.key.outputs.digest }}
+        restore-keys: ${{ steps.key.outputs.compiler-prefix }}
+        lookup-only: ${{ inputs.mode == 'cold' }}
+    - name: Install sccache
+      if: inputs.compiler == 'sccache' && (inputs.mode != 'normal' || steps.payload.outputs.cache-hit != 'true')
+      shell: bash
+      run: python scripts/install-compiler-cache.py
+    - name: Install ccache for Xcode header modules
+      if: inputs.compiler == 'ccache' && (inputs.mode != 'normal' || steps.payload.outputs.cache-hit != 'true')
+      shell: bash
+      run: |
+        command -v ccache >/dev/null || brew install ccache
+        echo "HOSTFORGE_COMPILER_CACHE=$(command -v ccache)" >> "$GITHUB_ENV"
+    - name: Configure compiler cache limits
+      if: inputs.mode != 'normal' || steps.payload.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        CACHE_SIZE: ${{ inputs.compiler-cache-size }}
+      run: |
+        echo "SCCACHE_DIR=$GITHUB_WORKSPACE/build/compiler-cache" >> "$GITHUB_ENV"
+        echo "SCCACHE_CACHE_SIZE=$CACHE_SIZE" >> "$GITHUB_ENV"
+        # v0.18 direct-mode manifests can validate headers in an old checkout.
+        echo 'SCCACHE_DIRECT=false' >> "$GITHUB_ENV"
+        echo "CCACHE_DIR=$GITHUB_WORKSPACE/build/compiler-cache" >> "$GITHUB_ENV"
+        echo "CCACHE_MAXSIZE=$CACHE_SIZE" >> "$GITHUB_ENV"
+        # Xcode's explicit header modules are tracked via dependency output.
+        echo 'CCACHE_DEPEND=true' >> "$GITHUB_ENV"
+        echo 'CCACHE_SLOPPINESS=modules' >> "$GITHUB_ENV"

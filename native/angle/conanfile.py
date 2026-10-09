@@ -1,12 +1,15 @@
 import os
+import json
 import sys
 
 from conan import ConanFile
+from conan.tools.build import build_jobs
 from conan.tools.env import Environment
 from conan.tools.files import (
     apply_conandata_patches,
     copy,
     load,
+    replace_in_file,
     save,
 )
 from conan.tools.microsoft import VCVars
@@ -23,7 +26,6 @@ class AngleConan(ConanFile):
 
     settings = "os", "arch", "compiler", "build_type"
     exports_sources = "patches/*"
-    no_copy_source = True
 
     _gn_cpu = {
         "x86_64": "x64",
@@ -63,6 +65,17 @@ class AngleConan(ConanFile):
                 cwd=self._angle_root,
             )
 
+        if os.environ.get("HOSTFORGE_COMPILER_CACHE"):
+            # Chromium only enables cc_wrapper for clang by default. This
+            # recipe uses MSVC; preserve the selected SDK environment and pass
+            # the private cache server/limits through ninja's environment file.
+            toolchain = os.path.join(self._angle_root, "build/toolchain/win/toolchain.gni")
+            replace_in_file(self, toolchain,
+                            'toolchain_cc_wrapper != "" && toolchain_is_clang',
+                            'toolchain_cc_wrapper != ""')
+            setup = os.path.join(self._angle_root, "build/toolchain/win/setup_toolchain.py")
+            replace_in_file(self, setup, "      'include',", "      'sccache_.*',\n      'include',")
+
         gn_args = [
             "is_debug=false",
             "is_component_build=false",
@@ -86,6 +99,8 @@ class AngleConan(ConanFile):
             "angle_build_tests=false",
             "build_angle_deqp_tests=false",
         ]
+        if wrapper := os.environ.get("HOSTFORGE_COMPILER_CACHE"):
+            gn_args.append(f"cc_wrapper={json.dumps(wrapper.replace(chr(92), '/'))}")
         save(
             self, os.path.join(self.build_folder, "args.gn"), "\n".join(gn_args) + "\n"
         )
@@ -97,7 +112,7 @@ class AngleConan(ConanFile):
             env="conanbuild",
         )
         self.run(
-            f'"{ninja}" -C "{self.build_folder}" libANGLE_static libGLESv2_static',
+            f'"{ninja}" -C "{self.build_folder}" -j {build_jobs(self)} libANGLE_static libGLESv2_static',
             env="conanbuild",
         )
 
@@ -147,8 +162,9 @@ class AngleConan(ConanFile):
             "user32",
         ]
 
-    @staticmethod
-    def _environment():
+    def _environment(self):
         env = Environment()
         env.define("DEPOT_TOOLS_WIN_TOOLCHAIN", "0")
+        env.define("SCCACHE_BASEDIRS", self.build_folder)
+        env.define("SCCACHE_DIRECT", "false")
         return env
