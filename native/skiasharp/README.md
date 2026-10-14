@@ -4,6 +4,9 @@ This Conan 2 recipe builds the SkiaSharp and HarfBuzzSharp static libraries for
 Windows, Linux glibc/musl and macOS x64/arm64. It supports SkiaSharp 3.119.4 and
 4.153.1 and deploys to `artifacts/skiasharp/<version>/<rid>/`.
 
+SkiaSharp 4 also packages the separate `jsonreader` archive required by Skottie.
+Linux SkiaSharp 4 includes the matching target `cxx/libc++.a` archive.
+
 On Windows or macOS, run the matching RID with MSVC/LLVM or Command Line Tools:
 
 ```sh

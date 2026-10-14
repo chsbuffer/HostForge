@@ -93,21 +93,25 @@
       <_AppHostLinkerArg Include="$(_AppHostLinkFlags)" />
       <_AppHostLinkerArg Include="@(_CommonLinkerArg)" />
       <_AppHostLinkerArg Include="@apphost.rsp" />
+      <_AppHostLinkerArg Include="-Wl,--start-group" Condition="'$(GroupNativeLibraries)' == 'true'" />
       <_AppHostLinkerArg Include="-Wl,--whole-archive" Condition="'$(_IsApplePlatform)' != 'true' and '@(_WholeArchiveNativeLib)' != ''" />
       <_AppHostLinkerArg Include="@(_WholeArchiveNativeLib->'&quot;%(FullPath)&quot;')" Condition="'$(_IsApplePlatform)' != 'true'" />
       <_AppHostLinkerArg Include="-Wl,--no-whole-archive" Condition="'$(_IsApplePlatform)' != 'true' and '@(_WholeArchiveNativeLib)' != ''" />
       <_AppHostLinkerArg Include="@(_WholeArchiveNativeLib->'-Wl,-force_load,&quot;%(FullPath)&quot;')" Condition="'$(_IsApplePlatform)' == 'true'" />
       <_AppHostLinkerArg Include="@(_DefaultNativeLib->'&quot;%(FullPath)&quot;')" />
+      <_AppHostLinkerArg Include="-Wl,--end-group" Condition="'$(GroupNativeLibraries)' == 'true'" />
       <_AppHostLinkerArg Include="-o &quot;$(AppHostLinkFullPath)&quot;" />
 
       <_SingleFileHostLinkerArg Include="$(_SingleFileHostLinkFlags)" />
       <_SingleFileHostLinkerArg Include="@(_CommonLinkerArg)" />
       <_SingleFileHostLinkerArg Include="@singlefilehost.rsp" />
+      <_SingleFileHostLinkerArg Include="-Wl,--start-group" Condition="'$(GroupNativeLibraries)' == 'true'" />
       <_SingleFileHostLinkerArg Include="-Wl,--whole-archive" Condition="'$(_IsApplePlatform)' != 'true' and '@(_WholeArchiveNativeLib)' != ''" />
       <_SingleFileHostLinkerArg Include="@(_WholeArchiveNativeLib->'&quot;%(FullPath)&quot;')" Condition="'$(_IsApplePlatform)' != 'true'" />
       <_SingleFileHostLinkerArg Include="-Wl,--no-whole-archive" Condition="'$(_IsApplePlatform)' != 'true' and '@(_WholeArchiveNativeLib)' != ''" />
       <_SingleFileHostLinkerArg Include="@(_WholeArchiveNativeLib->'-Wl,-force_load,&quot;%(FullPath)&quot;')" Condition="'$(_IsApplePlatform)' == 'true'" />
       <_SingleFileHostLinkerArg Include="@(_DefaultNativeLib->'&quot;%(FullPath)&quot;')" />
+      <_SingleFileHostLinkerArg Include="-Wl,--end-group" Condition="'$(GroupNativeLibraries)' == 'true'" />
       <_SingleFileHostLinkerArg Include="-o &quot;$(SingleFileHostLinkFullPath)&quot;" />
     </ItemGroup>
   </Target>

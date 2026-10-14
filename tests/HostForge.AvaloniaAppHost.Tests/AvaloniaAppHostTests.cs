@@ -284,10 +284,13 @@ public class AvaloniaAppHostTests
         }
 
         string value = output[start..end].Trim();
-        if (string.IsNullOrWhiteSpace(value) || string.Equals(value, "0.0", StringComparison.Ordinal))
+        // Native reports the Skia milestone (119/153), the NuGet version's minor component.
+        if (!Version.TryParse(value, out Version? nativeVersion)
+            || !Version.TryParse(RepoContext.SkiaSharpVersion, out Version? expectedVersion)
+            || nativeVersion.Major != expectedVersion.Minor)
         {
             throw new InvalidOperationException(
-                $"Expected SkiaSharp native version to be loaded, but got '{value}'.{Environment.NewLine}{output}");
+                $"Expected native SkiaSharp {RepoContext.SkiaSharpVersion}, but got '{value}'.{Environment.NewLine}{output}");
         }
     }
 

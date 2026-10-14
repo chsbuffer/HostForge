@@ -243,6 +243,8 @@ tasks:
 
   link-avalonia:
     desc: Link Avalonia apphost templates for one target OS
+    vars:
+      SKIASHARP_VERSION: '{{.SKIASHARP_VERSION | default "3.119.4"}}'
     requires:
       vars:
         - name: TARGET_OS
@@ -252,6 +254,7 @@ tasks:
         dotnet msbuild src/package-avalonia-apphost/AvaloniaAppHost.Link.proj
         /t:LinkAvaloniaHosts
         -p:AvaloniaAppHostTarget={{.TARGET_OS}}
+        -p:SkiaSharpVersion={{.SKIASHARP_VERSION}}
         -p:HostLibsFlavor=default
         {{if .SYSROOT}}-p:Sysroot="{{.SYSROOT}}"{{end}}
         -v:{{.VERBOSITY}}
@@ -259,8 +262,10 @@ tasks:
   avalonia-test:
     desc: Run the Avalonia AppHost integration tests
     vars:
+      SKIASHARP_VERSION: '{{.SKIASHARP_VERSION | default "3.119.4"}}'
       SYSROOT: '{{.SYSROOT | default .ROOTFS_DIR | default ""}}'
     env:
+      SkiaSharpVersion: '{{.SKIASHARP_VERSION}}'
       ROOTFS_DIR: "{{.SYSROOT}}"
     cmds:
       - >-
@@ -271,6 +276,8 @@ tasks:
 
   pack-avalonia-rid:
     desc: Pack one Avalonia AppHost RID package (requires linked templates)
+    vars:
+      SKIASHARP_VERSION: '{{.SKIASHARP_VERSION | default "3.119.4"}}'
     requires:
       vars:
         - name: RID
@@ -280,35 +287,46 @@ tasks:
         dotnet pack src/package-avalonia-apphost/AvaloniaAppHost.Rid.csproj
         -c Release
         -p:AvaloniaHostRid={{.RID}}
+        -p:SkiaSharpVersion={{.SKIASHARP_VERSION}}
         -v:{{.VERBOSITY}}
 
   pack-avalonia-build:
     desc: Pack the Avalonia AppHost Build package
+    vars:
+      SKIASHARP_VERSION: '{{.SKIASHARP_VERSION | default "3.119.4"}}'
     cmds:
       - >-
         dotnet pack src/package-avalonia-apphost/AvaloniaAppHost.Build.csproj
         -c Release
+        -p:SkiaSharpVersion={{.SKIASHARP_VERSION}}
         -v:{{.VERBOSITY}}
 
   pack-avalonia-meta:
     desc: Pack the meta package (requires all RID + Build packages already packed)
+    vars:
+      SKIASHARP_VERSION: '{{.SKIASHARP_VERSION | default "3.119.4"}}'
     cmds:
       - >-
         dotnet pack src/package-avalonia-apphost/AvaloniaAppHost.csproj
         -c Release
+        -p:SkiaSharpVersion={{.SKIASHARP_VERSION}}
         -v:{{.VERBOSITY}}
 
   pack-avalonia:
     desc: Pack all Avalonia AppHost packages (requires linked templates for all RIDs)
+    vars:
+      SKIASHARP_VERSION: '{{.SKIASHARP_VERSION | default "3.119.4"}}'
     cmds:
       - task: pack-avalonia-rid
-        vars: {RID: win-x64}
+        vars: {RID: win-x64, SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
       - task: pack-avalonia-rid
-        vars: {RID: win-arm64}
+        vars: {RID: win-arm64, SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
       - task: pack-avalonia-rid
-        vars: {RID: linux-x64}
+        vars: {RID: linux-x64, SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
       - task: pack-avalonia-build
+        vars: {SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
       - task: pack-avalonia-meta
+        vars: {SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
 
   pack-static-apphost:
     desc: Pack the generic Static AppHost package

@@ -59,14 +59,11 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
         "x86_64": "x64",
         "armv8": "arm64",
     }
-    _skia_libraries = (
-        "SkiaSharp",
-        "skia",
-        "skottie",
-        "sksg",
-        "skshaper",
-        "skresources",
-    )
+    @property
+    def _skia_libraries(self):
+        libraries = ("SkiaSharp", "skia", "skottie", "sksg", "skshaper", "skresources")
+        # m153 moved skjson out of skottie into a separate static archive.
+        return libraries + (("jsonreader",) if self._modern else ())
 
     @property
     def _skia_root(self):
@@ -192,6 +189,8 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
         for name in (f"{prefix}SkiaSharp{extension}", f"libHarfBuzzSharp{extension}"):
             if not (output / name).is_file():
                 raise ConanException(f"Required archive was not produced: {name}")
+        if self._modern and not (output / f"{prefix}jsonreader{extension}").is_file():
+            raise ConanException("Required SkiaSharp 4 jsonreader archive was not produced")
         if self._modern and self.settings.os == "Linux":
             root = Path(os.environ["ROOTFS_DIR"])
             candidates = list((root / "usr/lib").glob("**/libc++.a")) + list((root / "usr/lib64").glob("libc++.a"))

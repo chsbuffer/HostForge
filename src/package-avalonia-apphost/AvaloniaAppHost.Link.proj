@@ -65,6 +65,7 @@
       <_AvaloniaHostRidIsWindows>$(AvaloniaHostRid.StartsWith('win'))</_AvaloniaHostRidIsWindows>
       <_AvaloniaNativeLibExtension Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'">.lib</_AvaloniaNativeLibExtension>
       <_AvaloniaNativeLibExtension Condition="'$(_AvaloniaHostRidIsWindows)' != 'True'">.a</_AvaloniaNativeLibExtension>
+      <GroupNativeLibraries Condition="'$(_AvaloniaHostRidIsWindows)' != 'True' and $(SkiaSharpVersion.StartsWith('4.'))">true</GroupNativeLibraries>
     </PropertyGroup>
 
     <Error Condition="'$(AvaloniaHostRid)' == ''"
@@ -76,12 +77,16 @@
 
     <ItemGroup>
       <_AvaloniaNativeLib Include="$(AvaloniaNativeLibsDir)/*$(_AvaloniaNativeLibExtension)" />
+      <_AvaloniaNativeLib Include="$(AvaloniaNativeLibsDir)/cxx/*.a"
+                          Condition="'$(_AvaloniaHostRidIsWindows)' != 'True'" />
       <_AngleNativeLib Include="$(AngleNativeLibsDir)/*.lib"
                        Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'" />
     </ItemGroup>
 
     <Error Condition="'@(_AvaloniaNativeLib)' == ''"
            Text="No $(_AvaloniaNativeLibExtension) files were found in $(AvaloniaNativeLibsDir)." />
+    <Error Condition="'$(_AvaloniaHostRidIsWindows)' != 'True' and $(SkiaSharpVersion.StartsWith('4.')) and !Exists('$(AvaloniaNativeLibsDir)/cxx/libc++.a')"
+           Text="SkiaSharp 4 requires the bundled target libc++ archive: $(AvaloniaNativeLibsDir)/cxx/libc++.a" />
     <Error Condition="'$(_AvaloniaHostRidIsWindows)' == 'True' and '@(_AngleNativeLib)' == ''"
            Text="No ANGLE static libraries were found in $(AngleNativeLibsDir)." />
     <Error Condition="'$(_AvaloniaHostRidIsWindows)' == 'True' and !Exists('$(AngleNativeLibsDir)/av_libglesv2.def')"

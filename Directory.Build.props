@@ -12,10 +12,14 @@
   <PropertyGroup>
     <TargetAvaloniaVersion>12.0</TargetAvaloniaVersion>
     <_Major>0</_Major>
-    <_Preview></_Preview>
+    <_Preview Condition="'$(_Preview)' == ''"></_Preview>
+
+    <_AvaloniaAppHostPreview>$(_Preview)</_AvaloniaAppHostPreview>
+    <_AvaloniaAppHostPreview Condition="$(SkiaSharpVersion.StartsWith('4.')) and '$(_Preview)' == ''">skia4</_AvaloniaAppHostPreview>
+    <_AvaloniaAppHostPreview Condition="$(SkiaSharpVersion.StartsWith('4.')) and '$(_Preview)' != ''">$(_Preview).skia4</_AvaloniaAppHostPreview>
 
     <AvaloniaAppHostPackageVersion>$(TargetAvaloniaVersion).$(_Major)</AvaloniaAppHostPackageVersion>
-    <AvaloniaAppHostPackageVersion Condition="'$(_Preview)' != ''">$(AvaloniaAppHostPackageVersion)-$(_Preview)</AvaloniaAppHostPackageVersion>
+    <AvaloniaAppHostPackageVersion Condition="'$(_AvaloniaAppHostPreview)' != ''">$(AvaloniaAppHostPackageVersion)-$(_AvaloniaAppHostPreview)</AvaloniaAppHostPackageVersion>
   </PropertyGroup>
 
   <PropertyGroup>

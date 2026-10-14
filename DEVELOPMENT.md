@@ -249,16 +249,28 @@ flowchart LR
     WA --> NMP
     NP --> NMT["test-all<br/>Skia 3/4 × 8 RIDs / static renderers"]
     NMP --> NMT
+    NP --> WLA
+    NP --> WLA4
+    NP --> LLA
+    NP --> LLA4
+    NP --> PA
+    NP --> PA4
+    NP --> WM
+    NP --> LM
     subgraph W["Windows lane"]
         direction LR
         WH["build-hostlibs-windows<br/>default × x64/arm64"]
         WA["build-angle-windows<br/>x64/arm64"]
         WLA["link-avalonia-apphost-windows<br/>link + test"]
+        WLA4["link-avalonia-apphost-skia4-windows<br/>Skia 4 link + test"]
         WM["test-all-windows<br/>Static AppHost + NativeAOT"]
 
         WH --> WLA
         NW --> WLA
         WA --> WLA
+        WH --> WLA4
+        NW --> WLA4
+        WA --> WLA4
         WH --> WM
         NW --> WM
         WA --> WM
@@ -269,6 +281,7 @@ flowchart LR
         LSY["build-sysroot-linux"]
         LH["build-hostlibs-linux"]
         LLA["link-avalonia-apphost-linux<br/>link + test"]
+        LLA4["link-avalonia-apphost-skia4-linux<br/>Skia 4 link + test"]
         LM["test-all-linux<br/>Static AppHost + NativeAOT"]
 
         LSY --> LH
@@ -276,16 +289,23 @@ flowchart LR
         LSY --> LM
         LH --> LLA
         NL --> LLA
+        LSY --> LLA4
+        LH --> LLA4
+        NL --> LLA4
         LH --> LM
         NL --> LM
     end
 
     PA["pack-avalonia-apphost<br/>3 RIDs + Build + meta"]
+    PA4["pack-avalonia-apphost-skia4<br/>3 RIDs + Build + meta / skia4 suffix"]
     CLEAN["cleanup-all"]
     NLCT --> CLEAN
 
     WLA --> PA
     LLA --> PA
+    WLA4 --> PA4
+    LLA4 --> PA4
+    PA4 --> CLEAN
     WM --> CLEAN
     LM --> CLEAN
     PA --> CLEAN
@@ -310,12 +330,17 @@ flowchart LR
 | `build-angle-windows` | Windows | `win-x64` / `win-arm64` ANGLE 静态库缓存 |
 | `test-all-windows` | Windows | Static AppHost 与 win-x64 NativeAOT 集成验证 |
 | `link-avalonia-apphost-windows` | Windows | Windows Avalonia 模板及测试结果 |
+| `link-avalonia-apphost-skia4-windows` | Windows | SkiaSharp 4 的 Windows Avalonia 模板及版本匹配测试 |
 | `build-sysroot-linux` | Linux | Skia / HostLibs / AppHost 共用的 cross 镜像 bionic rootfs 缓存 |
 | `build-hostlibs-linux` | Linux | `linux-x64` HostLib 缓存 |
 | `test-all-linux` | Linux | Static AppHost 与 linux-x64 NativeAOT 集成验证 |
 | `link-avalonia-apphost-linux` | Linux | Linux Avalonia 模板及测试结果 |
+| `link-avalonia-apphost-skia4-linux` | Linux | SkiaSharp 4 的 Linux Avalonia 模板及版本匹配测试 |
 | `pack-avalonia-apphost` | Windows | 3 个 RID 包 + Build 包 + 元包（ChsBuffer.Avalonia.AppHost） |
+| `pack-avalonia-apphost-skia4` | Windows | SkiaSharp 4 的 3 个 RID 包 + Build 包 + 元包；版本追加 `skia4` |
 | `cleanup-all` | Linux | 所有消费 job 成功后删除已打包的中间工件 |
+
+AppHost 的 link、pack 与平台集成测试从 `plan-all.outputs.versions` 选择 Skia 版本。Skia 4 使用独立 job 与 `avalonia-host-skia4-*` / `nuget-avalonia-apphost-skia4` 工件，链接产物路径保持 `artifacts/avalonia-host/<版本>/<RID>`。设置 `_Preview=beta` 时，Skia 4 包版本为 `12.0.0-beta.skia4`；留空时为 `12.0.0-skia4`。本地使用 `SKIASHARP_VERSION=4.153.1` 依次 link、test、pack，详见 [Avalonia AppHost 打包说明](src/package-avalonia-apphost/DEVELOPMENT.md)。
 
 ## 缓存约定
 
@@ -327,7 +352,7 @@ flowchart LR
 
 CI 使用原生库产物缓存和编译缓存。Linux 热命中直接恢复压缩目标 rootfs，不拉取 cross 镜像；HostLibs 和 AppHost 链接也使用这一份 bionic rootfs。静态图形库的实际后端与绘制验收在 `test-all` 中执行。
 
-同一 ref 的新运行取消旧运行，main 的发布性运行使用独立并发组，避免运行中或排队中的发布被取消。原生库和 RID 包在跨 job 消费前上传 workflow artifact；全部消费 job 成功后删除 `native-skia-*`、`native-rootfs-*`、`native-angle-*`、`avalonia-host-*`、`nuget-native-skia-*` 和 `nuget-native-avalonianative-*`。完整成功的运行最终保留 `nuget-native-all`、`nuget-avalonia-apphost` 和三个 `native-hostlib-default-<rid>` 工件；日志、测试证据和缓存统计不单独上传。失败时保留中间产物供重跑。
+同一 ref 的新运行取消旧运行，main 的发布性运行使用独立并发组，避免运行中或排队中的发布被取消。原生库和 RID 包在跨 job 消费前上传 workflow artifact；全部消费 job 成功后删除 `native-skia-*`、`native-rootfs-*`、`native-angle-*`、`avalonia-host-*`、`nuget-native-skia-*` 和 `nuget-native-avalonianative-*`。完整成功的运行最终保留 `nuget-native-all`、`nuget-avalonia-apphost`、`nuget-avalonia-apphost-skia4` 和三个 `native-hostlib-default-<rid>` 工件；日志、测试证据和缓存统计不单独上传。失败时保留中间产物供重跑。
 
 ## 仓库结构
 
