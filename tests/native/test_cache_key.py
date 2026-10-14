@@ -75,7 +75,7 @@ class NativeCacheKeyTests(unittest.TestCase):
     def test_other_components_only_use_selected_profile(self):
         for component, version, rid, other in (
             ("angle", "2.1.27548.20260419", "win-x64", "windows-arm64"),
-            ("hostlibs", "10.0.12", "win-x64", "linux-x64"),
+            ("hostlibs", "10.0.13", "win-x64", "linux-x64"),
             ("avalonianative", "12.1.3", "osx-arm64", "osx-x64"),
         ):
             with self.subTest(component=component):
@@ -84,7 +84,7 @@ class NativeCacheKeyTests(unittest.TestCase):
                 self.assertEqual(original, self.key(version, rid, component))
 
     def test_generator_update_rebuilds_payload_but_can_reuse_objects(self):
-        before, after = [cache_key.fingerprint(self.root, "hostlibs", "10.0.12", "win-x64",
+        before, after = [cache_key.fingerprint(self.root, "hostlibs", "10.0.13", "win-x64",
                                               "compiler-1", generator)
                          for generator in ("cmake 3.29", "cmake 4.0")]
         self.assertNotEqual(before["key"], after["key"])

@@ -257,6 +257,8 @@ flowchart LR
     NP --> PA4
     NP --> WM
     NP --> LM
+    NP --> WH
+    NP --> LH
     subgraph W["Windows lane"]
         direction LR
         WH["build-hostlibs-windows<br/>default × x64/arm64"]

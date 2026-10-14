@@ -11,8 +11,8 @@ from conan.tools.files import get, save
 from conan.tools.microsoft import VCVars
 from conan.tools.system.package_manager import Apt
 
-VERSION = "10.0.12"
-SOURCE_COMMIT = "4271d88e0aebf3d04f188f1334c2220d80555ef6"  # dotnet/runtime v10.0.12
+VERSION = "10.0.13"
+SOURCE_COMMIT = "6aa72daa24f66c01c3d7b6a32519e9d21396deec"  # dotnet/runtime v10.0.13
 
 class HostLibsConan(ConanFile):
     name = "hostlibs"

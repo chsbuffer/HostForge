@@ -84,6 +84,7 @@ jobs:
   plan-all:
     runs-on: ubuntu-24.04
     outputs:
+      hostlibs-version: '10.0.13'
       versions: >-
         [
           "3.119.4",
@@ -675,6 +676,7 @@ jobs:
         run: dotnet test --project tests/HostForge.NativeAot.Tests -c Release --treenode-filter '/*/*/AvaloniaSmokeTests/*'
 
   build-hostlibs-windows:
+    needs: plan-all
     runs-on: windows-2025-vs2026
     env:
       CONAN_HOME: ${{ github.workspace }}/build/conan
@@ -697,7 +699,7 @@ jobs:
         id: cache_hostlibs
         with:
           component: hostlibs
-          version: 10.0.12
+          version: ${{ needs.plan-all.outputs.hostlibs-version }}
           rid: ${{ matrix.rid }}
           path: artifacts/hostlibs
           compiler-cache-size: 256M
@@ -934,6 +936,7 @@ jobs:
     env:
       CONAN_HOME: ${{ github.workspace }}/build/conan
     needs:
+      - plan-all
       - build-sysroot-linux
 
     steps:
@@ -957,7 +960,7 @@ jobs:
         id: cache_hostlibs
         with:
           component: hostlibs
-          version: 10.0.12
+          version: ${{ needs.plan-all.outputs.hostlibs-version }}
           rid: linux-x64
           path: artifacts/hostlibs
           compiler-cache-size: 512M
