@@ -9,10 +9,10 @@ Reference `ChsBuffer.SkiaSharp.Static`, `ChsBuffer.Angle.Static` and
   <PublishAot>true</PublishAot>
 </PropertyGroup>
 <ItemGroup>
-  <PackageReference Include="Avalonia.Desktop" Version="12.1.3" />
+  <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
   <PackageReference Include="ChsBuffer.SkiaSharp.Static" Version="3.119.4" />
   <PackageReference Include="ChsBuffer.Angle.Static" Version="2.1.27548.20260419" />
-  <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="12.1.3" />
+  <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="12.1.4" />
 </ItemGroup>
 ```
 
@@ -26,7 +26,7 @@ ANGLE applies to Windows; Avalonia.Native applies to macOS.
 
 SkiaSharp 3.119.4 and 4.153.1 each include eight RIDs: `win-x64`, `win-arm64`,
 `linux-x64`, `linux-arm64`, `linux-musl-x64`, `linux-musl-arm64`, `osx-x64` and
-`osx-arm64`. ANGLE includes both Windows RIDs; Avalonia.Native 12.1.3 includes
+`osx-arm64`. ANGLE includes both Windows RIDs; Avalonia.Native 12.1.4 includes
 both macOS RIDs. Meta packages require the exact matching RID package versions.
 
 All packages share the same build integration and error codes:

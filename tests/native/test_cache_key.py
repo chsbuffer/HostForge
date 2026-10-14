@@ -76,7 +76,7 @@ class NativeCacheKeyTests(unittest.TestCase):
         for component, version, rid, other in (
             ("angle", "2.1.27548.20260419", "win-x64", "windows-arm64"),
             ("hostlibs", "10.0.13", "win-x64", "linux-x64"),
-            ("avalonianative", "12.1.3", "osx-arm64", "osx-x64"),
+            ("avalonianative", "12.1.4", "osx-arm64", "osx-x64"),
         ):
             with self.subTest(component=component):
                 original = self.key(version, rid, component)

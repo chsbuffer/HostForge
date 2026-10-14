@@ -3,3 +3,7 @@ sources:
     url: "https://codeload.github.com/AvaloniaUI/Avalonia/tar.gz/8eeda4f6f546165b3f72e63c9f42247abb306905"
     sha256: "9109d00f8cfb7d38962d66ff1eb55fce8b144162111239f8f4f5d57dd91d6fcb"
     commit: "8eeda4f6f546165b3f72e63c9f42247abb306905"
+  "12.1.4":
+    url: "https://codeload.github.com/AvaloniaUI/Avalonia/tar.gz/2d79ba55fae1b1e71c69f93a668080c9029e6a31"
+    sha256: "9e9ee6ee270bfdc02fbc34296da51ee6242325156d2b67cbed92d2ccbc2e2029"
+    commit: "2d79ba55fae1b1e71c69f93a668080c9029e6a31"

@@ -20,7 +20,7 @@ class AvaloniaNativeConan(ConanFile):
     settings = "os", "arch", "compiler", "build_type"
 
     def set_version(self):
-        self.version = self.version or "12.1.3"
+        self.version = self.version or "12.1.4"
 
     def validate(self):
         if str(self.version) not in self.conan_data["sources"]:
@@ -33,7 +33,7 @@ class AvaloniaNativeConan(ConanFile):
     def source(self):
         source = self.conan_data["sources"][str(self.version)]
         get(self, source["url"], filename=f"avalonia-{self.version}.tar.gz", sha256=source["sha256"], strip_root=True)
-        # Avalonia 12.1.3's native target has no submodule dependencies.
+        # Avalonia 12.1.4's native target has no submodule dependencies.
 
     @property
     def _apple_arch(self):

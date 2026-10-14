@@ -11,7 +11,7 @@
     <PackageId>ChsBuffer.$(StaticGraphicsComponent).Static</PackageId>
     <_NativeVersion Condition="'$(StaticGraphicsComponent)' == 'SkiaSharp'">$(SkiaSharpVersion)</_NativeVersion>
     <_NativeVersion Condition="'$(StaticGraphicsComponent)' == 'Angle'">$(AngleVersion)</_NativeVersion>
-    <AvaloniaNativeVersion Condition="'$(AvaloniaNativeVersion)' == ''">12.1.3</AvaloniaNativeVersion>
+    <AvaloniaNativeVersion Condition="'$(AvaloniaNativeVersion)' == ''">12.1.4</AvaloniaNativeVersion>
     <_NativeVersion Condition="'$(StaticGraphicsComponent)' == 'Avalonia.Native'">$(AvaloniaNativeVersion)</_NativeVersion>
     <PackagingRevision Condition="'$(PackagingRevision)' == ''">0</PackagingRevision>
     <_NativeVersion Condition="'$(PackagingRevision)' != '0'">$(_NativeVersion).$(PackagingRevision)</_NativeVersion>

@@ -34,8 +34,8 @@ public class AvaloniaNativeTests
                     <CopyBuildOutputToPublishDirectory>false</CopyBuildOutputToPublishDirectory>
                   </PropertyGroup>
                   <ItemGroup>
-                    <PackageReference Include="Avalonia.Desktop" Version="12.1.3" />
-                    <HostForgeStaticPackage Include="test" Component="Avalonia.Native" Rid="osx-arm64" AvaloniaVersion="12.1.3" NativeDir="{{escapedRoot}}/" />
+                    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
+                    <HostForgeStaticPackage Include="test" Component="Avalonia.Native" Rid="osx-arm64" AvaloniaVersion="12.1.4" NativeDir="{{escapedRoot}}/" />
                   </ItemGroup>
                   <Import Project="{{targets}}" />
                   <!-- Exercise SDK publish-list processing without cross-OS native compilation. -->
@@ -87,12 +87,12 @@ public class AvaloniaNativeTests
                 AssertEx.Success(pack, $"pack {rid}");
 
                 string id = $"ChsBuffer.Avalonia.Native.Static.{rid}";
-                using ZipArchive zip = ZipFile.OpenRead(Path.Combine(packages, $"{id}.12.1.3.1.nupkg"));
+                using ZipArchive zip = ZipFile.OpenRead(Path.Combine(packages, $"{id}.12.1.4.1.nupkg"));
                 ZipArchiveEntry registration = zip.GetEntry($"buildTransitive/{id}.targets") ?? throw new InvalidOperationException("Missing package registration.");
                 using var reader = new StreamReader(registration.Open());
                 string xml = await reader.ReadToEndAsync();
                 AssertEx.Contains(xml, $"<Rid>{rid}</Rid>");
-                AssertEx.Contains(xml, "<AvaloniaVersion>12.1.3</AvaloniaVersion>");
+                AssertEx.Contains(xml, "<AvaloniaVersion>12.1.4</AvaloniaVersion>");
                 AssertEx.Contains(xml, "$(MSBuildThisFileDirectory)");
                 AssertEx.NotContains(xml, RepoContext.RepoRoot);
                 await Assert.That(zip.GetEntry($"build/native/{rid}/libAvaloniaNative.a")).IsNotNull();
@@ -102,14 +102,14 @@ public class AvaloniaNativeTests
 
             CommandResult meta = await PackFixtureAsync(root);
             AssertEx.Success(meta, "pack meta");
-            using ZipArchive metaZip = ZipFile.OpenRead(Path.Combine(packages, "ChsBuffer.Avalonia.Native.Static.12.1.3.1.nupkg"));
+            using ZipArchive metaZip = ZipFile.OpenRead(Path.Combine(packages, "ChsBuffer.Avalonia.Native.Static.12.1.4.1.nupkg"));
             ZipArchiveEntry nuspec = metaZip.Entries.Single(entry => entry.FullName.EndsWith(".nuspec", StringComparison.Ordinal));
             using Stream stream = nuspec.Open();
             XDocument document = XDocument.Load(stream);
             XElement[] dependencies = document.Descendants().Where(element => element.Name.LocalName == "dependency").ToArray();
             await Assert.That(dependencies.Length).IsEqualTo(2);
             foreach (XElement dependency in dependencies)
-                await Assert.That((string?)dependency.Attribute("version")).IsEqualTo("[12.1.3.1]");
+                await Assert.That((string?)dependency.Attribute("version")).IsEqualTo("[12.1.4.1]");
         }
         finally
         {
@@ -145,7 +145,7 @@ public class AvaloniaNativeTests
                     <RestorePackagesPath>{{escapedRoot}}/nuget</RestorePackagesPath>
                   </PropertyGroup>
                   <ItemGroup>
-                    <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="12.1.3.1" />
+                    <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="12.1.4.1" />
                   </ItemGroup>
                   <Target Name="VerifyInactivePackage" AfterTargets="Build">
                     <Error Condition="@(HostForgeStaticPackage->Count()) != 2" Text="Both transitive RID packages must be imported." />
@@ -182,7 +182,7 @@ public class AvaloniaNativeTests
 
     private static async Task CreatePayloadFixtureAsync(string payloads, string rid)
     {
-        string payload = Path.Combine(payloads, "12.1.3", rid);
+        string payload = Path.Combine(payloads, "12.1.4", rid);
         Directory.CreateDirectory(Path.Combine(payload, "licenses"));
         // Packaging fixtures never enter the normal native artifacts directory.
         await File.WriteAllTextAsync(Path.Combine(payload, "libAvaloniaNative.a"), "package fixture");
@@ -256,14 +256,14 @@ public class AvaloniaNativeTests
     }
 
     [Test]
-    [Arguments("12.1.3", "osx-arm64", true, true, "PINVOKE=libAvaloniaNative")]
-    [Arguments("12.1.3", "osx-x64", true, true, "PINVOKE=libAvaloniaNative")]
+    [Arguments("12.1.4", "osx-arm64", true, true, "PINVOKE=libAvaloniaNative")]
+    [Arguments("12.1.4", "osx-x64", true, true, "PINVOKE=libAvaloniaNative")]
     [Arguments("12.1.0", "osx-arm64", true, true, "HFG0004")]
     [Arguments("12.1.0", "osx-arm64", false, true, "INACTIVE")]
-    [Arguments("12.1.3", "linux-x64", true, true, "INACTIVE")]
-    [Arguments("12.1.3", "osx-arm64", false, true, "INACTIVE")]
-    [Arguments("12.1.3", "osx-arm64", true, false, "HFG1001")]
-    [Arguments("12.1.3", "osx-x64", true, false, "HFG1001")]
+    [Arguments("12.1.4", "linux-x64", true, true, "INACTIVE")]
+    [Arguments("12.1.4", "osx-arm64", false, true, "INACTIVE")]
+    [Arguments("12.1.4", "osx-arm64", true, false, "HFG1001")]
+    [Arguments("12.1.4", "osx-x64", true, false, "HFG1001")]
     public async Task BuildIntegration_UsesResolvedVersionAndExactAotRid(string version, string rid, bool aot, bool hasPayload, string expected)
     {
         string root = Path.Combine(RepoContext.ArtifactsTestRoot, $"avalonianative-contract-{Guid.NewGuid():N}");
@@ -286,9 +286,9 @@ public class AvaloniaNativeTests
                   </PropertyGroup>
                   <ItemGroup>
                     <PackageReference Include="Avalonia.Native" Version="{{version}}" />
-                    <HostForgeStaticPackage Include="test-arm64" Component="Avalonia.Native" Rid="osx-arm64" AvaloniaVersion="12.1.3" NativeDir="{{escapedRoot}}/"
+                    <HostForgeStaticPackage Include="test-arm64" Component="Avalonia.Native" Rid="osx-arm64" AvaloniaVersion="12.1.4" NativeDir="{{escapedRoot}}/"
                                                    Condition="'{{hasPayload}}' == 'true' or '{{rid}}' != 'osx-arm64'" />
-                    <HostForgeStaticPackage Include="test-x64" Component="Avalonia.Native" Rid="osx-x64" AvaloniaVersion="12.1.3" NativeDir="{{escapedRoot}}/"
+                    <HostForgeStaticPackage Include="test-x64" Component="Avalonia.Native" Rid="osx-x64" AvaloniaVersion="12.1.4" NativeDir="{{escapedRoot}}/"
                                                    Condition="'{{hasPayload}}' == 'true' or '{{rid}}' != 'osx-x64'" />
                     <ResolvedFileToPublish Include="libAvaloniaNative.dylib;libSkiaSharp.dylib;libHarfBuzzSharp.dylib" />
                   </ItemGroup>

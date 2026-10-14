@@ -8,7 +8,7 @@ package alongside Avalonia; managed graphics dependencies are selected automatic
   <PublishAot>true</PublishAot>
 </PropertyGroup>
 <ItemGroup>
-  <PackageReference Include="Avalonia.Desktop" Version="12.1.3" />
+  <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
   <PackageReference Include="ChsBuffer.SkiaSharp.Static" Version="3.119.4" />
 </ItemGroup>
 ```

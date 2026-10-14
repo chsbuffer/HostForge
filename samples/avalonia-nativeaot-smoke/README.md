@@ -1,6 +1,6 @@
 # Avalonia NativeAOT renderer smoke
 
-Publishes Avalonia 12.1.3 with SkiaSharp 3.119.4 or 4.153.1, draws one frame and
+Publishes Avalonia 12.1.4 with SkiaSharp 3.119.4 or 4.153.1, draws one frame and
 checks the actual Skia backend and red/green/blue/white pixels. A JSON result is
 written to stdout; diagnostics go to stderr. Exit codes are 0 for success,
 1 for failure and 124 for timeout. The default uses official dynamic native assets.

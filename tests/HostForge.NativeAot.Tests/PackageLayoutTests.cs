@@ -19,7 +19,7 @@ public class PackageLayoutTests
         {
             ("SkiaSharp", skiaVersion, new[] { "win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64", "osx-x64", "osx-arm64" }),
             ("Angle", RepoContext.AngleVersion, new[] { "win-x64", "win-arm64" }),
-            ("Avalonia.Native", "12.1.3", new[] { "osx-x64", "osx-arm64" })
+            ("Avalonia.Native", "12.1.4", new[] { "osx-x64", "osx-arm64" })
         })
         {
             string id = $"ChsBuffer.{component}.Static";

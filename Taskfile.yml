@@ -171,14 +171,14 @@ tasks:
         --deployer-folder=artifacts/angle
 
   build-avalonianative:
-    desc: Build and deploy AvaloniaNative (macOS, RID=osx-x64|osx-arm64, AVALONIA_VERSION=12.1.3)
+    desc: Build and deploy AvaloniaNative (macOS, RID=osx-x64|osx-arm64, AVALONIA_VERSION=12.1.4)
     platforms: [darwin]
     vars:
       RID: '{{.RID | default "osx-arm64"}}'
       BUILD_ARCH:
         sh: uname -m
       BUILD_RID: '{{if eq .BUILD_ARCH "arm64"}}osx-arm64{{else}}osx-x64{{end}}'
-      AVALONIA_VERSION: '{{.AVALONIA_VERSION | default "12.1.3"}}'
+      AVALONIA_VERSION: '{{.AVALONIA_VERSION | default "12.1.4"}}'
     requires:
       vars:
         - name: RID
@@ -193,9 +193,9 @@ tasks:
         --deployer-folder=artifacts/avalonianative
 
   pack-avalonianative:
-    desc: Pack one AvaloniaNative RID (RID=osx-x64|osx-arm64, AVALONIA_VERSION=12.1.3, PACKAGING_REVISION=0)
+    desc: Pack one AvaloniaNative RID (RID=osx-x64|osx-arm64, AVALONIA_VERSION=12.1.4, PACKAGING_REVISION=0)
     vars:
-      AVALONIA_VERSION: '{{.AVALONIA_VERSION | default "12.1.3"}}'
+      AVALONIA_VERSION: '{{.AVALONIA_VERSION | default "12.1.4"}}'
       PACKAGING_REVISION: '{{.PACKAGING_REVISION | default "0"}}'
     requires:
       vars:
@@ -210,7 +210,7 @@ tasks:
   pack-avalonianative-meta:
     desc: Pack the AvaloniaNative meta package (requires both RID packages)
     vars:
-      AVALONIA_VERSION: '{{.AVALONIA_VERSION | default "12.1.3"}}'
+      AVALONIA_VERSION: '{{.AVALONIA_VERSION | default "12.1.4"}}'
       PACKAGING_REVISION: '{{.PACKAGING_REVISION | default "0"}}'
     cmds:
       - >-

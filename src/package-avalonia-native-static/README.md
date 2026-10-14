@@ -9,8 +9,8 @@ restore only one architecture.
   <PublishAot>true</PublishAot>
 </PropertyGroup>
 <ItemGroup>
-  <PackageReference Include="Avalonia.Desktop" Version="12.1.3" />
-  <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="12.1.3" />
+  <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
+  <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="12.1.4" />
 </ItemGroup>
 ```
 
@@ -32,8 +32,8 @@ inputs. A fourth package version segment denotes a HostForge packaging revision,
 without changing the required Avalonia version. There is no additional font
 initialization code.
 
-Archives are built from Avalonia 12.1.3 source, commit
-`8eeda4f6f546165b3f72e63c9f42247abb306905`, with upstream MicroCom-generated
+Archives are built from Avalonia 12.1.4 source, commit
+`2d79ba55fae1b1e71c69f93a668080c9029e6a31`, with upstream MicroCom-generated
 headers. Each archive contains one architecture, targets macOS 12.0, and includes
 a source/toolchain/SHA-256 manifest and the Avalonia license. The final
 application must also meet the system requirements of its .NET and Avalonia

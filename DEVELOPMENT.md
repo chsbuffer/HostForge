@@ -52,7 +52,7 @@ macOS 的 SkiaSharp 构建需要 Command Line Tools；AvaloniaNative 构建需�
 | `build-skiasharp` | 构建 SkiaSharp / HarfBuzzSharp 静态库；`SKIASHARP_VERSION=3.119.4\|4.153.1`、`RID`、`SYSROOT`、`JOBS` 可选，默认保持 3.119.4；macOS 支持 `RID=osx-x64\|osx-arm64`，使用 CLT + GN，最多 4 并发 |
 | `pack-graphics-meta` | 打包 SkiaSharp / Angle / Avalonia.Native 元包（依赖该组件全部支持 RID） |
 | `build-angle` | 构建 Windows x64 / arm64 ANGLE 静态库 |
-| `build-avalonianative` | 用 Xcode 26.0.1 构建 macOS AvaloniaNative（RID=osx-x64\|osx-arm64，AVALONIA_VERSION=12.1.3） |
+| `build-avalonianative` | 用 Xcode 26.0.1 构建 macOS AvaloniaNative（RID=osx-x64\|osx-arm64，AVALONIA_VERSION=12.1.4） |
 | `pack-avalonianative` | 打包单个 AvaloniaNative RID；PACKAGING_REVISION 指定第四段修订号 |
 | `pack-avalonianative-meta` | 打包精确依赖两个 macOS RID 包的 AvaloniaNative 元包 |
 | `test-avalonianative` | 验证版本与 AOT/RID 门控；macOS 上发布并运行窗口和字体测试 |

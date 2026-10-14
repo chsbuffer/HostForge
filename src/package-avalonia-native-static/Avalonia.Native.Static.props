@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <AvaloniaNativeVersion Condition="'$(AvaloniaNativeVersion)' == ''">12.1.3</AvaloniaNativeVersion>
+    <AvaloniaNativeVersion Condition="'$(AvaloniaNativeVersion)' == ''">12.1.4</AvaloniaNativeVersion>
     <PackagingRevision Condition="'$(PackagingRevision)' == ''">0</PackagingRevision>
     <AvaloniaNativePackageVersion>$(AvaloniaNativeVersion)</AvaloniaNativePackageVersion>
     <AvaloniaNativePackageVersion Condition="'$(PackagingRevision)' != '0'">$(AvaloniaNativeVersion).$(PackagingRevision)</AvaloniaNativePackageVersion>
