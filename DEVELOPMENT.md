@@ -225,43 +225,40 @@ artifacts/
 
 ## CI 工作流
 
+Job ID 使用“行为-组件-系统”顺序；系统表示产物或测试对象的平台，跨平台或与平台无关时省略，与 runner 系统无关。Windows ARM64 测试使用 `windows-arm64` 后缀。
+
 <!-- Keep this Mermaid workflow diagram in sync with .github/workflows/build.yml. -->
 ```mermaid
 flowchart LR
-    ASP["avalonia-smoke-plan<br/>version / RID / mode subset"] --> AS["avalonia-smoke<br/>AOT + actual backend + pixel readback"]
-    ANP["avalonianative-plan<br/>macOS RID subset"] --> AN["avalonianative-macos<br/>build / pack / AOT test"]
-    AN --> ANM["pack-avalonianative-meta"]
-    ANM --> CLEAN
-    NP["native-plan<br/>version / RID subset"] --> NW["native-windows<br/>Skia 3/4 × win-x64/arm64"]
-    NP --> NL["native-linux<br/>Skia 3/4 × linux-x64"]
-    NP --> NLC["native-linux-cross<br/>arm64 / musl-x64 / musl-arm64"]
-    NP --> NLCT["native-linux-cross-test<br/>native ARM64 / Alpine AOT"]
+    AN["build-avalonianative-macos<br/>build / pack / AOT test"]
+    NP["plan-all<br/>Skia 3/4 / complete RID matrix"] --> NW["build-skia-windows<br/>Skia 3/4 × win-x64/arm64"]
+    NP --> NL["build-skia-linux<br/>Skia 3/4 × linux-x64"]
+    NP --> NLC["build-skia-linux-cross<br/>arm64 / musl-x64 / musl-arm64"]
+    NP --> NLCT["test-skia-linux-cross<br/>native ARM64 / Alpine AOT"]
     NLC --> NLCT
-    NP --> NM["native-macos<br/>Skia 3/4 × osx-x64/arm64"]
-    NP --> NMP["native-meta-pack<br/>3 meta packages"]
+    NP --> NM["build-skia-macos<br/>Skia 3/4 × osx-x64/arm64"]
+    NP --> NMP["pack-all<br/>3 meta packages"]
     NP --> NWAT
-    NW --> NWAT["native-windows-arm-test<br/>native Windows ARM64 AOT"]
+    NW --> NWAT["test-skia-windows-arm64<br/>native Windows ARM64 AOT"]
     NW --> NMP
     NLC --> NMP
     AN --> NMP
     NL --> NMP
     NM --> NMP
+    NP --> WA
     WA --> NMP
-    NP --> NMT["native-meta-test<br/>Skia 3/4 × 8 RIDs / static renderers"]
+    NP --> NMT["test-all<br/>Skia 3/4 × 8 RIDs / static renderers"]
     NMP --> NMT
     subgraph W["Windows lane"]
         direction LR
-        WH["windows-hostlibs<br/>default × x64/arm64"]
-        WA["windows-angle<br/>x64/arm64"]
-        WPG["pack-windows-static-graphics<br/>x64/arm64"]
-        WLA["windows-link-avalonia<br/>link + test"]
-        WM["windows-matrix-test<br/>Static AppHost + NativeAOT"]
+        WH["build-hostlibs-windows<br/>default × x64/arm64"]
+        WA["build-angle-windows<br/>x64/arm64"]
+        WLA["link-avalonia-apphost-windows<br/>link + test"]
+        WM["test-all-windows<br/>Static AppHost + NativeAOT"]
 
         WH --> WLA
         NW --> WLA
         WA --> WLA
-        NW --> WPG
-        WA --> WPG
         WH --> WM
         NW --> WM
         WA --> WM
@@ -269,31 +266,27 @@ flowchart LR
 
     subgraph L["Linux lane"]
         direction LR
-        LSY["linux-sysroot"]
-        LH["linux-hostlibs"]
-        LPG["pack-linux-static-graphics"]
-        LLA["linux-link-avalonia<br/>link + test"]
-        LM["linux-matrix-test<br/>Static AppHost + NativeAOT"]
+        LSY["build-sysroot-linux"]
+        LH["build-hostlibs-linux"]
+        LLA["link-avalonia-apphost-linux<br/>link + test"]
+        LM["test-all-linux<br/>Static AppHost + NativeAOT"]
 
         LSY --> LH
         LSY --> LLA
         LSY --> LM
         LH --> LLA
         NL --> LLA
-        NL --> LPG
         LH --> LM
         NL --> LM
     end
 
-    PA["pack-avalonia<br/>3 RIDs + Build + meta"]
-    CLEAN["cleanup-packaged-artifacts"]
+    PA["pack-avalonia-apphost<br/>3 RIDs + Build + meta"]
+    CLEAN["cleanup-all"]
     NLCT --> CLEAN
 
     WLA --> PA
     LLA --> PA
-    WPG --> CLEAN
     WM --> CLEAN
-    LPG --> CLEAN
     LM --> CLEAN
     PA --> CLEAN
     NMT --> CLEAN
@@ -301,46 +294,40 @@ flowchart LR
     NWAT --> CLEAN
 ```
 
-| Job | 平台 | 主要输出 |
+| Job | 执行平台 | 主要输出 |
 | --- | --- | --- |
-| `avalonia-smoke-plan` | Linux | `components=smoke` 独立诊断的版本、RID、渲染模式矩阵 |
-| `avalonia-smoke` | Windows / Linux / macOS | 官方动态原生库的 AOT 窗口渲染、实际 backend、像素读回与提交 JSON；独立于静态库生产 |
-| `native-plan` | Linux | dispatch 所选版本与 8 RID 矩阵 |
-| `native-windows` | Windows x64 | 两个版本 × 两种架构的静态库、RID 包，以及 x64 AOT / 版本保护 |
-| `native-windows-arm-test` | Windows 11 ARM64 | ARM64 NativeAOT 原生发布、实际运行与架构审计 |
-| `native-linux` | Linux | 固定 LLVM 20 / bionic sysroot 静态库、RID 包、AOT 运行及 ABI 审计 |
-| `native-linux-cross` | Linux x64 | linux-arm64 / musl-x64 / musl-arm64 × 两版本的静态库、RID 包及固定目标 sysroot |
-| `native-linux-cross-test` | Linux x64 / ARM64 | glibc ARM64 原生 AOT 与 ABI 审计；musl 在原生 Alpine 容器内发布、运行及解释器审计 |
-| `native-macos` | macOS 15 Intel / ARM64 | 两个版本的 Metal + GL 静态库、RID 包、AOT 实际运行、Mach-O 架构 / 部署版本审计 |
-| `native-meta-pack` | Linux | 依赖全部 RID 的正式元包、消费 feed 与包体积审计 |
-| `native-meta-test` | Windows / Linux / macOS 的原生 x64 / ARM64 | 三元包、无 RID build、16 个发布运行单元、ABI 审计；静态 ANGLE / Vulkan / EGL / GLX 与 macOS 绘制证明 |
-| `avalonianative-plan` | Linux | `components=avalonianative` 或 `all` 时选择 macOS RID |
-| `avalonianative-macos` | macOS 15 ARM64 / Intel，Xcode 26.0.1 | AvaloniaNative RID 包、AOT 窗口/字体与链接测试结果 |
-| `pack-avalonianative-meta` | Linux | 两个 macOS RID 都构建后生成精确版本元包 |
-| `windows-hostlibs` | Windows | 两种架构的 HostLib 缓存 |
-| `windows-angle` | Windows | `win-x64` / `win-arm64` ANGLE 静态库缓存 |
-| `pack-windows-static-graphics` | Windows | 两种架构的 SkiaSharp 与 ANGLE 静态 NuGet 包 |
-| `windows-matrix-test` | Windows | Static AppHost 与 win-x64 NativeAOT 集成验证 |
-| `windows-link-avalonia` | Windows | Windows Avalonia 模板及测试结果 |
-| `linux-sysroot` | Linux | Skia / HostLibs / AppHost 共用的 cross 镜像 bionic rootfs 缓存 |
-| `linux-hostlibs` | Linux | `linux-x64` HostLib 缓存 |
-| `pack-linux-static-graphics` | Linux | `linux-x64` SkiaSharp 静态 NuGet 包 |
-| `linux-matrix-test` | Linux | Static AppHost 与 linux-x64 NativeAOT 集成验证 |
-| `linux-link-avalonia` | Linux | Linux Avalonia 模板及测试结果 |
-| `pack-avalonia` | Windows | 3 个 RID 包 + Build 包 + 元包（ChsBuffer.Avalonia.AppHost） |
-| `cleanup-packaged-artifacts` | Linux | 所有消费 job 成功后删除已打包的中间工件 |
+| `plan-all` | Linux | 原生缓存键边界测试、两个 SkiaSharp 版本与完整 8 RID 矩阵 |
+| `build-skia-windows` | Windows x64 | 两个版本 × 两种架构的静态库、RID 包，以及 x64 AOT / 版本保护 |
+| `test-skia-windows-arm64` | Windows 11 ARM64 | ARM64 NativeAOT 原生发布、实际运行与架构审计 |
+| `build-skia-linux` | Linux | 固定 LLVM 20 / bionic sysroot 静态库、RID 包、AOT 运行及 ABI 审计 |
+| `build-skia-linux-cross` | Linux x64 | linux-arm64 / musl-x64 / musl-arm64 × 两版本的静态库、RID 包及固定目标 sysroot |
+| `test-skia-linux-cross` | Linux x64 / ARM64 | glibc ARM64 原生 AOT 与 ABI 审计；musl 在原生 Alpine 容器内发布、运行及解释器审计 |
+| `build-skia-macos` | macOS 15 Intel / ARM64 | 两个版本的 Metal + GL 静态库、RID 包、AOT 实际运行、Mach-O 架构 / 部署版本审计 |
+| `pack-all` | Linux | 依赖全部 RID 的正式元包、消费 feed 与包体积审计 |
+| `test-all` | Windows / Linux / macOS 的原生 x64 / ARM64 | 三元包、无 RID build、16 个发布运行单元、ABI 审计；静态 ANGLE / Vulkan / EGL / GLX 与 macOS 绘制证明 |
+| `build-avalonianative-macos` | macOS 15 ARM64 / Intel，Xcode 26.0.1 | AvaloniaNative RID 包、AOT 窗口/字体与链接测试结果 |
+| `build-hostlibs-windows` | Windows | 两种架构的 HostLib 缓存 |
+| `build-angle-windows` | Windows | `win-x64` / `win-arm64` ANGLE 静态库缓存 |
+| `test-all-windows` | Windows | Static AppHost 与 win-x64 NativeAOT 集成验证 |
+| `link-avalonia-apphost-windows` | Windows | Windows Avalonia 模板及测试结果 |
+| `build-sysroot-linux` | Linux | Skia / HostLibs / AppHost 共用的 cross 镜像 bionic rootfs 缓存 |
+| `build-hostlibs-linux` | Linux | `linux-x64` HostLib 缓存 |
+| `test-all-linux` | Linux | Static AppHost 与 linux-x64 NativeAOT 集成验证 |
+| `link-avalonia-apphost-linux` | Linux | Linux Avalonia 模板及测试结果 |
+| `pack-avalonia-apphost` | Windows | 3 个 RID 包 + Build 包 + 元包（ChsBuffer.Avalonia.AppHost） |
+| `cleanup-all` | Linux | 所有消费 job 成功后删除已打包的中间工件 |
 
 ## 缓存约定
 
-手工运行用 `components=all|skiasharp|avalonianative|smoke`、`skia_version=all|3.119.4|4.153.1` 和 `rid=all|<8 个支持 RID 之一>` 选择子集。完整运行聚合正式元包并在 8 个原生 RID 上验收；RID 子集只生成对应单元。`components=all` 保留 AppHost 构建与回归测试。musl 测试在对应架构的 Alpine 容器中执行；macOS runner 无 Metal 设备时验收 Software，并保存检测记录。包与验收证据保留 7 天（独立 AvaloniaNative 包为 14 天），跨 job sysroot 保留 3 天。
+推送到 `main` 时运行完整构建，覆盖 SkiaSharp 3.119.4 / 4.153.1、全部 8 个 RID、AvaloniaNative 的两个 macOS RID，以及 AppHost 构建与回归测试。`pack-all` 聚合所有原生 RID 包与正式元包，上传 `nuget-native-all`，随后在 8 个原生 RID 上验收。musl 测试在对应架构的 Alpine 容器中执行；macOS runner 无 Metal 设备时验收 Software，并记录检测结果。`nuget-native-all` 保留 7 天，跨 job sysroot 最多保留 3 天；成功完成后的清理可能更早删除中间工件。
 
-原生库产物键按组件、版本、RID、实际工具链版本，以及对应 recipe 核心 / 平台模块 / profile / Dockerfile / 校验和与相关 Task 片段生成。版本表只读取当前版本条目；无关 Task、其它平台 profile 和 Python 项目元数据不参与。AppHost 与 NativeAOT 共享 SkiaSharp 3.119.4 产物。`native-plan` 运行 `tests/native` 的缓存键边界测试。
+原生库产物键按组件、版本、RID、实际工具链版本，以及对应 recipe 核心 / 平台模块 / profile / Dockerfile / 校验和与相关 Task 片段生成。版本表只读取当前版本条目；无关 Task、其它平台 profile 和 Python 项目元数据不参与。AppHost 与 NativeAOT 共享 SkiaSharp 3.119.4 产物。`plan-all` 运行 `tests/native` 的缓存键边界测试。
 
-产物 miss 时恢复同组件、版本、RID、工具链前缀的编译缓存。Skia、HarfBuzz、ANGLE 和 HostLibs 使用 sccache 0.18，关闭直接模式。HostLibs 保留 MSVC 预编译头，只缓存独立对象；Clang 预编译头在当前目录重新生成。AvaloniaNative 使用 ccache depend 模式与正常模块头文件校验。单元上限：Windows Skia 128 MiB、ANGLE 64 MiB、Windows HostLibs 256 MiB、Linux HostLibs 512 MiB、Linux / macOS Skia 64 MiB、AvaloniaNative 32 MiB，合计 2.44 GiB；另为产物、目标 sysroot 和工具缓存留出空间。旧输入代际由 Actions LRU 回收，构建统计保存在 `cache-stats-*` artifact。
+产物 miss 时恢复同组件、版本、RID、工具链前缀的编译缓存。Skia、HarfBuzz、ANGLE 和 HostLibs 使用 sccache 0.18，关闭直接模式。HostLibs 保留 MSVC 预编译头，只缓存独立对象；Clang 预编译头在当前目录重新生成。AvaloniaNative 使用 ccache depend 模式与正常模块头文件校验。单元上限：Windows Skia 128 MiB、ANGLE 64 MiB、Windows HostLibs 256 MiB、Linux HostLibs 512 MiB、Linux / macOS Skia 64 MiB、AvaloniaNative 32 MiB，合计 2.44 GiB；另为产物、目标 sysroot 和工具缓存留出空间。旧输入代际由 Actions LRU 回收。
 
-`cache_mode=normal|rebuild|cold` 分别使用全部缓存、只使用编译缓存、忽略两层缓存，可用于重建与缓存问题诊断。Linux 热命中直接恢复压缩目标 rootfs，不拉取 cross 镜像；HostLibs 和 AppHost 链接也使用这一份 bionic rootfs。`components=smoke` 保留独立的官方动态库诊断，可比较静态链接前后的后端行为；默认运行只验收静态包。
+CI 使用原生库产物缓存和编译缓存。Linux 热命中直接恢复压缩目标 rootfs，不拉取 cross 镜像；HostLibs 和 AppHost 链接也使用这一份 bionic rootfs。静态图形库的实际后端与绘制验收在 `test-all` 中执行。
 
-同一 ref 的新运行取消旧运行，main 的发布性运行使用独立并发组，避免运行中或排队中的发布被取消。无论产物命中与否都上传 workflow artifact；消费 job 成功后删除 `native-skia-*`、`native-rootfs-*`、`angle-*` 和 `avalonia-host-*`，保留 NuGet 包、证据及 `hostlibs-default-*`。失败时保留中间产物供重跑。
+同一 ref 的新运行取消旧运行，main 的发布性运行使用独立并发组，避免运行中或排队中的发布被取消。原生库和 RID 包在跨 job 消费前上传 workflow artifact；全部消费 job 成功后删除 `native-skia-*`、`native-rootfs-*`、`native-angle-*`、`avalonia-host-*`、`nuget-native-skia-*` 和 `nuget-native-avalonianative-*`。完整成功的运行最终保留 `nuget-native-all`、`nuget-avalonia-apphost` 和三个 `native-hostlib-default-<rid>` 工件；日志、测试证据和缓存统计不单独上传。失败时保留中间产物供重跑。
 
 ## 仓库结构
 
