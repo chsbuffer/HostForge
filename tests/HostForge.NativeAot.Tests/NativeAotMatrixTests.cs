@@ -264,7 +264,7 @@ public class NativeAotMatrixTests
 
     private static async Task AuditMachOAsync(string executable, string workspace)
     {
-        string nativeRoot = Path.Combine(workspace, "obj", "packages", $"chsbuffer.skiasharp.static.{Rid}", SkiaVersion, "build", "native", Rid);
+        string nativeRoot = Path.Combine(workspace, "obj", "packages", $"chsbuffer.skiasharp.static.{Rid}", RepoContext.GetSkiaSharpPackageVersion(SkiaVersion), "build", "native", Rid);
         string[] archives = Directory.GetFiles(nativeRoot, "*.a");
         if (archives.Length == 0)
             throw new InvalidOperationException("No macOS static archives were restored.");
