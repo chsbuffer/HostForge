@@ -193,10 +193,9 @@ tasks:
         --deployer-folder=artifacts/avalonianative
 
   pack-avalonianative:
-    desc: Pack one AvaloniaNative RID (RID=osx-x64|osx-arm64, AVALONIA_VERSION=12.1.4, PACKAGING_REVISION=0)
+    desc: Pack one AvaloniaNative RID (RID=osx-x64|osx-arm64, AVALONIA_VERSION=12.1.4)
     vars:
       AVALONIA_VERSION: '{{.AVALONIA_VERSION | default "12.1.4"}}'
-      PACKAGING_REVISION: '{{.PACKAGING_REVISION | default "0"}}'
     requires:
       vars:
         - name: RID
@@ -205,17 +204,16 @@ tasks:
       - >-
         dotnet pack src/package-avalonia-native-static/Avalonia.Native.Static.Rid.csproj -c Release
         -p:AvaloniaNativeRid={{.RID}} -p:AvaloniaNativeVersion={{.AVALONIA_VERSION}}
-        -p:PackagingRevision={{.PACKAGING_REVISION}} -v:{{.VERBOSITY}}
+        -v:{{.VERBOSITY}}
 
   pack-avalonianative-meta:
     desc: Pack the AvaloniaNative meta package (requires both RID packages)
     vars:
       AVALONIA_VERSION: '{{.AVALONIA_VERSION | default "12.1.4"}}'
-      PACKAGING_REVISION: '{{.PACKAGING_REVISION | default "0"}}'
     cmds:
       - >-
         dotnet pack src/package-static-graphics/StaticGraphics.csproj -c Release -p:StaticGraphicsComponent=Avalonia.Native
-        -p:AvaloniaNativeVersion={{.AVALONIA_VERSION}} -p:PackagingRevision={{.PACKAGING_REVISION}}
+        -p:AvaloniaNativeVersion={{.AVALONIA_VERSION}}
         -v:{{.VERBOSITY}}
 
   test-avalonianative:

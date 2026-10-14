@@ -27,6 +27,17 @@ public static class RepoContext
 
     public static string SkiaSharpVersion { get; } = ReadProperty("SkiaSharpVersion");
 
+    public static string SkiaSharpPackageVersion { get; } = ReadProperty("SkiaSharpPackageVersion");
+
+    public static string AnglePackageVersion { get; } = ReadProperty("AnglePackageVersion");
+
+    public static string AvaloniaNativeVersion { get; } = ReadProperty("AvaloniaNativeVersion");
+
+    public static string AvaloniaNativePackageVersion { get; } = ReadProperty("AvaloniaNativePackageVersion");
+
+    public static string GetSkiaSharpPackageVersion(string upstreamVersion) =>
+        ReadProperty("SkiaSharpPackageVersion", new Dictionary<string, string> { ["SkiaSharpVersion"] = upstreamVersion });
+
     public static string AngleVersion { get; } = ReadProperty("AngleVersion");
 
     public static string HarfBuzzVersion { get; } = ReadProperty("HarfBuzzVersion");
@@ -52,7 +63,7 @@ public static class RepoContext
         return Path.GetFullPath(root);
     }
 
-    private static string ReadProperty(string propertyName)
+    private static string ReadProperty(string propertyName, IDictionary<string, string>? globalProperties = null)
     {
         string propsFile = Path.Combine(RepoRoot, "Directory.Build.props");
         string? value;
@@ -61,7 +72,7 @@ public static class RepoContext
         {
             var project = new Project(
                 propsFile,
-                globalProperties: null,
+                globalProperties: globalProperties,
                 toolsVersion: null,
                 projectCollection: projectCollection,
                 loadSettings: ProjectLoadSettings.IgnoreMissingImports);

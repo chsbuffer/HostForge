@@ -70,6 +70,7 @@ public class AvaloniaNativeTests
     [Test]
     public async Task Packages_ContainPortableRidRegistrationAndExactMetaDependencies()
     {
+        string version = RepoContext.AvaloniaNativePackageVersion;
         string root = Path.Combine(RepoContext.ArtifactsTestRoot, $"avalonianative pack {Guid.NewGuid():N}");
         string payloads = Path.Combine(root, "payloads");
         string packages = Path.Combine(root, "packages");
@@ -87,12 +88,12 @@ public class AvaloniaNativeTests
                 AssertEx.Success(pack, $"pack {rid}");
 
                 string id = $"ChsBuffer.Avalonia.Native.Static.{rid}";
-                using ZipArchive zip = ZipFile.OpenRead(Path.Combine(packages, $"{id}.12.1.4.1.nupkg"));
+                using ZipArchive zip = ZipFile.OpenRead(Path.Combine(packages, $"{id}.{version}.nupkg"));
                 ZipArchiveEntry registration = zip.GetEntry($"buildTransitive/{id}.targets") ?? throw new InvalidOperationException("Missing package registration.");
                 using var reader = new StreamReader(registration.Open());
                 string xml = await reader.ReadToEndAsync();
                 AssertEx.Contains(xml, $"<Rid>{rid}</Rid>");
-                AssertEx.Contains(xml, "<AvaloniaVersion>12.1.4</AvaloniaVersion>");
+                AssertEx.Contains(xml, $"<AvaloniaVersion>{RepoContext.AvaloniaNativeVersion}</AvaloniaVersion>");
                 AssertEx.Contains(xml, "$(MSBuildThisFileDirectory)");
                 AssertEx.NotContains(xml, RepoContext.RepoRoot);
                 await Assert.That(zip.GetEntry($"build/native/{rid}/libAvaloniaNative.a")).IsNotNull();
@@ -102,14 +103,14 @@ public class AvaloniaNativeTests
 
             CommandResult meta = await PackFixtureAsync(root);
             AssertEx.Success(meta, "pack meta");
-            using ZipArchive metaZip = ZipFile.OpenRead(Path.Combine(packages, "ChsBuffer.Avalonia.Native.Static.12.1.4.1.nupkg"));
+            using ZipArchive metaZip = ZipFile.OpenRead(Path.Combine(packages, $"ChsBuffer.Avalonia.Native.Static.{version}.nupkg"));
             ZipArchiveEntry nuspec = metaZip.Entries.Single(entry => entry.FullName.EndsWith(".nuspec", StringComparison.Ordinal));
             using Stream stream = nuspec.Open();
             XDocument document = XDocument.Load(stream);
             XElement[] dependencies = document.Descendants().Where(element => element.Name.LocalName == "dependency").ToArray();
             await Assert.That(dependencies.Length).IsEqualTo(2);
             foreach (XElement dependency in dependencies)
-                await Assert.That((string?)dependency.Attribute("version")).IsEqualTo("[12.1.4.1]");
+                await Assert.That((string?)dependency.Attribute("version")).IsEqualTo($"[{version}]");
         }
         finally
         {
@@ -145,7 +146,7 @@ public class AvaloniaNativeTests
                     <RestorePackagesPath>{{escapedRoot}}/nuget</RestorePackagesPath>
                   </PropertyGroup>
                   <ItemGroup>
-                    <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="12.1.4.1" />
+                    <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="{{RepoContext.AvaloniaNativePackageVersion}}" />
                   </ItemGroup>
                   <Target Name="VerifyInactivePackage" AfterTargets="Build">
                     <Error Condition="@(HostForgeStaticPackage->Count()) != 2" Text="Both transitive RID packages must be imported." />
@@ -182,7 +183,7 @@ public class AvaloniaNativeTests
 
     private static async Task CreatePayloadFixtureAsync(string payloads, string rid)
     {
-        string payload = Path.Combine(payloads, "12.1.4", rid);
+        string payload = Path.Combine(payloads, RepoContext.AvaloniaNativeVersion, rid);
         Directory.CreateDirectory(Path.Combine(payload, "licenses"));
         // Packaging fixtures never enter the normal native artifacts directory.
         await File.WriteAllTextAsync(Path.Combine(payload, "libAvaloniaNative.a"), "package fixture");
@@ -196,7 +197,7 @@ public class AvaloniaNativeTests
             ? "src/package-static-graphics/StaticGraphics.csproj"
             : "src/package-avalonia-native-static/Avalonia.Native.Static.Rid.csproj");
         // Isolate generated registration files and NuGet assets across parallel tests.
-        string parameters = $"-c Release -p:PackagingRevision=1 -p:AvaloniaNativeArtifactsRoot=\"{root}/payloads\" -p:PackageOutputPath=\"{root}/packages\""
+        string parameters = $"-c Release -p:AvaloniaNativeArtifactsRoot=\"{root}/payloads\" -p:PackageOutputPath=\"{root}/packages\""
             + $" -p:BaseIntermediateOutputPath=\"{root}/obj/{rid ?? "meta"}/\" -p:RestorePackagesPath=\"{root}/nuget\" -v:minimal";
         parameters += rid is null
             ? $" -p:StaticGraphicsComponent=Avalonia.Native -p:RestoreAdditionalProjectSources=\"{root}/packages\""

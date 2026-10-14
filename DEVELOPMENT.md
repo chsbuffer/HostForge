@@ -53,7 +53,7 @@ macOS 的 SkiaSharp 构建需要 Command Line Tools；AvaloniaNative 构建需�
 | `pack-graphics-meta` | 打包 SkiaSharp / Angle / Avalonia.Native 元包（依赖该组件全部支持 RID） |
 | `build-angle` | 构建 Windows x64 / arm64 ANGLE 静态库 |
 | `build-avalonianative` | 用 Xcode 26.0.1 构建 macOS AvaloniaNative（RID=osx-x64\|osx-arm64，AVALONIA_VERSION=12.1.4） |
-| `pack-avalonianative` | 打包单个 AvaloniaNative RID；PACKAGING_REVISION 指定第四段修订号 |
+| `pack-avalonianative` | 打包单个 AvaloniaNative RID；包版本由 `Directory.Build.props` 配置 |
 | `pack-avalonianative-meta` | 打包精确依赖两个 macOS RID 包的 AvaloniaNative 元包 |
 | `test-avalonianative` | 验证版本与 AOT/RID 门控；macOS 上发布并运行窗口和字体测试 |
 | `matrix` | 运行 Static AppHost 与 NativeAOT 集成矩阵 |
@@ -300,6 +300,16 @@ flowchart LR
 
     PA["pack-avalonia-apphost<br/>3 RIDs + Build + meta"]
     PA4["pack-avalonia-apphost-skia4<br/>3 RIDs + Build + meta / skia4 suffix"]
+    PUB["publish-nuget<br/>OIDC / nuget.org"]
+    NMP --> PUB
+    NLCT --> PUB
+    NWAT --> PUB
+    NMT --> PUB
+    WM --> PUB
+    LM --> PUB
+    PA --> PUB
+    PA4 --> PUB
+    PUB --> CLEAN
     CLEAN["cleanup-all"]
     NLCT --> CLEAN
 
@@ -340,7 +350,8 @@ flowchart LR
 | `link-avalonia-apphost-skia4-linux` | Linux | SkiaSharp 4 的 Linux Avalonia 模板及版本匹配测试 |
 | `pack-avalonia-apphost` | Windows | 3 个 RID 包 + Build 包 + 元包（ChsBuffer.Avalonia.AppHost） |
 | `pack-avalonia-apphost-skia4` | Windows | SkiaSharp 4 的 3 个 RID 包 + Build 包 + 元包；版本追加 `skia4` |
-| `cleanup-all` | Linux | 所有消费 job 成功后删除已打包的中间工件 |
+| `publish-nuget` | Linux | 测试成功后，通过 Trusted Publishing 发布 native 和两条 Avalonia AppHost 版本线的 NuGet 包 |
+| `cleanup-all` | Linux | 测试和发布成功后删除已打包的中间工件 |
 
 AppHost 的 link、pack 与平台集成测试从 `plan-all.outputs.versions` 选择 Skia 版本。Skia 4 使用独立 job 与 `avalonia-host-skia4-*` / `nuget-avalonia-apphost-skia4` 工件，链接产物路径保持 `artifacts/avalonia-host/<版本>/<RID>`。设置 `_Preview=beta` 时，Skia 4 包版本为 `12.0.0-beta.skia4`；留空时为 `12.0.0-skia4`。本地使用 `SKIASHARP_VERSION=4.153.1` 依次 link、test、pack，详见 [Avalonia AppHost 打包说明](src/package-avalonia-apphost/DEVELOPMENT.md)。
 
@@ -376,3 +387,17 @@ artifacts/  构建、打包和测试输出
 - [NativeAOT static graphics tests](tests/HostForge.NativeAot.Tests/README.md)
 - [AvaloniaNative tests](tests/HostForge.AvaloniaNative.Tests/README.md)
 - [Test infrastructure](tests/HostForge.TestInfra/README.md)
+
+## Native NuGet 修复版本
+
+native RID 包及聚合包统一使用上游版本的前三段加第四段修复号。例如 SkiaSharp 上游 `3.119.4` 对应 `3.119.4.1`；ANGLE 上游 `2.1.27548.20260419` 对应 `2.1.27548.1`。源码构建、产物目录、manifest 和上游托管依赖仍使用完整上游版本。
+
+在 `Directory.Build.props` 的四行 native 包版本配置中维护第四段修复号：Skia 3 / 4 分别配置 `SkiaSharpPackageVersion`，ANGLE 和 AvaloniaNative 分别配置 `AnglePackageVersion`、`AvaloniaNativePackageVersion`。发布修复前，只修改受影响版本线末尾的 `.1` 为 `.2` 等；同一版本线的全部 RID 包和聚合包一起发布。CI 重跑不会自动递增版本。
+
+升级到新的上游前三段版本时，将对应修复号重置为 `1`。若上游前三段没有变化（例如仅 ANGLE 日期段变化），继续递增第四段，避免复用已发布的包版本。
+
+## NuGet 自动发布
+
+推送到 `main` 后，`build.yml` 的 `publish-nuget` job 等待全部打包及相关测试成功，下载 `nuget-native-all`、`nuget-avalonia-apphost` 和 `nuget-avalonia-apphost-skia4`，将其中的 `.nupkg` 发布到 nuget.org。使用 `--skip-duplicate` 跳过已存在版本，CI 重跑可继续完成剩余包的发布；发布新修复仍须先递增对应版本号。
+
+认证采用 [NuGet Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing)：发布 job 具有 `id-token: write` 权限，`NuGet/login@v1` 使用 `secrets.NUGET_USER`（NuGet 用户名）换取临时 API key，随后立即执行 push。nuget.org 策略的 Workflow File 应为 `build.yml`，Environment 留空，与当前发布 job 保持一致。发布成功后才执行中间工件清理；认证或 push 失败会使 job 失败。

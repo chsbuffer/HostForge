@@ -21,11 +21,11 @@
 
   <ItemGroup>
     <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
-    <PackageReference Include="ChsBuffer.SkiaSharp.Static.$(NativeAotMatrixRid)" Version="$(SkiaSharpVersion)" Condition="'$(UseStaticGraphicsMeta)' != 'true'" />
-    <PackageReference Include="ChsBuffer.Angle.Static.$(NativeAotMatrixRid)" Version="$(AngleVersion)" Condition="'$(UseStaticGraphicsMeta)' != 'true' and $(NativeAotMatrixRid.StartsWith('win-')) and '$(CheckAngle)' == 'true'" />
-    <PackageReference Include="ChsBuffer.SkiaSharp.Static" Version="$(SkiaSharpVersion)" Condition="'$(UseStaticGraphicsMeta)' == 'true'" />
-    <PackageReference Include="ChsBuffer.Angle.Static" Version="$(AngleVersion)" Condition="'$(UseStaticGraphicsMeta)' == 'true'" />
-    <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="12.1.4" Condition="'$(UseStaticGraphicsMeta)' == 'true'" />
+    <PackageReference Include="ChsBuffer.SkiaSharp.Static.$(NativeAotMatrixRid)" Version="$(SkiaSharpPackageVersion)" Condition="'$(UseStaticGraphicsMeta)' != 'true'" />
+    <PackageReference Include="ChsBuffer.Angle.Static.$(NativeAotMatrixRid)" Version="$(AnglePackageVersion)" Condition="'$(UseStaticGraphicsMeta)' != 'true' and $(NativeAotMatrixRid.StartsWith('win-')) and '$(CheckAngle)' == 'true'" />
+    <PackageReference Include="ChsBuffer.SkiaSharp.Static" Version="$(SkiaSharpPackageVersion)" Condition="'$(UseStaticGraphicsMeta)' == 'true'" />
+    <PackageReference Include="ChsBuffer.Angle.Static" Version="$(AnglePackageVersion)" Condition="'$(UseStaticGraphicsMeta)' == 'true'" />
+    <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="$(AvaloniaNativePackageVersion)" Condition="'$(UseStaticGraphicsMeta)' == 'true'" />
     <!-- Only negative tests supply these properties; the normal consumer has no direct managed graphics references. -->
     <PackageReference Include="SkiaSharp" Version="$(MismatchedSkiaSharpVersion)" Condition="'$(MismatchedSkiaSharpVersion)' != ''" />
     <PackageReference Include="HarfBuzzSharp" Version="$(MismatchedHarfBuzzVersion)" Condition="'$(MismatchedHarfBuzzVersion)' != ''" />

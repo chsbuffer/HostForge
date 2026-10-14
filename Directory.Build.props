@@ -6,7 +6,16 @@
     <SkiaSharpVersion Condition="'$(SkiaSharpVersion)' == ''">3.119.4</SkiaSharpVersion>
     <HarfBuzzVersion Condition="'$(HarfBuzzVersion)' == '' and '$(SkiaSharpVersion)' == '3.119.4'">8.3.1.5</HarfBuzzVersion>
     <HarfBuzzVersion Condition="'$(HarfBuzzVersion)' == '' and '$(SkiaSharpVersion)' == '4.153.1'">14.2.1.301</HarfBuzzVersion>
+    <AvaloniaNativeVersion Condition="'$(AvaloniaNativeVersion)' == ''">12.1.4</AvaloniaNativeVersion>
     <HostLibsVersion>10.0.13</HostLibsVersion>
+  </PropertyGroup>
+
+  <!-- Increment only the affected native version line when publishing a fix. -->
+  <PropertyGroup>
+    <SkiaSharpPackageVersion Condition="$(SkiaSharpVersion.StartsWith('3.'))">$(SkiaSharpVersion).1</SkiaSharpPackageVersion>
+    <SkiaSharpPackageVersion Condition="$(SkiaSharpVersion.StartsWith('4.'))">$(SkiaSharpVersion).1</SkiaSharpPackageVersion>
+    <AnglePackageVersion>$([System.Version]::Parse('$(AngleVersion)').ToString(3)).1</AnglePackageVersion>
+    <AvaloniaNativePackageVersion>$(AvaloniaNativeVersion).1</AvaloniaNativePackageVersion>
   </PropertyGroup>
 
   <PropertyGroup>

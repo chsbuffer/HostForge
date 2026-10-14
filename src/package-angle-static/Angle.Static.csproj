@@ -6,7 +6,7 @@
     <NoWarn>$(NoWarn);NU5128;NU5129</NoWarn>
     <AngleHostRid Condition="'$(AngleHostRid)' == ''">win-x64</AngleHostRid>
     <PackageId>ChsBuffer.Angle.Static.$(AngleHostRid)</PackageId>
-    <Version>$(AngleVersion)</Version>
+    <Version>$(AnglePackageVersion)</Version>
     <Authors>ChsBuffer</Authors>
     <Description>ANGLE static libraries for $(AngleHostRid) NativeAOT and static host linking.</Description>
     <PackageTags>angle;static;nativeaot</PackageTags>

@@ -17,9 +17,9 @@ public class PackageLayoutTests
         string skiaVersion = Environment.GetEnvironmentVariable("HOSTFORGE_SKIA_VERSION") ?? RepoContext.SkiaSharpVersion;
         foreach ((string component, string version, string[] rids) in new[]
         {
-            ("SkiaSharp", skiaVersion, new[] { "win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64", "osx-x64", "osx-arm64" }),
-            ("Angle", RepoContext.AngleVersion, new[] { "win-x64", "win-arm64" }),
-            ("Avalonia.Native", "12.1.4", new[] { "osx-x64", "osx-arm64" })
+            ("SkiaSharp", RepoContext.GetSkiaSharpPackageVersion(skiaVersion), new[] { "win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64", "osx-x64", "osx-arm64" }),
+            ("Angle", RepoContext.AnglePackageVersion, new[] { "win-x64", "win-arm64" }),
+            ("Avalonia.Native", RepoContext.AvaloniaNativePackageVersion, new[] { "osx-x64", "osx-arm64" })
         })
         {
             string id = $"ChsBuffer.{component}.Static";
@@ -41,7 +41,7 @@ public class PackageLayoutTests
     {
         string version = Environment.GetEnvironmentVariable("HOSTFORGE_SKIA_VERSION") ?? RepoContext.SkiaSharpVersion;
         string rid = NativeAotMatrixTests.Rid;
-        string path = Path.Combine(RepoContext.AvaloniaPackageOutputDir, $"ChsBuffer.SkiaSharp.Static.{rid}.{version}.nupkg");
+        string path = Path.Combine(RepoContext.AvaloniaPackageOutputDir, $"ChsBuffer.SkiaSharp.Static.{rid}.{RepoContext.GetSkiaSharpPackageVersion(version)}.nupkg");
         AssertEx.FileExists(path);
         if (new FileInfo(path).Length >= 250_000_000)
             throw new InvalidOperationException("The RID package exceeds the 250 MB publishing limit.");

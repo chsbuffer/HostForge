@@ -8,11 +8,11 @@
     <AvaloniaVersion>12.1.4</AvaloniaVersion>
     <RestoreAdditionalProjectSources Condition="'$(SmokePackageSource)' != ''">$(RestoreAdditionalProjectSources);$(SmokePackageSource)</RestoreAdditionalProjectSources>
     <SmokeSkiaPackageId Condition="'$(SmokeSkiaPackageId)' == ''">ChsBuffer.SkiaSharp.Static.$(RuntimeIdentifier)</SmokeSkiaPackageId>
-    <SmokeSkiaPackageVersion Condition="'$(SmokeSkiaPackageVersion)' == ''">$(SkiaSharpVersion)</SmokeSkiaPackageVersion>
+    <SmokeSkiaPackageVersion Condition="'$(SmokeSkiaPackageVersion)' == ''">$(SkiaSharpPackageVersion)</SmokeSkiaPackageVersion>
     <SmokeAnglePackageId Condition="'$(SmokeAnglePackageId)' == ''">ChsBuffer.Angle.Static.$(RuntimeIdentifier)</SmokeAnglePackageId>
-    <SmokeAnglePackageVersion Condition="'$(SmokeAnglePackageVersion)' == ''">$(AngleVersion)</SmokeAnglePackageVersion>
+    <SmokeAnglePackageVersion Condition="'$(SmokeAnglePackageVersion)' == ''">$(AnglePackageVersion)</SmokeAnglePackageVersion>
     <SmokeAvaloniaNativePackageId Condition="'$(SmokeAvaloniaNativePackageId)' == ''">ChsBuffer.Avalonia.Native.Static.$(RuntimeIdentifier)</SmokeAvaloniaNativePackageId>
-    <SmokeAvaloniaNativePackageVersion Condition="'$(SmokeAvaloniaNativePackageVersion)' == ''">$(AvaloniaVersion)</SmokeAvaloniaNativePackageVersion>
+    <SmokeAvaloniaNativePackageVersion Condition="'$(SmokeAvaloniaNativePackageVersion)' == ''">$(AvaloniaNativePackageVersion)</SmokeAvaloniaNativePackageVersion>
   </PropertyGroup>
 
   <ItemGroup>

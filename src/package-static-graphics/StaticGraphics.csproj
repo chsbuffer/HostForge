@@ -9,12 +9,9 @@
     <NoBuild>true</NoBuild>
     <NoWarn>$(NoWarn);NU5128;NU5129</NoWarn>
     <PackageId>ChsBuffer.$(StaticGraphicsComponent).Static</PackageId>
-    <_NativeVersion Condition="'$(StaticGraphicsComponent)' == 'SkiaSharp'">$(SkiaSharpVersion)</_NativeVersion>
-    <_NativeVersion Condition="'$(StaticGraphicsComponent)' == 'Angle'">$(AngleVersion)</_NativeVersion>
-    <AvaloniaNativeVersion Condition="'$(AvaloniaNativeVersion)' == ''">12.1.4</AvaloniaNativeVersion>
-    <_NativeVersion Condition="'$(StaticGraphicsComponent)' == 'Avalonia.Native'">$(AvaloniaNativeVersion)</_NativeVersion>
-    <PackagingRevision Condition="'$(PackagingRevision)' == ''">0</PackagingRevision>
-    <_NativeVersion Condition="'$(PackagingRevision)' != '0'">$(_NativeVersion).$(PackagingRevision)</_NativeVersion>
+    <_NativeVersion Condition="'$(StaticGraphicsComponent)' == 'SkiaSharp'">$(SkiaSharpPackageVersion)</_NativeVersion>
+    <_NativeVersion Condition="'$(StaticGraphicsComponent)' == 'Angle'">$(AnglePackageVersion)</_NativeVersion>
+    <_NativeVersion Condition="'$(StaticGraphicsComponent)' == 'Avalonia.Native'">$(AvaloniaNativePackageVersion)</_NativeVersion>
     <Version>$(_NativeVersion)</Version>
     <Authors>ChsBuffer</Authors>
     <Description>Static $(StaticGraphicsComponent) libraries for NativeAOT on all supported RIDs.</Description>

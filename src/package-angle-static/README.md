@@ -9,7 +9,7 @@ only one architecture.
   <PublishAot>true</PublishAot>
 </PropertyGroup>
 <ItemGroup>
-  <PackageReference Include="ChsBuffer.Angle.Static" Version="2.1.27548.20260419" />
+  <PackageReference Include="ChsBuffer.Angle.Static" Version="2.1.27548.1" />
 </ItemGroup>
 ```
 

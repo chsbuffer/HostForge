@@ -10,7 +10,7 @@ restore only one architecture.
 </PropertyGroup>
 <ItemGroup>
   <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
-  <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="12.1.4" />
+  <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="12.1.4.1" />
 </ItemGroup>
 ```
 

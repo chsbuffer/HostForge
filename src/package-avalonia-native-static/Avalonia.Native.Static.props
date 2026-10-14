@@ -1,9 +1,5 @@
 <Project>
   <PropertyGroup>
-    <AvaloniaNativeVersion Condition="'$(AvaloniaNativeVersion)' == ''">12.1.4</AvaloniaNativeVersion>
-    <PackagingRevision Condition="'$(PackagingRevision)' == ''">0</PackagingRevision>
-    <AvaloniaNativePackageVersion>$(AvaloniaNativeVersion)</AvaloniaNativePackageVersion>
-    <AvaloniaNativePackageVersion Condition="'$(PackagingRevision)' != '0'">$(AvaloniaNativeVersion).$(PackagingRevision)</AvaloniaNativePackageVersion>
     <TargetFramework>net10.0</TargetFramework>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <NoBuild>true</NoBuild>

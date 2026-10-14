@@ -6,7 +6,7 @@
     <NoWarn>$(NoWarn);NU5128;NU5129</NoWarn>
     <AvaloniaHostRid Condition="'$(AvaloniaHostRid)' == ''">win-x64</AvaloniaHostRid>
     <PackageId>ChsBuffer.SkiaSharp.Static.$(AvaloniaHostRid)</PackageId>
-    <Version>$(SkiaSharpVersion)</Version>
+    <Version>$(SkiaSharpPackageVersion)</Version>
     <Authors>ChsBuffer</Authors>
     <Description>SkiaSharp static library</Description>
     <PackageTags>skia;harfbuzz</PackageTags>
