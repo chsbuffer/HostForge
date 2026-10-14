@@ -104,9 +104,9 @@
           DependsOnTargets="ResolveReferences;HostForgeResolveStaticGraphics"
           Condition="'$(PublishAot)' == 'true' and '$(RuntimeIdentifier)' != ''">
     <ItemGroup>
-      <_HostForgeManagedSkia Include="@(ReferencePath)" Condition="'%(NuGetPackageId)' == 'SkiaSharp'" />
-      <_HostForgeManagedHarfBuzz Include="@(ReferencePath)" Condition="'%(NuGetPackageId)' == 'HarfBuzzSharp'" />
-      <_HostForgeManagedAvalonia Include="@(ReferencePath)" Condition="'%(NuGetPackageId)' == 'Avalonia' or '%(NuGetPackageId)' == 'Avalonia.Native'" />
+      <_HostForgeManagedSkia Include="@(ReferencePath)" Condition="'%(ReferencePath.NuGetPackageId)' == 'SkiaSharp'" />
+      <_HostForgeManagedHarfBuzz Include="@(ReferencePath)" Condition="'%(ReferencePath.NuGetPackageId)' == 'HarfBuzzSharp'" />
+      <_HostForgeManagedAvalonia Include="@(ReferencePath)" Condition="'%(ReferencePath.NuGetPackageId)' == 'Avalonia' or '%(ReferencePath.NuGetPackageId)' == 'Avalonia.Native'" />
     </ItemGroup>
     <PropertyGroup>
       <_HostForgeManagedSkiaVersion>@(_HostForgeManagedSkia->'%(NuGetPackageVersion)')</_HostForgeManagedSkiaVersion>

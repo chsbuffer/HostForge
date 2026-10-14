@@ -51,4 +51,39 @@ public class StaticGraphicsActivationTests
             AssertEx.Contains(result.CombinedOutput, "HFG1001");
         }
     }
+
+    [Test]
+    public async Task ManagedVersionValidation_AcceptsReferencesWithoutNuGetPackageId()
+    {
+        string workspace = Path.Combine(RepoContext.ArtifactsTestRoot, $"static-validation-{Guid.NewGuid():N}");
+        string nativeDir = Path.Combine(workspace, "native");
+        Directory.CreateDirectory(nativeDir);
+        await File.WriteAllTextAsync(Path.Combine(nativeDir, "manifest.json"), "{}");
+        string targets = Path.Combine(RepoContext.RepoRoot, "src", "HostForge.StaticGraphics.targets");
+        string project = Path.Combine(workspace, "Consumer.proj");
+        // Project references resolve to ReferencePath items that carry no NuGet package metadata.
+        await File.WriteAllTextAsync(project, $"""
+            <Project>
+              <PropertyGroup><PublishAot>true</PublishAot><RuntimeIdentifier>win-x64</RuntimeIdentifier></PropertyGroup>
+              <ItemGroup>
+                <HostForgeStaticPackage Include="SkiaSharp"><Component>SkiaSharp</Component><Rid>win-x64</Rid><SkiaLine>4.153</SkiaLine><HarfBuzzLine>14.2.1</HarfBuzzLine><NativeDir>{System.Security.SecurityElement.Escape(nativeDir)}</NativeDir></HostForgeStaticPackage>
+                <ReferencePath Include="SkiaSharp.dll"><NuGetPackageId>SkiaSharp</NuGetPackageId><NuGetPackageVersion>$(ManagedSkiaVersion)</NuGetPackageVersion></ReferencePath>
+                <ReferencePath Include="HarfBuzzSharp.dll"><NuGetPackageId>HarfBuzzSharp</NuGetPackageId><NuGetPackageVersion>14.2.1.301</NuGetPackageVersion></ReferencePath>
+                <ReferencePath Include="ProjectReference.dll" />
+              </ItemGroup>
+              <Target Name="ResolveReferences" />
+              <Import Project="{System.Security.SecurityElement.Escape(targets)}" />
+            </Project>
+            """);
+
+        CommandResult matching = await CommandRunner.RunAsync("dotnet",
+            $"msbuild \"{project}\" -t:HostForgeValidateStaticGraphics -p:ManagedSkiaVersion=4.153.1 -v:quiet", workspace);
+        AssertEx.Success(matching, "Validation with a project reference in ReferencePath");
+
+        CommandResult mismatched = await CommandRunner.RunAsync("dotnet",
+            $"msbuild \"{project}\" -t:HostForgeValidateStaticGraphics -p:ManagedSkiaVersion=3.119.4 -v:quiet", workspace);
+        if (mismatched.ExitCode == 0)
+            throw new InvalidOperationException("A managed SkiaSharp line mismatch was accepted.");
+        AssertEx.Contains(mismatched.CombinedOutput, "HFG0002");
+    }
 }
