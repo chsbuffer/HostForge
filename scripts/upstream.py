@@ -1667,7 +1667,11 @@ def plan_llvm(run):
     if release is None or version_key(release["version"]) <= version_key(pinned):
         return []
     version = _checked(release["version"], _VERSION, "LLVM version")
-    asset = f"LLVM-{version}-win64.exe"
+    # The installer type the action downloads, e.g. "msi" in LLVM-${Version}-win64.msi.
+    installer = re.search(r"LLVM-\$\{Version\}-win64\.(\w+)", (run.root / LLVM_ACTION).read_text(encoding="utf-8"))
+    if installer is None:
+        raise UpstreamError(f"{LLVM_ACTION}: no LLVM-${{Version}}-win64.<ext> download URL")
+    asset = f"LLVM-{version}-win64.{installer.group(1)}"
     if asset not in release["assets"]:
         run.notes.append(f"LLVM {version} not applied: the release has no {asset} (yet)")
         return []

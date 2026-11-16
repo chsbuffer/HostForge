@@ -281,7 +281,7 @@ def fake_upstream(root, dotnet=False, security=True, mismatched_vmr=False, avalo
     llvm_major = int(llvm.split(".")[0])
 
     def llvm_release(version, assets=True, **flags):
-        names = [f"LLVM-{version}-win64.exe" if assets else f"LLVM-{version}-Linux-X64.tar.xz", "clang.src.tar.xz"]
+        names = [f"LLVM-{version}-win64.msi" if assets else f"LLVM-{version}-Linux-X64.tar.xz", "clang.src.tar.xz"]
         return dict({"tag_name": f"llvmorg-{version}", "assets": [{"name": name} for name in names]}, **flags)
 
     client.add_json(upstream.LLVM_RELEASES, [llvm_release(f"{llvm_major + 2}.1.0", draft=True),
@@ -1026,7 +1026,7 @@ class LlvmTests(UpstreamTestCase):
         code, _, stderr, metadata = self.apply(fake_upstream(self.root, llvm=version, llvm_asset=False), "--group", "llvm")
         self.assertEqual(0, code, stderr)
         self.assertEqual(before, self.snapshot())
-        self.assertEqual([f"LLVM {version} not applied: the release has no LLVM-{version}-win64.exe (yet)"],
+        self.assertEqual([f"LLVM {version} not applied: the release has no LLVM-{version}-win64.msi (yet)"],
                          metadata["notes"])
 
     def test_pins_that_disagree_are_an_error(self):

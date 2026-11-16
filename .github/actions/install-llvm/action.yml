@@ -7,18 +7,18 @@ runs:
       uses: actions/cache@v6
       with:
         path: ${{ runner.temp }}/llvm-temp
-        key: llvm-22.1.8-win64
+        key: llvm-23.1.5-win64
 
     - name: Download and install LLVM
       shell: powershell
       run: |
         $ErrorActionPreference = 'Stop'
 
-        $Version = '22.1.8'
-        $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-${Version}/LLVM-${Version}-win64.exe"
+        $Version = '23.1.5'
+        $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-${Version}/LLVM-${Version}-win64.msi"
 
         $llvmTemp = Join-Path $env:RUNNER_TEMP 'llvm-temp'
-        $install = Join-Path $llvmTemp 'llvm.exe'
+        $install = Join-Path $llvmTemp 'llvm.msi'
 
         # download
         Write-Host "Downloading LLVM..."
@@ -31,12 +31,15 @@ runs:
 
         # install
         Write-Host "Installing LLVM..."
-        # Install in a private location without uninstalling the runner toolchain.
-        $destination = Join-Path $env:RUNNER_TEMP 'hostforge-llvm'
-        $proc = Start-Process -FilePath $install -ArgumentList @('/S', "/D=$destination") -WindowStyle Hidden -Wait -PassThru
+        # An administrative installation only extracts the files, so the runner toolchain stays untouched.
+        $target = Join-Path $env:RUNNER_TEMP 'hostforge-llvm-msi'
+        $log = Join-Path $env:RUNNER_TEMP 'llvm-msi.log'
+        $proc = Start-Process -FilePath msiexec.exe -ArgumentList @('/a', "`"$install`"", '/qn', "TARGETDIR=`"$target`"", '/l*v', "`"$log`"") -Wait -PassThru
         if ($proc.ExitCode -ne 0) {
+          Get-Content $log -Tail 50
           throw "LLVM install failed with exit code $($proc.ExitCode)"
         }
+        $destination = Join-Path $target 'LLVM'
         & "$destination\bin\clang-cl.exe" --version
         if ($LASTEXITCODE -ne 0) { throw 'clang-cl is unavailable after installation.' }
         "LLVM_HOME=$destination" >> $env:GITHUB_ENV
