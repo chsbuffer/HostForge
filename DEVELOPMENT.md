@@ -38,7 +38,7 @@ Taskfile 中，传给 Conan 的版本（`build-hostlibs` 的 `HOSTLIBS_VERSION`�
 - .NET 10 运行时（运行 `net10.0` 消费者测试）；Windows Avalonia AppHost 测试另需 .NET 9 运行时，用于验证不受支持 TFM 的回退
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/)
-- Task 3.52.0+
+- Task
 - Git
 - Ninja
 - CMake
