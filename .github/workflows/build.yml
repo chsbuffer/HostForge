@@ -1344,16 +1344,20 @@ jobs:
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
 
-  # On main it runs only when every needed job succeeded (publish-nuget included). On pull requests
-  # publish-nuget is skipped, which would skip this job too, so the condition accepts that skip but still no
-  # failure anywhere upstream (failure() covers every ancestor job). Fork pull requests get a read-only
-  # token, so they keep their artifacts until retention expires.
+  # Runs only when every needed job succeeded, so "Re-run failed jobs" still finds the artifacts. On pull
+  # requests publish-nuget is always skipped, so the other needed jobs are checked one by one: a cancelled
+  # job (e.g. a runner that was never acquired) only skips its dependents, which failure() does not report.
+  # Fork pull requests get a read-only token, so they keep their artifacts until retention expires.
   cleanup-all:
     if: >-
       ${{ !cancelled() && !failure() && (
       (github.event_name == 'push' && needs.publish-nuget.result == 'success') ||
       (github.event_name == 'pull_request' && needs.publish-nuget.result == 'skipped' &&
-      github.event.pull_request.head.repo.full_name == github.repository)) }}
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      needs.test-skia-linux-cross.result == 'success' && needs.test-skia-windows-arm64.result == 'success' &&
+      needs.test-all.result == 'success' && needs.build-skia-macos.result == 'success' &&
+      needs.test-all-windows.result == 'success' && needs.test-all-linux.result == 'success' &&
+      needs.pack-avalonia-apphost.result == 'success' && needs.pack-avalonia-apphost-skia4.result == 'success')) }}
     runs-on: ubuntu-24.04
     needs:
       - publish-nuget
