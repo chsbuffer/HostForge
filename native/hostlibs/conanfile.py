@@ -242,10 +242,12 @@ class HostLibsConan(ConanFile):
                 if re.search(r"^  FLAGS = .* /Y[cu]", block, re.M):
                     blocks[index] = re.sub(r"^  LAUNCHER =.*$", "  LAUNCHER = ", block, flags=re.M)
                 elif re.search(r"^build .*: (?:C|CXX)_COMPILER__", block, re.M):
-                    # Use per-object CodeView and the equivalent dash spelling
-                    # of /Zl, which sccache otherwise parses as an input path.
+                    # Use per-object CodeView (CMake spells the debug format
+                    # /Zi or -Zi) and the equivalent dash spelling of /Zl,
+                    # which sccache otherwise parses as an input path.
                     blocks[index] = re.sub(r"^  FLAGS =.*$", lambda match:
-                                          match.group().replace(" /Zi", " /Z7").replace(" /Zl", " -Zl"),
+                                          match.group().replace(" /Zi", " /Z7").replace(" -Zi", " -Z7")
+                                          .replace(" /Zl", " -Zl"),
                                           block, flags=re.M)
             ninja.write_text("\n\n".join(blocks), encoding="utf-8")
         target = self._link_inputs_target(build_root, target)
