@@ -1,0 +1,66 @@
+{
+  "comment": [
+    "Maintained by `python scripts/upstream.py lock`, which only appends; do not edit by hand.",
+    "One entry per package version: the variant it is built for and the inputs it is built from. nuget.org keeps",
+    "the first upload of a version and CI pushes with --skip-duplicate, so changed inputs need a new version, and a",
+    "committed entry never changes (CI compares the lock with the one of the previous push)."
+  ],
+  "packages": {
+    "ChsBuffer.Avalonia.AppHost": {
+      "12.0.2-skia4": {
+        "variant": "skia4",
+        "inputs": {
+          "runtimes": {
+            "net10.0": {"version": "10.0.15", "vmr-tag": "v10.0.115", "vmr-commit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7"},
+            "net11.0": {"version": "11.0.0", "vmr-tag": "v11.0.100", "vmr-commit": "297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f"}
+          },
+          "skiasharp": {"version": "4.156.1", "skia-commit": "712ea097151d4951652dee046a8944376fd8df1b", "harfbuzz": "14.4.0.101"},
+          "angle": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"}
+        }
+      },
+      "12.0.2": {
+        "variant": "skia3",
+        "inputs": {
+          "runtimes": {
+            "net10.0": {"version": "10.0.15", "vmr-tag": "v10.0.115", "vmr-commit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7"},
+            "net11.0": {"version": "11.0.0", "vmr-tag": "v11.0.100", "vmr-commit": "297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f"}
+          },
+          "skiasharp": {"version": "3.119.4", "skia-commit": "7dbfc07dd33181f84e0958afb7ee805c6c769f0b", "harfbuzz": "8.3.1.5"},
+          "angle": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"}
+        }
+      }
+    },
+    "ChsBuffer.AppHost.Static": {
+      "10.0.15-alpha.1": {
+        "variant": "net10.0",
+        "inputs": {"version": "10.0.15", "vmr-tag": "v10.0.115", "vmr-commit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7"}
+      },
+      "11.0.0-alpha.1": {
+        "variant": "net11.0",
+        "inputs": {"version": "11.0.0", "vmr-tag": "v11.0.100", "vmr-commit": "297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f"}
+      }
+    },
+    "ChsBuffer.SkiaSharp.Static": {
+      "3.119.4.1": {
+        "variant": "skia3",
+        "inputs": {"version": "3.119.4", "skia-commit": "7dbfc07dd33181f84e0958afb7ee805c6c769f0b", "harfbuzz": "8.3.1.5"}
+      },
+      "4.156.1.1": {
+        "variant": "skia4",
+        "inputs": {"version": "4.156.1", "skia-commit": "712ea097151d4951652dee046a8944376fd8df1b", "harfbuzz": "14.4.0.101"}
+      }
+    },
+    "ChsBuffer.Angle.Static": {
+      "2.1.27548.1": {
+        "variant": "default",
+        "inputs": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"}
+      }
+    },
+    "ChsBuffer.Avalonia.Native.Static": {
+      "12.1.6.1": {
+        "variant": "default",
+        "inputs": {"avalonia": "12.1.6", "url": "https://codeload.github.com/AvaloniaUI/Avalonia/tar.gz/cf8e564674700348947e93ab19105f27afe859a9", "sha256": "7df88dd44b1abdcb825e1b044ed28ca021f0379ad468dda07b6cba7b259ebdfc", "commit": "cf8e564674700348947e93ab19105f27afe859a9"}
+      }
+    }
+  }
+}

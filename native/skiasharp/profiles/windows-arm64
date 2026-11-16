@@ -2,7 +2,7 @@
 os=Windows
 arch=armv8
 compiler=clang
-compiler.version=21
+compiler.version=22
 compiler.runtime=static
 compiler.runtime_type=Release
 compiler.runtime_version=v145

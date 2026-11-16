@@ -26,12 +26,27 @@
                                      Condition="'%(Identity)' == '$(StaticHostRid)'" />
     </ItemGroup>
 
+    <!--
+      Delay-load the same DLLs as the runtime's own singlefilehost link, which the host libs record
+      (.NET 10 delay-loads WinRT and version.dll with delayimp.lib; .NET 11 links neither).
+    -->
+    <ReadLinesFromFile File="$(StaticHostAssetsDir)\singlefilehost.linkflags"
+                       Condition="Exists('$(StaticHostAssetsDir)\singlefilehost.linkflags')">
+      <Output TaskParameter="Lines" ItemName="_SingleFileHostRecordedLinkFlags" />
+    </ReadLinesFromFile>
+
+    <PropertyGroup>
+      <_SingleFileHostRecordedLinkFlagsText>@(_SingleFileHostRecordedLinkFlags, ' ')</_SingleFileHostRecordedLinkFlagsText>
+      <_SingleFileHostDelayLoadFlags>$([System.Text.RegularExpressions.Regex]::Replace('$(_SingleFileHostRecordedLinkFlagsText)', '\s*(?:(/DELAYLOAD:\S+)|\S+)', '$1 ').Trim())</_SingleFileHostDelayLoadFlags>
+      <_SingleFileHostDelayLoadFlags Condition="'@(_SingleFileHostRecordedLinkFlags)' == ''">/DELAYLOAD:api-ms-win-core-winrt-l1-1-0.dll /DELAYLOAD:version.dll</_SingleFileHostDelayLoadFlags>
+    </PropertyGroup>
+
     <PropertyGroup>
       <_StaticHostLinkMachine>%(_StaticHostWindowsRid.Machine)</_StaticHostLinkMachine>
       <_StaticHostVcVarsArch>%(_StaticHostWindowsRid.VcVarsArch)</_StaticHostVcVarsArch>
       <_StaticHostCetCompatFlag Condition="'$(_StaticHostLinkMachine)' == 'X64'">/CETCOMPAT</_StaticHostCetCompatFlag>
       <_AppHostLinkFlags>/DEPENDENTLOADFLAG:0x800 /DEBUG /DEBUGTYPE:CV,FIXUP /PDBCOMPRESS /STACK:0x180000 /MANIFEST:NO $(_StaticHostCetCompatFlag) /INCREMENTAL:NO /OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /subsystem:console /guard:cf /LTCG </_AppHostLinkFlags>
-      <_SingleFileHostLinkFlags>/DEPENDENTLOADFLAG:0x800 /DEBUG /DEBUGTYPE:CV,FIXUP /PDBCOMPRESS /STACK:0x180000 /MANIFEST:NO $(_StaticHostCetCompatFlag) /INCREMENTAL:NO /DELAYLOAD:api-ms-win-core-winrt-l1-1-0.dll /DELAYLOAD:version.dll /OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /subsystem:console /guard:cf /LTCG </_SingleFileHostLinkFlags>
+      <_SingleFileHostLinkFlags>/DEPENDENTLOADFLAG:0x800 /DEBUG /DEBUGTYPE:CV,FIXUP /PDBCOMPRESS /STACK:0x180000 /MANIFEST:NO $(_StaticHostCetCompatFlag) /INCREMENTAL:NO $(_SingleFileHostDelayLoadFlags) /OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /subsystem:console /guard:cf /LTCG </_SingleFileHostLinkFlags>
     </PropertyGroup>
 
     <Error Condition="'$(_StaticHostLinkMachine)' == ''"
@@ -51,16 +66,63 @@
       <AdditionalNativeLibraryDirectories Include="$(_FindVCVarsallOutput.Split(`#`)[1].Split(';'))" />
     </ItemGroup>
 
+    <!--
+      link.exe honors only the last /DEF, so a module definition passed through LinkerArg (such as ANGLE's
+      exports) would replace singlefilehost's own exports, or the other way round. Merge the EXPORTS of all
+      module definitions into one generated file per host instead. Inputs must contain only EXPORTS sections.
+    -->
+    <ItemGroup>
+      <_StaticHostModuleDefinitionArg Include="@(LinkerArg)"
+                                      Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '(?i)^[/-]DEF:'))">
+        <DefFile>$([System.Text.RegularExpressions.Regex]::Replace('%(Identity)', '(?i)^[/-]DEF:"?([^"]*)"?$', '$1'))</DefFile>
+      </_StaticHostModuleDefinitionArg>
+      <_AppHostModuleDefinition Include="@(_StaticHostModuleDefinitionArg->'%(DefFile)')" />
+      <_SingleFileHostModuleDefinition Include="$(StaticHostAssetsDir)\singlefilehost.def" />
+      <_SingleFileHostModuleDefinition Include="@(_AppHostModuleDefinition)" />
+    </ItemGroup>
+
+    <PropertyGroup>
+      <_AppHostModuleDefinitionFile>$([System.IO.Path]::ChangeExtension('$(AppHostLinkFullPath)', '.def'))</_AppHostModuleDefinitionFile>
+      <_SingleFileHostModuleDefinitionFile>$([System.IO.Path]::ChangeExtension('$(SingleFileHostLinkFullPath)', '.def'))</_SingleFileHostModuleDefinitionFile>
+    </PropertyGroup>
+
+    <ReadLinesFromFile File="%(_AppHostModuleDefinition.FullPath)" Condition="'@(_AppHostModuleDefinition)' != ''">
+      <Output TaskParameter="Lines" ItemName="_AppHostModuleDefinitionLine" />
+    </ReadLinesFromFile>
+    <ReadLinesFromFile File="%(_SingleFileHostModuleDefinition.FullPath)">
+      <Output TaskParameter="Lines" ItemName="_SingleFileHostModuleDefinitionLine" />
+    </ReadLinesFromFile>
+
+    <ItemGroup>
+      <_AppHostModuleDefinitionLine Remove="@(_AppHostModuleDefinitionLine)"
+                                    Condition="'$([System.String]::Copy(`%(Identity)`).Trim().ToUpperInvariant())' == 'EXPORTS'" />
+      <_SingleFileHostModuleDefinitionLine Remove="@(_SingleFileHostModuleDefinitionLine)"
+                                           Condition="'$([System.String]::Copy(`%(Identity)`).Trim().ToUpperInvariant())' == 'EXPORTS'" />
+    </ItemGroup>
+
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(AppHostLinkFullPath)'));$([System.IO.Path]::GetDirectoryName('$(SingleFileHostLinkFullPath)'))" />
+    <WriteLinesToFile File="$(_AppHostModuleDefinitionFile)"
+                      Lines="EXPORTS;@(_AppHostModuleDefinitionLine)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true"
+                      Condition="'@(_AppHostModuleDefinition)' != ''" />
+    <WriteLinesToFile File="$(_SingleFileHostModuleDefinitionFile)"
+                      Lines="EXPORTS;@(_SingleFileHostModuleDefinitionLine)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+
     <ItemGroup>
       <_CommonLinkerArg Include="/machine:$(_StaticHostLinkMachine)" />
       <_CommonLinkerArg Include="@(AdditionalNativeLibraryDirectories->'/LIBPATH:&quot;%(Identity)&quot;')" />
-      <_CommonLinkerArg Include="@(LinkerArg)" />
+      <_CommonLinkerArg Include="@(LinkerArg)"
+                        Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '(?i)^[/-]DEF:'))" />
 
       <_WholeArchiveNativeLib Include="@(_NativeLibraryInput)" Condition="'%(WholeArchive)' == 'true'" />
       <_DefaultNativeLib Include="@(_NativeLibraryInput)" Condition="'%(WholeArchive)' != 'true'" />
 
       <_AppHostLinkerArg Include="@(_CommonLinkerArg)" />
       <_AppHostLinkerArg Include="$(_AppHostLinkFlags)" />
+      <_AppHostLinkerArg Include="/DEF:&quot;$(_AppHostModuleDefinitionFile)&quot;" Condition="'@(_AppHostModuleDefinition)' != ''" />
       <_AppHostLinkerArg Include="@apphost.rsp" />
       <_AppHostLinkerArg Include="@(_WholeArchiveNativeLib->'/wholearchive:&quot;%(FullPath)&quot;')" />
       <_AppHostLinkerArg Include="@(_DefaultNativeLib->'&quot;%(FullPath)&quot;')" />
@@ -68,7 +130,7 @@
 
       <_SingleFileHostLinkerArg Include="@(_CommonLinkerArg)" />
       <_SingleFileHostLinkerArg Include="$(_SingleFileHostLinkFlags)" />
-      <_SingleFileHostLinkerArg Include="/DEF:&quot;$(StaticHostAssetsDir)\\singlefilehost.def&quot;" />
+      <_SingleFileHostLinkerArg Include="/DEF:&quot;$(_SingleFileHostModuleDefinitionFile)&quot;" />
       <_SingleFileHostLinkerArg Include="@singlefilehost.rsp" />
       <_SingleFileHostLinkerArg Include="@(_WholeArchiveNativeLib->'/wholearchive:&quot;%(FullPath)&quot;')" />
       <_SingleFileHostLinkerArg Include="@(_DefaultNativeLib->'&quot;%(FullPath)&quot;')" />

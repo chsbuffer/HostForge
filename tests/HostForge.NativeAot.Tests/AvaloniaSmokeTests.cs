@@ -25,8 +25,9 @@ public class AvaloniaSmokeTests
             throw new ArgumentException($"Invalid smoke modes for {rid}: {selection}");
 
         string versionSelection = Environment.GetEnvironmentVariable("HOSTFORGE_SMOKE_SKIA_VERSION") ?? "all";
-        string[] versions = versionSelection == "all" ? ["3.119.4", "4.153.1"] : [versionSelection];
-        if (versions.Any(version => version is not ("3.119.4" or "4.153.1")))
+        IReadOnlyList<string> supported = RepoContext.SupportedSkiaSharpVersions;
+        string[] versions = versionSelection == "all" ? [.. supported] : [versionSelection];
+        if (versions.Any(version => !supported.Contains(version)))
             throw new ArgumentException($"Unsupported Skia version: {versionSelection}");
 
         string project = Path.Combine(RepoContext.RepoRoot, "samples", "avalonia-nativeaot-smoke", "AvaloniaNativeAotSmoke.csproj");
@@ -58,6 +59,9 @@ public class AvaloniaSmokeTests
             }
 
             string executable = Path.Combine(output, OperatingSystem.IsWindows() ? "AvaloniaNativeAotSmoke.exe" : "AvaloniaNativeAotSmoke");
+            // The Skia milestone is the minor number of SkiaSharp; HarfBuzz reports its first three numbers.
+            Version skia = Version.Parse(version);
+            string harfBuzz = RepoContext.GetHarfBuzzVersion(version);
             foreach (string mode in modes)
             {
                 try
@@ -81,10 +85,10 @@ public class AvaloniaSmokeTests
                     await Assert.That(result.GetProperty("PixelsVerified").GetBoolean()).IsTrue();
                     await Assert.That(result.GetProperty("FrameSubmitted").GetBoolean()).IsTrue();
                     await Assert.That(result.GetProperty("SkiaPackage").GetString()).IsEqualTo(version);
-                    await Assert.That(result.GetProperty("SkiaManaged").GetString()).IsEqualTo(version == "3.119.4" ? "3.119.0.0" : "4.153.0.0");
-                    await Assert.That(result.GetProperty("SkiaNative").GetString()).IsEqualTo(version == "3.119.4" ? "119.0" : "153.0");
-                    await Assert.That(result.GetProperty("HarfBuzzPackage").GetString()).IsEqualTo(version == "3.119.4" ? "8.3.1.5" : "14.2.1.301");
-                    await Assert.That(result.GetProperty("HarfBuzzNative").GetString()).IsEqualTo(version == "3.119.4" ? "8.3.1" : "14.2.1");
+                    await Assert.That(result.GetProperty("SkiaManaged").GetString()).IsEqualTo($"{skia.Major}.{skia.Minor}.0.0");
+                    await Assert.That(result.GetProperty("SkiaNative").GetString()).IsEqualTo($"{skia.Minor}.0");
+                    await Assert.That(result.GetProperty("HarfBuzzPackage").GetString()).IsEqualTo(harfBuzz);
+                    await Assert.That(result.GetProperty("HarfBuzzNative").GetString()).IsEqualTo(RepoContext.VersionPrefix(harfBuzz, 3));
                     await Assert.That(result.GetProperty("Rid").GetString()).IsEqualTo(rid);
                     await Assert.That(result.GetProperty("ProcessArchitecture").GetString()).IsEqualTo(RuntimeInformation.ProcessArchitecture.ToString());
                     string[] pixels = result.GetProperty("Pixels").EnumerateArray().Select(pixel => pixel.GetString() ?? "").ToArray();

@@ -42,6 +42,7 @@ def fingerprint(root, component, version, rid, toolchain, generator=""):
         files += [f"{directory}/conandata.yml", *[p.relative_to(root).as_posix() for p in (root / directory / "patches").glob("*")]]
         tasks = ["build-angle"]
     elif component == "hostlibs":
+        values["source"] = json.loads((root / directory / "versions.json").read_text())[version]
         tasks = [f"_hostlibs-{profile_os}"]
         if platform == "linux":
             files += ["native/skiasharp/linux-x64.Dockerfile"]

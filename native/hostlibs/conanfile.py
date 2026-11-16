@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import shutil
@@ -5,31 +6,50 @@ from pathlib import Path
 
 from conan import ConanFile
 from conan.tools.build import build_jobs
-from conan.errors import ConanException
+from conan.errors import ConanException, ConanInvalidConfiguration
 from conan.tools.env import Environment
-from conan.tools.files import get, save
+from conan.tools.files import rmdir, save
 from conan.tools.microsoft import VCVars
+from conan.tools.scm import Git
 from conan.tools.system.package_manager import Apt
 
-VERSION = "10.0.13"
-SOURCE_COMMIT = "6aa72daa24f66c01c3d7b6a32519e9d21396deec"  # dotnet/runtime v10.0.13
+# Shipped runtimes are built from the VMR, which can carry fixes (including
+# security fixes) that dotnet/runtime tags do not contain yet. Each entry is the
+# 1xx SDK band tag that built the runtime; installed runtimes record the same
+# commit in shared/Microsoft.NETCore.App/<version>/.version.
+VERSIONS = json.loads((Path(__file__).parent / "versions.json").read_text())
+VMR_URL = "https://github.com/dotnet/dotnet.git"
 
 class HostLibsConan(ConanFile):
     name = "hostlibs"
-    version = VERSION
     package_type = "static-library"
     license = "MIT"
-    homepage = "https://github.com/dotnet/runtime"
+    homepage = "https://github.com/dotnet/dotnet"
     description = ".NET apphost and single-file host static link inputs"
 
     settings = "os", "arch", "compiler", "build_type"
     options = {"pgo": [True, False]}
     default_options = {"pgo": True}
+    exports = "versions.json"
 
     _arch = {
         "x86_64": "x64",
         "armv8": "arm64",
     }
+
+    def set_version(self):
+        # No default here: Taskfile.yml always passes --version, defaulting to the version scripts/repo_versions.py reads.
+        if str(self.version) not in VERSIONS:
+            raise ConanException(f"Unsupported .NET runtime version: {self.version}; pass --version with one of "
+                                 f"{', '.join(VERSIONS)} (native/hostlibs/versions.json)")
+
+    def validate(self):
+        if str(self.version) not in VERSIONS:
+            raise ConanInvalidConfiguration(f"Unsupported .NET runtime version: {self.version}")
+
+    @property
+    def _source_commit(self):
+        return VERSIONS[str(self.version)]["commit"]
 
     @property
     def _runtime_root(self):
@@ -69,13 +89,21 @@ class HostLibsConan(ConanFile):
             )
 
     def source(self):
-        get(
-            self,
-            f"https://github.com/dotnet/runtime/archive/{SOURCE_COMMIT}.tar.gz",
-            destination=str(self._runtime_root),
-            strip_root=True,
-            keep_permissions=True,
+        source = VERSIONS[str(self.version)]
+        # Fetch only src/runtime from the VMR. LF endings keep sources (and
+        # compiler-cache inputs) identical across hosts, as with an archive.
+        Git(self, folder=self.source_folder).run(
+            "clone --quiet --depth 1 --filter=blob:none --sparse "
+            "--config core.autocrlf=false --config core.eol=lf --config core.longpaths=true "
+            f"--branch {source['tag']} {VMR_URL} vmr"
         )
+        vmr = Git(self, folder=os.path.join(self.source_folder, "vmr"))
+        commit = vmr.run("rev-parse HEAD")
+        if commit != source["commit"]:
+            raise ConanException(f"VMR tag {source['tag']} resolved to {commit}, expected {source['commit']}")
+        vmr.run("sparse-checkout set src/runtime")
+        shutil.move(os.path.join(self.source_folder, "vmr", "src", "runtime"), str(self._runtime_root))
+        rmdir(self, os.path.join(self.source_folder, "vmr"))
 
     def generate(self):
         env = Environment()
@@ -84,6 +112,10 @@ class HostLibsConan(ConanFile):
             env.define("CMAKE_CXX_COMPILER_LAUNCHER", wrapper.replace("\\", "/"))
             env.define("SCCACHE_BASEDIRS", self.build_folder)
             env.define("SCCACHE_DIRECT", "false")
+        if self.settings.os == "Windows":
+            # dotnet-install.ps1 prefers .tar.gz for .NET 11+ and runs the first
+            # tar on PATH, which may be Git's GNU tar ("Cannot connect to C:").
+            env.define("DOTNET_INSTALL_SKIP_TAR", "1")
         env.vars(self).save_script("build_env")
         VCVars(self).generate()
 
@@ -133,7 +165,7 @@ class HostLibsConan(ConanFile):
             self.run(
                 f'"{self._runtime_root / "build.sh"}" host.native -ninja '
                 f"-c release -arch {self._target_arch}{cross} -p:ConfigureOnly=true "
-                f"-p:SourceRevisionId={SOURCE_COMMIT}",
+                f"{self._runtime_properties('-p:')}",
                 cwd=str(self._runtime_root),
                 env="conanbuild",
             )
@@ -154,7 +186,7 @@ class HostLibsConan(ConanFile):
             self.run(
                 f'"{self._runtime_root / "build.sh"}" clr.runtime -ninja '
                 f"-c release -arch {self._target_arch}{cross} -p:ConfigureOnly=true "
-                f"-p:SourceRevisionId={SOURCE_COMMIT}",
+                f"{self._runtime_properties('-p:')}",
                 cwd=str(self._runtime_root),
                 env="conanbuild",
             )
@@ -169,9 +201,10 @@ class HostLibsConan(ConanFile):
         # including generated export lists, without performing an unused link.
         ninja = build_root / "build.ninja"
         text = ninja.read_text(encoding="utf-8")
-        marker = f": CXX_EXECUTABLE_LINKER__{name}_"
+        # .NET 11 rewrote apphost in C, so its link rule is C_EXECUTABLE_LINKER.
+        marker = re.compile(rf": (?:C|CXX)_EXECUTABLE_LINKER__{re.escape(name)}_")
         for line in text.splitlines():
-            if line.startswith("build ") and marker in line:
+            if line.startswith("build ") and marker.search(line):
                 dependencies = line.split(": ", 1)[1].split(" ", 1)[1]
                 target = f"hostforge-{name}-inputs"
                 ninja.write_text(text + f"\nbuild {target}: phony {dependencies}\n", encoding="utf-8")
@@ -195,7 +228,7 @@ class HostLibsConan(ConanFile):
     def _msvc_configure_build(self, subset, target, build_root, extra_args="", pre_ninja=""):
         root = str(self._runtime_root)
         cmd = (f'"{root}\\build.cmd" {subset} -ninja -c release -arch {self._target_arch} '
-               f'/p:SourceRevisionId={SOURCE_COMMIT} {extra_args}{self._cmake_args()}')
+               f"{self._runtime_properties('/p:')} {extra_args}{self._cmake_args()}")
         if pre_ninja:
             cmd += f" && {pre_ninja}"
         self.run(cmd, cwd=root, env="conanbuild")
@@ -221,6 +254,11 @@ class HostLibsConan(ConanFile):
             cmd = f'call "{root}\\eng\\native\\init-vs-env.cmd" arm64 && '
         cmd += f'ninja -C "{build_root}" -j {build_jobs(self)} {target}'
         self.run(cmd, cwd=root, env="conanbuild")
+
+    def _runtime_properties(self, prefix):
+        # Rebuilding a fixed release must not fail on advisories published later
+        # for build-time MSBuild task dependencies; they never enter the hosts.
+        return f"{prefix}SourceRevisionId={self._source_commit} {prefix}NuGetAudit=false"
 
     def _cmake_args(self):
         args = []
@@ -253,10 +291,11 @@ class HostLibsConan(ConanFile):
         copied: set[Path] = set()
         package = Path(self.package_folder)
         for token in tokens:
-            source = self._resolve_token(build_root, token)
+            path = self._token_input_path(token)
+            source = self._resolve_token(build_root, path)
             if source is None:
                 continue
-            target = package / self._token_output_path(token)
+            target = package / self._token_output_path(path)
             if target in copied:
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -269,6 +308,14 @@ class HostLibsConan(ConanFile):
             str(package / f"{name}.linkflags"),
             f"{flags}\n{link_flags}\n",
         )
+
+    @staticmethod
+    def _token_input_path(token: str):
+        # CMake's WHOLE_ARCHIVE link feature emits the library inside the MSVC
+        # option (.NET 11 links runtimeinfo.lib this way). The response file
+        # keeps the option; the package needs the library it names.
+        option = "/WHOLEARCHIVE:"
+        return token[len(option):] if token.upper().startswith(option) else token
 
     @staticmethod
     def _resolve_token(build_root: Path, token: str):
@@ -314,7 +361,9 @@ class HostLibsConan(ConanFile):
             rule_tokens = tail.split()
             objects = []
             for token in rule_tokens[1:]:
-                if token == "|":
+                # Explicit inputs end at the implicit (|), order-only (||) or
+                # validation (|@) separator; .NET 11's C apphost has only ||.
+                if token.startswith("|"):
                     break
                 objects.append(token)
 

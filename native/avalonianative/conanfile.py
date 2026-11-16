@@ -20,7 +20,10 @@ class AvaloniaNativeConan(ConanFile):
     settings = "os", "arch", "compiler", "build_type"
 
     def set_version(self):
-        self.version = self.version or "12.1.4"
+        # No default here: Taskfile.yml always passes --version, defaulting to the version scripts/repo_versions.py reads.
+        if str(self.version) not in self.conan_data["sources"]:
+            raise ConanException(f"Unsupported Avalonia version: {self.version}; pass --version with one of "
+                                 f"{', '.join(self.conan_data['sources'])} (native/avalonianative/conandata.yml)")
 
     def validate(self):
         if str(self.version) not in self.conan_data["sources"]:
@@ -33,7 +36,7 @@ class AvaloniaNativeConan(ConanFile):
     def source(self):
         source = self.conan_data["sources"][str(self.version)]
         get(self, source["url"], filename=f"avalonia-{self.version}.tar.gz", sha256=source["sha256"], strip_root=True)
-        # Avalonia 12.1.4's native target has no submodule dependencies.
+        # Avalonia's native target has no submodule dependencies, so the GitHub archive (which omits submodules) is enough.
 
     @property
     def _apple_arch(self):

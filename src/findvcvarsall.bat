@@ -30,7 +30,10 @@ IF /I "%PROCESSOR_ARCHITECTURE%" == "ARM64" (
     IF /I "%~1" == "arm64" ( set vcEnvironment=amd64_arm64 )
 )
 
-CALL "%vsBase%\vc\Auxiliary\Build\vcvarsall.bat" %vcEnvironment% > NUL
+REM vcvarsall's helper scripts run vswhere.exe from PATH. Without it they print an error,
+REM which MSBuild would capture together with the linker path, so silence stderr as well.
+SET "PATH=%PATH%;%ProgramFiles(x86)%\Microsoft Visual Studio\Installer"
+CALL "%vsBase%\vc\Auxiliary\Build\vcvarsall.bat" %vcEnvironment% > NUL 2>&1
 
 FOR /F "delims=" %%W IN ('where link') DO (
     FOR %%A IN ("%%W") DO ECHO %%~dpA#

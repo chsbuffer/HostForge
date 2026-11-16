@@ -11,36 +11,42 @@ public class NativeAotMatrixTests
 {
     private static string SkiaVersion => Environment.GetEnvironmentVariable("HOSTFORGE_SKIA_VERSION") ?? RepoContext.SkiaSharpVersion;
     private static bool CheckAngle => Environment.GetEnvironmentVariable("HOSTFORGE_CHECK_ANGLE") != "false";
+    private static bool TestMeta => Environment.GetEnvironmentVariable("HOSTFORGE_TEST_META") == "true";
     internal static string Rid => Environment.GetEnvironmentVariable("HOSTFORGE_NATIVE_RID") ?? RuntimeInformation.RuntimeIdentifier;
     private static bool IsArm64 => Rid.EndsWith("-arm64", StringComparison.Ordinal);
     private static bool IsMusl => Rid.StartsWith("linux-musl-", StringComparison.Ordinal);
     private static Architecture TargetArchitecture => IsArm64 ? Architecture.Arm64 : Architecture.X64;
 
+    // ILCompiler integration can change between .NET versions, so publish for every supported TFM.
+    // NativeAOT compilation is memory intensive; keep one publish at a time on small runners.
+    // HOSTFORGE_TEST_META=true publishes through the meta packages instead of the RID packages.
+    // The meta packages restore the same RID packages, so CI tests the RID consumer where each
+    // RID package is built and only the meta consumer once every package exists.
     [Test]
-    public async Task TargetRid_PublishesAndRunsWithStaticGraphics()
+    [NotInParallel("nativeaot-publish")]
+    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.TargetFrameworkCases))]
+    public async Task TargetRid_PublishesAndRunsWithStaticGraphics(string targetFramework)
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
             throw new PlatformNotSupportedException("This matrix requires Windows, Linux or macOS.");
 
-        await PublishAndRunAsync(useMeta: false);
-        if (Environment.GetEnvironmentVariable("HOSTFORGE_TEST_META") == "true")
-            await PublishAndRunAsync(useMeta: true);
+        await PublishAndRunAsync(targetFramework, TestMeta);
     }
 
-    private static async Task PublishAndRunAsync(bool useMeta)
+    private static async Task PublishAndRunAsync(string targetFramework, bool useMeta)
     {
-        string workspace = CreateWorkspace(useMeta ? "meta" : "rid");
+        string workspace = CreateWorkspace($"{targetFramework}-{(useMeta ? "meta" : "rid")}");
         string output = Path.Combine(workspace, "publish");
-        string properties = Properties(workspace) + $" -p:UseStaticGraphicsMeta={useMeta.ToString().ToLowerInvariant()}";
+        string properties = Properties(workspace) + $" -p:NativeAotMatrixTargetFramework={targetFramework} -p:UseStaticGraphicsMeta={useMeta.ToString().ToLowerInvariant()}";
         string arguments = $"publish NativeAotMatrix.csproj -c Release -r {Rid} {properties} -p:PublishDir=\"{output}\" -bl:\"{Path.Combine(workspace, "publish.binlog")}\" -warnaserror -v:minimal";
         CommandResult publish = await CommandRunner.RunAsync("dotnet", arguments, workspace);
         await File.WriteAllTextAsync(Path.Combine(workspace, "publish.log"), publish.CombinedOutput);
-        AssertEx.Success(publish, $"NativeAOT publish ({Rid}, {SkiaVersion}, meta={useMeta})");
+        AssertEx.Success(publish, $"NativeAOT publish ({Rid}, {targetFramework}, {SkiaVersion}, meta={useMeta})");
 
         using (JsonDocument assets = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(workspace, "obj", "project.assets.json"))))
         {
             JsonElement libraries = assets.RootElement.GetProperty("libraries");
-            string expectedHarfBuzz = SkiaVersion == "3.119.4" ? "8.3.1.5" : "14.2.1.301";
+            string expectedHarfBuzz = RepoContext.GetHarfBuzzVersion(SkiaVersion);
             if (!libraries.TryGetProperty($"SkiaSharp/{SkiaVersion}", out _) || !libraries.TryGetProperty($"HarfBuzzSharp/{expectedHarfBuzz}", out _))
                 throw new InvalidOperationException("The static package did not raise the transitive managed graphics versions.");
         }
@@ -65,8 +71,9 @@ public class NativeAotMatrixTests
                 ? await CommandRunner.RunAsync("/usr/bin/env", $"DYLD_PRINT_LIBRARIES=1 \"{executable}\"", output)
                 : await CommandRunner.RunAsync(executable, string.Empty, output);
         await File.WriteAllTextAsync(Path.Combine(workspace, "run.log"), run.CombinedOutput);
-        AssertEx.Success(run, $"NativeAOT run ({Rid}, {SkiaVersion}, meta={useMeta})");
-        AssertEx.Contains(run.CombinedOutput, SkiaVersion == "3.119.4" ? "SkiaNative=119." : "SkiaNative=153.");
+        AssertEx.Success(run, $"NativeAOT run ({Rid}, {targetFramework}, {SkiaVersion}, meta={useMeta})");
+        // The minor number of a SkiaSharp version is its Skia milestone, which the native library reports.
+        AssertEx.Contains(run.CombinedOutput, $"SkiaNative={Version.Parse(SkiaVersion).Minor}.");
         AssertEx.Contains(run.CombinedOutput, $"Architecture={TargetArchitecture}");
         AssertEx.Contains(run.CombinedOutput, "SoftwarePixels=1024/1024");
         AssertEx.Contains(run.CombinedOutput, "HarfBuzzShape=OK");
@@ -88,23 +95,26 @@ public class NativeAotMatrixTests
         }
         await File.WriteAllTextAsync(Path.Combine(workspace, "result.json"), JsonSerializer.Serialize(new
         {
-            rid = Rid, skiaSharp = SkiaVersion, architecture = TargetArchitecture.ToString(),
+            rid = Rid, targetFramework, skiaSharp = SkiaVersion, architecture = TargetArchitecture.ToString(),
             meta = useMeta, exitCode = run.ExitCode, softwarePixels = 1024, harfBuzzShape = "OK",
             dynamicGraphicsLibraries = 0, machOAudit = OperatingSystem.IsMacOS()
         }, new JsonSerializerOptions { WriteIndented = true }));
-        Console.WriteLine($"PASS {Rid} Skia={SkiaVersion} meta={useMeta}: {workspace}\n{run.CombinedOutput}");
+        Console.WriteLine($"PASS {Rid} {targetFramework} Skia={SkiaVersion} meta={useMeta}: {workspace}\n{run.CombinedOutput}");
     }
 
     [Test]
     public async Task ManagedNativeVersionMismatch_IsRejectedBeforeLinking()
     {
         // A higher incompatible direct dependency is valid to NuGet but unsafe to link.
-        if (SkiaVersion != "3.119.4")
-            return;
+        string? newer = RepoContext.SupportedSkiaSharpVersions.FirstOrDefault(version =>
+            Version.Parse(version) > Version.Parse(SkiaVersion)
+            && RepoContext.VersionPrefix(version, 2) != RepoContext.VersionPrefix(SkiaVersion, 2));
+        if (newer is null)
+            Skip.Test($"No supported SkiaSharp line is newer than {SkiaVersion}.");
         foreach ((string property, string version, string code) in new[]
         {
-            ("MismatchedSkiaSharpVersion", "4.153.1", "HFG0002"),
-            ("MismatchedHarfBuzzVersion", "14.2.1.301", "HFG0003")
+            ("MismatchedSkiaSharpVersion", newer, "HFG0002"),
+            ("MismatchedHarfBuzzVersion", RepoContext.GetHarfBuzzVersion(newer), "HFG0003")
         })
         {
             string workspace = CreateWorkspace(code);
@@ -120,7 +130,7 @@ public class NativeAotMatrixTests
     [Test]
     public async Task MultiRidMetaConsumer_BuildsWithoutRidWithWarningsAsErrors()
     {
-        if (Environment.GetEnvironmentVariable("HOSTFORGE_TEST_META") != "true")
+        if (!TestMeta)
             return;
 
         string workspace = CreateWorkspace("no-rid");
@@ -155,7 +165,8 @@ public class NativeAotMatrixTests
 
     private static string CreateWorkspace(string purpose)
     {
-        string workspace = Path.Combine(RepoContext.ArtifactsTestRoot, $"nativeaot-{Rid}-{SkiaVersion}-{purpose}-{Guid.NewGuid():N}");
+        // Keep runtime-pack paths below MAX_PATH: link.exe cannot open longer library paths.
+        string workspace = Path.Combine(RepoContext.ArtifactsTestRoot, $"nativeaot-{Rid}-{SkiaVersion}-{purpose}-{Guid.NewGuid().ToString("N")[..8]}");
         Directory.CreateDirectory(workspace);
         string sample = Path.Combine(RepoContext.RepoRoot, "samples", "nativeaot-matrix");
         File.Copy(Path.Combine(sample, "NativeAotMatrix.csproj"), Path.Combine(workspace, "NativeAotMatrix.csproj"));
@@ -169,12 +180,13 @@ public class NativeAotMatrixTests
         string workspace = CreateWorkspace("native-lines");
         string targets = Path.Combine(RepoContext.RepoRoot, "src", "HostForge.StaticGraphics.targets");
         string project = Path.Combine(workspace, "Guard.proj");
+        // Any two distinct native lines conflict; the guard does not depend on the supported versions.
         await File.WriteAllTextAsync(project, $"""
             <Project>
               <PropertyGroup><PublishAot>true</PublishAot><RuntimeIdentifier>win-x64</RuntimeIdentifier></PropertyGroup>
               <ItemGroup>
-                <HostForgeStaticPackage Include="Skia3"><Component>SkiaSharp</Component><Rid>win-x64</Rid><SkiaLine>3.119</SkiaLine></HostForgeStaticPackage>
-                <HostForgeStaticPackage Include="Skia4"><Component>SkiaSharp</Component><Rid>win-x64</Rid><SkiaLine>4.153</SkiaLine></HostForgeStaticPackage>
+                <HostForgeStaticPackage Include="LineA"><Component>SkiaSharp</Component><Rid>win-x64</Rid><SkiaLine>1.10</SkiaLine></HostForgeStaticPackage>
+                <HostForgeStaticPackage Include="LineB"><Component>SkiaSharp</Component><Rid>win-x64</Rid><SkiaLine>2.20</SkiaLine></HostForgeStaticPackage>
               </ItemGroup>
               <Import Project="{System.Security.SecurityElement.Escape(targets)}" />
             </Project>
@@ -269,7 +281,9 @@ public class NativeAotMatrixTests
         if (archives.Length == 0)
             throw new InvalidOperationException("No macOS static archives were restored.");
         string expectedArch = TargetArchitecture == Architecture.Arm64 ? "arm64" : "x86_64";
-        Version deploymentTarget = TargetArchitecture == Architecture.Arm64 ? new Version(11, 0) : new Version(10, 13);
+        // SkiaSharp 4.156 targets macOS 12.0 on both architectures (native/macos/build.cake upstream).
+        Version deploymentTarget = SkiaVersion.StartsWith("4.", StringComparison.Ordinal) ? new Version(12, 0)
+            : TargetArchitecture == Architecture.Arm64 ? new Version(11, 0) : new Version(10, 13);
         foreach (string file in archives.Append(executable))
         {
             CommandResult lipo = await CommandRunner.RunAsync("lipo", $"-info \"{file}\"", workspace);

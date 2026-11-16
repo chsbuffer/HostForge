@@ -1,8 +1,10 @@
 import os
 import json
+import re
 import sys
 
 from conan import ConanFile
+from conan.errors import ConanException
 from conan.tools.build import build_jobs
 from conan.tools.env import Environment
 from conan.tools.files import (
@@ -40,13 +42,25 @@ class AngleConan(ConanFile):
     def _angle_root(self):
         return os.path.join(self.source_folder, "angle")
 
+    @property
+    def _depot_tools_root(self):
+        return os.path.join(self.source_folder, "depot_tools")
+
     def source(self):
         source = self.conan_data["sources"]
-        Git(self, folder=self.source_folder).clone(
-            url=source["url"],
-            target="angle",
-            args=["--depth", "1", "--branch", source["branch"]],
-        )
+        Git(self, folder=self._angle_root).fetch_commit(source["url"], source["commit"])
+
+        # Use the depot_tools revision that ANGLE's DEPS pins, so gclient
+        # itself is as reproducible as the dependencies it syncs.
+        depot_tools = self.conan_data["depot_tools"]
+        deps = load(self, os.path.join(self._angle_root, "DEPS"))
+        pinned = re.search(r"/chromium/tools/depot_tools\.git@([0-9a-f]{40})", deps)
+        if pinned is None or pinned.group(1) != depot_tools["commit"]:
+            raise ConanException(
+                f"conandata.yml depot_tools commit {depot_tools['commit']} does not match "
+                f"ANGLE DEPS {pinned and pinned.group(1)}"
+            )
+        Git(self, folder=self._depot_tools_root).fetch_commit(depot_tools["url"], depot_tools["commit"])
         apply_conandata_patches(self)
 
     def generate(self):
@@ -56,6 +70,10 @@ class AngleConan(ConanFile):
     def build(self):
         env = self._environment()
         with env.vars(self).apply():
+            # DEPOT_TOOLS_UPDATE=0 also skips the bootstrap that gclient.bat
+            # would otherwise run on first use: install the CIPD Python and
+            # generate the python3/git wrappers explicitly.
+            self.run(f'"{os.path.join(self._depot_tools_root, "bootstrap", "win_tools.bat")}"')
             self.run(
                 f'"{sys.executable}" scripts/bootstrap.py',
                 cwd=self._angle_root,
@@ -164,6 +182,9 @@ class AngleConan(ConanFile):
 
     def _environment(self):
         env = Environment()
+        env.prepend_path("PATH", self._depot_tools_root)
+        # Keep the pinned depot_tools checkout instead of updating to origin/main.
+        env.define("DEPOT_TOOLS_UPDATE", "0")
         env.define("DEPOT_TOOLS_WIN_TOOLCHAIN", "0")
         env.define("SCCACHE_BASEDIRS", self.build_folder)
         env.define("SCCACHE_DIRECT", "false")

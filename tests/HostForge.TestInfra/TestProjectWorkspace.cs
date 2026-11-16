@@ -24,6 +24,7 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         bool includeNativeAssetsPackages,
         bool? disableSkiaHarfBuzzRuntimeCopy = null,
         bool? disableAngleRuntimeCopy = null,
+        bool publishSingleFile = false,
         CancellationToken cancellationToken = default)
     {
         string guid = Guid.NewGuid().ToString("N");
@@ -46,7 +47,8 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
             runtimeIdentifier,
             includeNativeAssetsPackages,
             disableSkiaHarfBuzzRuntimeCopy,
-            disableAngleRuntimeCopy);
+            disableAngleRuntimeCopy,
+            publishSingleFile);
 
         return new TestProjectWorkspace(rootDirectory, projectDirectory, projectFilePath, projectName);
     }
@@ -85,7 +87,8 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         string runtimeIdentifier,
         bool includeNativeAssetsPackages,
         bool? disableSkiaHarfBuzzRuntimeCopy,
-        bool? disableAngleRuntimeCopy)
+        bool? disableAngleRuntimeCopy,
+        bool publishSingleFile)
     {
         ProjectRootElement project = ProjectRootElement.Create();
         project.Sdk = "Microsoft.NET.Sdk";
@@ -104,6 +107,16 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
             "$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)");
 
         propertyGroup.AddProperty("DetectAvaloniaDesigner", "false");
+
+        if (publishSingleFile)
+        {
+            // Self-contained single-file publishing uses the prelinked singlefilehost template. Pin the
+            // managed framework to the template's native runtime, as the package README requires;
+            // otherwise the runtime pack follows the latest patch known to the installed SDK.
+            propertyGroup.AddProperty("PublishSingleFile", "true");
+            propertyGroup.AddProperty("SelfContained", "true");
+            propertyGroup.AddProperty("RuntimeFrameworkVersion", RepoContext.GetHostLibsVersion(targetFramework));
+        }
 
         if (disableSkiaHarfBuzzRuntimeCopy is not null)
         {
@@ -170,7 +183,7 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
 
                 if (OperatingSystem.IsWindows())
                 {
-                #if NET10_0
+                #if NET10_0_OR_GREATER
                     NativeLibrary.SetDllImportResolver(
                         typeof(AngleNative).Assembly,
                         static (libraryName, _, _) =>
@@ -181,6 +194,7 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
                     Console.WriteLine($"AngleError=0x{AngleNative.GetError():X}");
                 }
                 Console.WriteLine($"SkiaSharpVersion.Native={SkiaSharp.SkiaSharpVersion.Native}");
+                Console.WriteLine($"RuntimeVersion={Environment.Version}");
 
                 internal static class AngleNative
                 {

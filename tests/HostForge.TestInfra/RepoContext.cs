@@ -1,6 +1,7 @@
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Locator;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 
 namespace HostForge.TestInfra;
 
@@ -42,7 +43,37 @@ public static class RepoContext
 
     public static string HarfBuzzVersion { get; } = ReadProperty("HarfBuzzVersion");
 
+    private static readonly IReadOnlyList<KeyValuePair<string, string>> SkiaSharpSources = ReadSkiaSharpSources();
+
+    /// <summary>Supported SkiaSharp versions, in the order of native/skiasharp/versions.json.</summary>
+    public static IReadOnlyList<string> SupportedSkiaSharpVersions { get; } = SkiaSharpSources.Select(source => source.Key).ToArray();
+
+    /// <summary>The HarfBuzzSharp version that native/skiasharp/versions.json pairs with a SkiaSharp version.</summary>
+    public static string GetHarfBuzzVersion(string skiaSharpVersion) =>
+        SkiaSharpSources.FirstOrDefault(source => source.Key == skiaSharpVersion).Value
+        ?? throw new ArgumentException($"SkiaSharp {skiaSharpVersion} is not in native/skiasharp/versions.json.", nameof(skiaSharpVersion));
+
+    /// <summary>The first <paramref name="components"/> numbers of a version, e.g. the native line of a SkiaSharp (2) or HarfBuzzSharp (3) version.</summary>
+    public static string VersionPrefix(string version, int components) =>
+        string.Join('.', version.Split('.').Take(components));
+
     public static string HostLibsVersion { get; } = ReadProperty("HostLibsVersion");
+
+    /// <summary>The .NET runtime version of the host libraries linked into the templates for a target framework.</summary>
+    public static string GetHostLibsVersion(string targetFramework) =>
+        ReadProperty("HostLibsVersion", new Dictionary<string, string> { ["HostLibsTargetFramework"] = targetFramework });
+
+    /// <summary>Target frameworks with host libraries, Avalonia templates and test coverage.</summary>
+    public static IReadOnlyList<string> TargetFrameworks { get; } = ReadList("HostForgeTargetFrameworks");
+
+    public static IReadOnlyList<string> AvaloniaTemplateTfms { get; } = ReadList("AvaloniaTemplateTfms");
+
+    /// <summary>Data source for tests that run once per supported target framework.</summary>
+    public static IEnumerable<Func<string>> TargetFrameworkCases() =>
+        TargetFrameworks.Select(targetFramework => (Func<string>)(() => targetFramework));
+
+    public static IEnumerable<Func<string>> AvaloniaTemplateTfmCases() =>
+        AvaloniaTemplateTfms.Select(targetFramework => (Func<string>)(() => targetFramework));
 
     public static string AvaloniaPackageOutputDir { get; } =
         Path.Combine(RepoRoot, "artifacts", "packages", "Release");
@@ -87,6 +118,20 @@ public static class RepoContext
 
         return value;
     }
+
+    private static KeyValuePair<string, string>[] ReadSkiaSharpSources()
+    {
+        // Each entry maps a SkiaSharp version to [mono/skia commit, HarfBuzzSharp version].
+        string path = Path.Combine(RepoRoot, "native", "skiasharp", "versions.json");
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
+        return document.RootElement.EnumerateObject()
+            .Select(entry => KeyValuePair.Create(entry.Name, entry.Value[1].GetString()
+                ?? throw new InvalidOperationException($"{path}: missing HarfBuzzSharp version of {entry.Name}.")))
+            .ToArray();
+    }
+
+    private static string[] ReadList(string propertyName) =>
+        ReadProperty(propertyName).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     private static string StripSemVerBuildMetadata(string version)
     {

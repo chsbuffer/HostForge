@@ -1,13 +1,27 @@
 <Project>
 
   <PropertyGroup>
-    <AvaloniaVersion>12.1.0</AvaloniaVersion>
+    <AvaloniaVersion>12.1.6</AvaloniaVersion>
     <AngleVersion>2.1.27548.20260419</AngleVersion>
     <SkiaSharpVersion Condition="'$(SkiaSharpVersion)' == ''">3.119.4</SkiaSharpVersion>
     <HarfBuzzVersion Condition="'$(HarfBuzzVersion)' == '' and '$(SkiaSharpVersion)' == '3.119.4'">8.3.1.5</HarfBuzzVersion>
-    <HarfBuzzVersion Condition="'$(HarfBuzzVersion)' == '' and '$(SkiaSharpVersion)' == '4.153.1'">14.2.1.301</HarfBuzzVersion>
-    <AvaloniaNativeVersion Condition="'$(AvaloniaNativeVersion)' == ''">12.1.4</AvaloniaNativeVersion>
-    <HostLibsVersion>10.0.13</HostLibsVersion>
+    <HarfBuzzVersion Condition="'$(HarfBuzzVersion)' == '' and '$(SkiaSharpVersion)' == '4.156.1'">14.4.0.101</HarfBuzzVersion>
+    <AvaloniaNativeVersion Condition="'$(AvaloniaNativeVersion)' == ''">12.1.6</AvaloniaNativeVersion>
+  </PropertyGroup>
+
+  <!--
+    Supported target frameworks and the .NET runtime of their host libraries (native/hostlibs/versions.json).
+    HostLibsTargetFramework selects one line, e.g. -p:HostLibsTargetFramework=net11.0.
+  -->
+  <PropertyGroup>
+    <HostForgeTargetFrameworks>net10.0;net11.0</HostForgeTargetFrameworks>
+    <HostLibsNet10Version>10.0.15</HostLibsNet10Version>
+    <HostLibsNet11Version>11.0.0</HostLibsNet11Version>
+    <AvaloniaTemplateTfms Condition="'$(AvaloniaTemplateTfms)' == ''">$(HostForgeTargetFrameworks)</AvaloniaTemplateTfms>
+
+    <HostLibsTargetFramework Condition="'$(HostLibsTargetFramework)' == ''">net10.0</HostLibsTargetFramework>
+    <HostLibsVersion Condition="'$(HostLibsVersion)' == '' and $(HostLibsTargetFramework.StartsWith('net10.0'))">$(HostLibsNet10Version)</HostLibsVersion>
+    <HostLibsVersion Condition="'$(HostLibsVersion)' == '' and $(HostLibsTargetFramework.StartsWith('net11.0'))">$(HostLibsNet11Version)</HostLibsVersion>
   </PropertyGroup>
 
   <!-- Increment only the affected native version line when publishing a fix. -->
@@ -20,7 +34,7 @@
 
   <PropertyGroup>
     <TargetAvaloniaVersion>12.0</TargetAvaloniaVersion>
-    <_Major>1</_Major>
+    <_Major>2</_Major>
     <_Preview Condition="'$(_Preview)' == ''"></_Preview>
 
     <_AvaloniaAppHostPreview>$(_Preview)</_AvaloniaAppHostPreview>

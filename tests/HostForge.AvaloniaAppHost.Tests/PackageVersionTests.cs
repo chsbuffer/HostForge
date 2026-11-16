@@ -6,14 +6,20 @@ namespace HostForge.AvaloniaAppHost.Tests;
 
 public class PackageVersionTests
 {
+    public static IEnumerable<Func<(string SkiaVersion, string Preview)>> SkiaAndPreviewCases() =>
+        from skiaVersion in RepoContext.SupportedSkiaSharpVersions
+        from preview in new[] { "", "beta" }
+        select (Func<(string, string)>)(() => (skiaVersion, preview));
+
     [Test]
-    [Arguments("3.119.4", "", "12.0.0", "8.3.1.5")]
-    [Arguments("3.119.4", "beta", "12.0.0-beta", "8.3.1.5")]
-    [Arguments("4.153.1", "", "12.0.0-skia4", "14.2.1.301")]
-    [Arguments("4.153.1", "beta", "12.0.0-beta.skia4", "14.2.1.301")]
-    public async Task PackageVersionsAndDependenciesMatchSelectedSkia(
-        string skiaVersion, string preview, string packageVersion, string harfBuzzVersion)
+    [MethodDataSource(nameof(SkiaAndPreviewCases))]
+    public async Task PackageVersionsAndDependenciesMatchSelectedSkia(string skiaVersion, string preview)
     {
+        // Directory.Build.props labels packages built for the SkiaSharp 4 line with skia4.
+        string[] labels = new[] { preview, Version.Parse(skiaVersion).Major == 4 ? "skia4" : "" }
+            .Where(label => label.Length != 0).ToArray();
+        string packageVersion = labels.Length == 0 ? "12.0.0" : $"12.0.0-{string.Join('.', labels)}";
+        string harfBuzzVersion = RepoContext.GetHarfBuzzVersion(skiaVersion);
         string directory = Path.Combine(RepoContext.RepoRoot, "src", "package-avalonia-apphost");
         foreach (string filename in new[]
                  {

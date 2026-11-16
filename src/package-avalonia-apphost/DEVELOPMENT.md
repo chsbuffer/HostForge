@@ -12,26 +12,34 @@ The linker consumes native inputs from:
 
 Linked host templates are generated under:
 
-- `artifacts/avalonia-host/<version>/<rid>/`
+- `artifacts/avalonia-host/<version>/<tfm>/<rid>/`
 
 Examples:
 
-- `artifacts/avalonia-host/12.0/win-x64/apphost.exe`
-- `artifacts/avalonia-host/12.0/linux-x64/singlefilehost`
+- `artifacts/avalonia-host/12.0/net10.0/win-x64/apphost.exe`
+- `artifacts/avalonia-host/12.0/net11.0/linux-x64/singlefilehost`
+
+`AvaloniaTemplateTfms` (default: `HostForgeTargetFrameworks` in `Directory.Build.props`)
+selects the template TFMs. Each TFM links the host libs of its own runtime
+(`HostLibsNet<N>Version`), from `artifacts/hostlibs/<runtime-version>/...`, so build HostLibs
+for every runtime version before linking.
+RIDs link one after another; the TFMs of a RID link in parallel because each writes only its own
+`<tfm>/<rid>` directory.
 
 ## Projects
 
 | Project | Purpose |
 |---|---|
-| `AvaloniaAppHost.Link.proj` | Links apphost templates for one OS at a time (`TARGET_OS=windows\|linux`) |
+| `AvaloniaAppHost.Link.proj` | Links apphost templates for one OS at a time (`TARGET_OS=windows\|linux`), for every template TFM |
 | `AvaloniaAppHost.Rids.targets` | Shared RID definitions for link/pack orchestration |
-| `AvaloniaAppHost.Rid.csproj` | Packs one RID's templates + `.props` (`-p:AvaloniaHostRid=win-x64`) |
+| `AvaloniaAppHost.Rid.csproj` | Packs one RID's templates for every template TFM and generates its `.props` (`-p:AvaloniaHostRid=win-x64`) |
 | `AvaloniaAppHost.Build.csproj` | Packs `.targets` + `ModuleInitializer.cs` |
 | `AvaloniaAppHost.csproj` | Meta-package: depends on all RID + Build packages |
 
 ## Package layout
 
-Per-RID packages (`ChsBuffer.Avalonia.AppHost.win-x64`, etc.) register their RID via `.props`:
+Per-RID packages (`ChsBuffer.Avalonia.AppHost.win-x64`, etc.) contain `template/<tfm>/<rid>/` for every
+template TFM and register each one in a `.props` file generated at pack time:
 
 ```xml
 <AvaloniaAppHostRids Include="win-x64">
@@ -39,27 +47,40 @@ Per-RID packages (`ChsBuffer.Avalonia.AppHost.win-x64`, etc.) register their RID
   <AppHostTemplatePath>…/template/net10.0/win-x64/apphost.exe</AppHostTemplatePath>
   <SingleFileHostTemplatePath>…/template/net10.0/win-x64/singlefilehost.exe</SingleFileHostTemplatePath>
 </AvaloniaAppHostRids>
+<AvaloniaAppHostRids Include="win-x64">
+  <AppHostTemplateTfm>net11.0</AppHostTemplateTfm>
+  …
+</AvaloniaAppHostRids>
 ```
 
-The Build package's `.targets` matches `$(RuntimeIdentifier)` against `@(AvaloniaAppHostRids)`. Each RID package depends on the Build package, so consumers install only the RID packages they need. The meta-package `ChsBuffer.Avalonia.AppHost` installs every supported RID package.
+The Build package's `.targets` matches `$(RuntimeIdentifier)` and the project's .NET version against
+`@(AvaloniaAppHostRids)`. The TFM is normalized to `net<major>.<minor>`, so OS-specific TFMs such as
+`net11.0-windows` use the `net11.0` template. Each RID package depends on the Build package, so consumers install only the RID packages they need. The meta-package `ChsBuffer.Avalonia.AppHost` installs every supported RID package.
 
 ## SkiaSharp variants and package versions
 
 `SKIASHARP_VERSION` selects the native libraries and managed package dependencies
-for link, pack and test commands. The default is `3.119.4`; use `4.153.1` for Skia 4.
+for link, pack and test commands. When omitted, `SkiaSharpVersion` in `Directory.Build.props`
+(the Skia 3 version) applies; set it to the Skia 4 version from
+`native/skiasharp/versions.json` for Skia 4.
 Package IDs are shared, and the Skia 4 variant adds `skia4` to the prerelease part
-of every RID, Build and meta-package version:
+of every RID, Build and meta-package version (`<major>` is `_Major` in `Directory.Build.props`):
 
-| `_Preview` | SkiaSharp 3.119.4 | SkiaSharp 4.153.1 |
+| `_Preview` | SkiaSharp 3 | SkiaSharp 4 |
 |---|---|---|
-| empty | `12.0.0` | `12.0.0-skia4` |
-| `beta` | `12.0.0-beta` | `12.0.0-beta.skia4` |
+| empty | `12.0.<major>` | `12.0.<major>-skia4` |
+| `beta` | `12.0.<major>-beta` | `12.0.<major>-beta.skia4` |
+
+Increment `_Major` whenever the AppHost inputs (.NET runtimes, SkiaSharp, ANGLE) change;
+the package lock test fails otherwise. Upstream pull requests and `task upstream-apply`
+increment it automatically. See the upstream tracking section of the root
+[DEVELOPMENT.md](../../DEVELOPMENT.md#上游跟踪与版本守卫).
 
 Set `_Preview` in `Directory.Build.props`, pass `-p:_Preview=beta` directly to
 MSBuild, or set the `_Preview` environment variable before running Task commands.
 The `skia4` suffix is added automatically; keep `_Preview` as the desired base label.
 
-Linked templates keep the same `artifacts/avalonia-host/<version>/<rid>/` paths.
+Linked templates keep the same `artifacts/avalonia-host/<version>/<tfm>/<rid>/` paths.
 For local builds, link and pack one Skia variant before linking the other variant.
 CI uses separate jobs and `avalonia-host-skia4-windows` / `avalonia-host-skia4-linux`
 artifacts, then uploads the five Skia 4 packages as `nuget-avalonia-apphost-skia4`.
@@ -73,16 +94,17 @@ task link-avalonia TARGET_OS=windows
 task link-avalonia TARGET_OS=linux SYSROOT=build/rootfs/x64
 ```
 
-Select Skia 4 with the same option for every step:
+Select Skia 4 with the same option for every step (`<skia4>` is the Skia 4 version in
+`native/skiasharp/versions.json`):
 
 ```powershell
-task link-avalonia TARGET_OS=windows SKIASHARP_VERSION=4.153.1
-task avalonia-test SKIASHARP_VERSION=4.153.1
-task pack-avalonia SKIASHARP_VERSION=4.153.1
+task link-avalonia TARGET_OS=windows SKIASHARP_VERSION=<skia4>
+task avalonia-test SKIASHARP_VERSION=<skia4>
+task pack-avalonia SKIASHARP_VERSION=<skia4>
 ```
 
 Before packing all RIDs, link Linux in its native environment with
-`task link-avalonia TARGET_OS=linux SKIASHARP_VERSION=4.153.1 SYSROOT=build/rootfs/x64`.
+`task link-avalonia TARGET_OS=linux SKIASHARP_VERSION=<skia4> SYSROOT=build/rootfs/x64`.
 
 Pack one RID (requires linked templates for that RID):
 

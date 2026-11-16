@@ -34,8 +34,8 @@ public class AvaloniaNativeTests
                     <CopyBuildOutputToPublishDirectory>false</CopyBuildOutputToPublishDirectory>
                   </PropertyGroup>
                   <ItemGroup>
-                    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
-                    <HostForgeStaticPackage Include="test" Component="Avalonia.Native" Rid="osx-arm64" AvaloniaVersion="12.1.4" NativeDir="{{escapedRoot}}/" />
+                    <PackageReference Include="Avalonia.Desktop" Version="{{RepoContext.AvaloniaNativeVersion}}" />
+                    <HostForgeStaticPackage Include="test" Component="Avalonia.Native" Rid="osx-arm64" AvaloniaVersion="{{RepoContext.AvaloniaNativeVersion}}" NativeDir="{{escapedRoot}}/" />
                   </ItemGroup>
                   <Import Project="{{targets}}" />
                   <!-- Exercise SDK publish-list processing without cross-OS native compilation. -->
@@ -158,8 +158,13 @@ public class AvaloniaNativeTests
                 """);
             await File.WriteAllTextAsync(Path.Combine(consumer, "Program.cs"), "System.Console.WriteLine(\"Consumer\");");
 
-            // The upstream telemetry collector otherwise outlives the build and locks the temporary NuGet cache.
-            var environment = new Dictionary<string, string> { ["AVALONIA_TELEMETRY_OPTOUT"] = "1" };
+            // The upstream telemetry collector and reused MSBuild nodes (which keep Avalonia's task
+            // assemblies loaded on Windows) otherwise outlive the build and lock the temporary NuGet cache.
+            var environment = new Dictionary<string, string>
+            {
+                ["AVALONIA_TELEMETRY_OPTOUT"] = "1",
+                ["MSBUILDDISABLENODEREUSE"] = "1"
+            };
             foreach (string rid in new[] { "", "win-x64", "linux-x64" })
             {
                 string arguments = $"build \"{project}\" -c Release -warnaserror -v:minimal";
@@ -256,15 +261,28 @@ public class AvaloniaNativeTests
         }
     }
 
+    // A published Avalonia release older than the static payload, so it never matches the payload's version.
+    private const string MismatchedAvaloniaVersion = "12.1.0";
+
+    public static IEnumerable<Func<(string Version, string Rid, bool Aot, bool HasPayload, string Expected)>> BuildIntegrationCases()
+    {
+        string current = RepoContext.AvaloniaNativeVersion;
+        (string, string, bool, bool, string)[] cases =
+        [
+            (current, "osx-arm64", true, true, "PINVOKE=libAvaloniaNative"),
+            (current, "osx-x64", true, true, "PINVOKE=libAvaloniaNative"),
+            (MismatchedAvaloniaVersion, "osx-arm64", true, true, "HFG0004"),
+            (MismatchedAvaloniaVersion, "osx-arm64", false, true, "INACTIVE"),
+            (current, "linux-x64", true, true, "INACTIVE"),
+            (current, "osx-arm64", false, true, "INACTIVE"),
+            (current, "osx-arm64", true, false, "HFG1001"),
+            (current, "osx-x64", true, false, "HFG1001")
+        ];
+        return cases.Select(testCase => (Func<(string, string, bool, bool, string)>)(() => testCase));
+    }
+
     [Test]
-    [Arguments("12.1.4", "osx-arm64", true, true, "PINVOKE=libAvaloniaNative")]
-    [Arguments("12.1.4", "osx-x64", true, true, "PINVOKE=libAvaloniaNative")]
-    [Arguments("12.1.0", "osx-arm64", true, true, "HFG0004")]
-    [Arguments("12.1.0", "osx-arm64", false, true, "INACTIVE")]
-    [Arguments("12.1.4", "linux-x64", true, true, "INACTIVE")]
-    [Arguments("12.1.4", "osx-arm64", false, true, "INACTIVE")]
-    [Arguments("12.1.4", "osx-arm64", true, false, "HFG1001")]
-    [Arguments("12.1.4", "osx-x64", true, false, "HFG1001")]
+    [MethodDataSource(nameof(BuildIntegrationCases))]
     public async Task BuildIntegration_UsesResolvedVersionAndExactAotRid(string version, string rid, bool aot, bool hasPayload, string expected)
     {
         string root = Path.Combine(RepoContext.ArtifactsTestRoot, $"avalonianative-contract-{Guid.NewGuid():N}");
@@ -287,9 +305,9 @@ public class AvaloniaNativeTests
                   </PropertyGroup>
                   <ItemGroup>
                     <PackageReference Include="Avalonia.Native" Version="{{version}}" />
-                    <HostForgeStaticPackage Include="test-arm64" Component="Avalonia.Native" Rid="osx-arm64" AvaloniaVersion="12.1.4" NativeDir="{{escapedRoot}}/"
+                    <HostForgeStaticPackage Include="test-arm64" Component="Avalonia.Native" Rid="osx-arm64" AvaloniaVersion="{{RepoContext.AvaloniaNativeVersion}}" NativeDir="{{escapedRoot}}/"
                                                    Condition="'{{hasPayload}}' == 'true' or '{{rid}}' != 'osx-arm64'" />
-                    <HostForgeStaticPackage Include="test-x64" Component="Avalonia.Native" Rid="osx-x64" AvaloniaVersion="12.1.4" NativeDir="{{escapedRoot}}/"
+                    <HostForgeStaticPackage Include="test-x64" Component="Avalonia.Native" Rid="osx-x64" AvaloniaVersion="{{RepoContext.AvaloniaNativeVersion}}" NativeDir="{{escapedRoot}}/"
                                                    Condition="'{{hasPayload}}' == 'true' or '{{rid}}' != 'osx-x64'" />
                     <ResolvedFileToPublish Include="libAvaloniaNative.dylib;libSkiaSharp.dylib;libHarfBuzzSharp.dylib" />
                   </ItemGroup>

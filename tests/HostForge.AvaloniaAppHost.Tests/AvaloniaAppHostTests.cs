@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Text.Json;
 using HostForge.TestInfra;
 
 namespace HostForge.AvaloniaAppHost.Tests;
@@ -60,10 +61,13 @@ public class AvaloniaAppHostTests
                 UnpackNupkg(nupkg, tmp);
                 HashSet<string> files = ListFiles(tmp);
 
-                if (!files.Contains($"template/net10.0/{rid}/apphost.exe"))
-                    throw new InvalidOperationException($"{rid} package missing apphost");
-                if (!files.Contains($"template/net10.0/{rid}/singlefilehost.exe"))
-                    throw new InvalidOperationException($"{rid} package missing singlefilehost");
+                foreach (string tfm in RepoContext.AvaloniaTemplateTfms)
+                {
+                    if (!files.Contains($"template/{tfm}/{rid}/apphost.exe"))
+                        throw new InvalidOperationException($"{rid} package missing {tfm} apphost");
+                    if (!files.Contains($"template/{tfm}/{rid}/singlefilehost.exe"))
+                        throw new InvalidOperationException($"{rid} package missing {tfm} singlefilehost");
+                }
 
                 foreach (string other in AllRids)
                 {
@@ -72,8 +76,10 @@ public class AvaloniaAppHostTests
                         throw new InvalidOperationException($"{rid} package leaked {other} templates");
                 }
 
-                if (!files.Contains($"buildTransitive/{packageId}.props"))
+                string props = $"buildTransitive/{packageId}.props";
+                if (!files.Contains(props))
                     throw new InvalidOperationException($"{rid} package missing .props");
+                await AssertRegistrationsResolveToPackedTemplates(Path.Combine(tmp, props), rid);
             }
             finally
             {
@@ -111,10 +117,11 @@ public class AvaloniaAppHostTests
     }
 
     [Test]
-    public async Task WindowsAnglePInvoke_ResolvesFromAppHost_WinX64()
+    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
+    public async Task WindowsAnglePInvoke_ResolvesFromAppHost_WinX64(string targetFramework)
     {
         await using var project = await TestProjectWorkspace.CreateAsync(
-            targetFramework: "net10.0",
+            targetFramework: targetFramework,
             runtimeIdentifier: "win-x64",
             includeNativeAssetsPackages: true);
 
@@ -124,7 +131,8 @@ public class AvaloniaAppHostTests
             project.ProjectDirectory);
 
         AssertEx.Success(result, "windows-angle-pinvoke:publish");
-        string outputDirectory = project.GetPublishDirectory("Release", "net10.0", "win-x64");
+        AssertActivationState(result.CombinedOutput, expectedActive: true, targetFramework, "win-x64");
+        string outputDirectory = project.GetPublishDirectory("Release", targetFramework, "win-x64");
         string executable = Path.Combine(outputDirectory, $"{project.ProjectName}.exe");
         string angleDll = Path.Combine(outputDirectory, "av_libglesv2.dll");
         AssertEx.FileMissing(angleDll);
@@ -138,15 +146,47 @@ public class AvaloniaAppHostTests
     }
 
     [Test]
-    public async Task PublishRules_CoverNet9Net10AndAvailableRids()
+    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
+    public async Task SingleFilePublish_RunsOnPrelinkedSingleFileHost_WinX64(string targetFramework)
+    {
+        await using var project = await TestProjectWorkspace.CreateAsync(
+            targetFramework: targetFramework,
+            runtimeIdentifier: "win-x64",
+            includeNativeAssetsPackages: true,
+            publishSingleFile: true);
+
+        CommandResult result = await RunDotNetCommandAsync("publish", project.ProjectFilePath, project.ProjectDirectory);
+        AssertEx.Success(result, $"{targetFramework} single-file publish");
+        AssertActivationState(result.CombinedOutput, expectedActive: true, targetFramework, "win-x64");
+
+        // The bundle runs on the runtime embedded in the template, with ANGLE, Skia and HarfBuzz
+        // resolved from the executable instead of extracted or adjacent native libraries.
+        string outputDirectory = project.GetPublishDirectory("Release", targetFramework, "win-x64");
+        AssertNativeRuntimeCopy(outputDirectory, expectSkiaHarfBuzzRuntimeCopy: false, expectAngleRuntimeCopy: false);
+        await RunExeAndAssertSuccess(
+            $"{targetFramework}_single-file",
+            Path.Combine(outputDirectory, $"{project.ProjectName}.exe"),
+            RepoContext.GetHostLibsVersion(targetFramework));
+    }
+
+    [Test]
+    public async Task PublishRules_CoverTemplateTfmsAndAvailableRids()
     {
         var packedRids = GetPackedRids();
         var cases = new List<PublishRuleCase>();
 
         foreach (string rid in packedRids)
         {
-            cases.Add(new($"net9_publish_{rid}", "net9.0", rid, ExpectedActive: false, ExpectNativeRuntimeCopy: true, RunExecutable: rid == "win-x64"));
-            cases.Add(new($"net10_publish_{rid}", "net10.0", rid, ExpectedActive: true, ExpectNativeRuntimeCopy: false, RunExecutable: rid == "win-x64"));
+            cases.Add(new($"net9.0_publish_{rid}", "net9.0", rid, ExpectedActive: false, ExpectNativeRuntimeCopy: true, RunExecutable: rid == "win-x64"));
+            foreach (string tfm in RepoContext.AvaloniaTemplateTfms)
+                cases.Add(new($"{tfm}_publish_{rid}", tfm, rid, ExpectedActive: true, ExpectNativeRuntimeCopy: false, RunExecutable: rid == "win-x64"));
+        }
+
+        if (packedRids.Contains("win-x64"))
+        {
+            // Templates depend only on the .NET version, so an OS-specific TFM selects the same template.
+            string windowsTfm = $"{RepoContext.AvaloniaTemplateTfms[^1]}-windows";
+            cases.Add(new($"{windowsTfm}_publish_win-x64", windowsTfm, "win-x64", ExpectedActive: true, ExpectNativeRuntimeCopy: false, RunExecutable: true));
         }
 
         PublishRuleCase[] allCases = cases.ToArray();
@@ -216,6 +256,42 @@ public class AvaloniaAppHostTests
         }
     }
 
+    private static async Task AssertRegistrationsResolveToPackedTemplates(string propsPath, string rid)
+    {
+        // Evaluate the generated registration as MSBuild does for consumers.
+        CommandResult result = await CommandRunner.RunAsync(
+            "dotnet",
+            $"msbuild \"{propsPath}\" -nologo -getItem:AvaloniaAppHostRids",
+            Path.GetDirectoryName(propsPath)!);
+        AssertEx.Success(result, $"{rid} registration evaluation");
+
+        using JsonDocument document = JsonDocument.Parse(result.StandardOutput);
+        JsonElement[] registrations = document.RootElement.GetProperty("Items").GetProperty("AvaloniaAppHostRids").EnumerateArray().ToArray();
+        string[] tfms = registrations.Select(registration => registration.GetProperty("AppHostTemplateTfm").GetString()!).ToArray();
+        if (!tfms.SequenceEqual(RepoContext.AvaloniaTemplateTfms))
+        {
+            throw new InvalidOperationException(
+                $"{rid} registers {string.Join(", ", tfms)}; expected {string.Join(", ", RepoContext.AvaloniaTemplateTfms)}.");
+        }
+
+        string packageRoot = Path.GetDirectoryName(Path.GetDirectoryName(propsPath)!)!;
+        foreach (JsonElement registration in registrations)
+        {
+            if (registration.GetProperty("Identity").GetString() != rid)
+                throw new InvalidOperationException($"{rid} package registers another RID: {registration}");
+
+            string tfm = registration.GetProperty("AppHostTemplateTfm").GetString()!;
+            foreach ((string metadata, string host) in new[] { ("AppHostTemplatePath", "apphost.exe"), ("SingleFileHostTemplatePath", "singlefilehost.exe") })
+            {
+                string actual = Path.GetFullPath(registration.GetProperty(metadata).GetString()!);
+                string expected = Path.GetFullPath(Path.Combine(packageRoot, "template", tfm, rid, host));
+                if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException($"{rid} {tfm} {metadata} is '{actual}', expected '{expected}'.");
+                AssertEx.FileExists(actual);
+            }
+        }
+    }
+
     private static async Task<CommandResult> RunDotNetCommandAsync(
         string verb,
         string projectFilePath,
@@ -257,7 +333,7 @@ public class AvaloniaAppHostTests
         }
     }
 
-    private static async Task RunExeAndAssertSuccess(string caseName, string exePath)
+    private static async Task RunExeAndAssertSuccess(string caseName, string exePath, string? expectedRuntimeVersion = null)
     {
         AssertEx.FileExists(exePath);
 
@@ -268,6 +344,12 @@ public class AvaloniaAppHostTests
 
         AssertEx.Success(runResult, $"{caseName}:run-exe");
         AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        AssertEx.Contains(runResult.CombinedOutput, "AngleError=0x");
+        if (expectedRuntimeVersion is not null)
+        {
+            // The bundle pins its managed framework to the runtime embedded in the template.
+            AssertEx.Contains(runResult.CombinedOutput, $"RuntimeVersion={expectedRuntimeVersion}");
+        }
     }
 
     private static void AssertLoadedSkiaSharpNativeVersion(string output)
@@ -284,7 +366,7 @@ public class AvaloniaAppHostTests
         }
 
         string value = output[start..end].Trim();
-        // Native reports the Skia milestone (119/153), the NuGet version's minor component.
+        // Native reports the Skia milestone (119/156), the NuGet version's minor component.
         if (!Version.TryParse(value, out Version? nativeVersion)
             || !Version.TryParse(RepoContext.SkiaSharpVersion, out Version? expectedVersion)
             || nativeVersion.Major != expectedVersion.Minor)

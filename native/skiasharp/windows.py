@@ -28,6 +28,19 @@ class WindowsBuild:
             replace_in_file(self, str(self._skia_root / "src/gpu/ganesh/d3d/GrD3DUtil.h"),
                             '#include "include/core/SkImage.h"',
                             '#include <string>\n#include "include/core/SkImage.h"', strict=False)
+        if not self._modern:
+            # Clang 22 removed __builtin_ia32_vcvtph2ps256; backport upstream skcms's
+            # _Float16 conversion (present in m153+) for m119.
+            replace_in_file(self, str(self._skia_root / "modules/skcms/src/Transform_inl.h"),
+                            "    typedef int16_t __attribute__((vector_size(16))) I16;\n"
+                            "    return __builtin_ia32_vcvtph2ps256((I16)half);\n",
+                            "#if defined(__clang__) && __clang_major__ >= 15 // for _Float16 support\n"
+                            "    typedef _Float16 __attribute__((vector_size(16))) F16;\n"
+                            "    return __builtin_convertvector((F16)half, F);\n"
+                            "#else\n"
+                            "    typedef int16_t __attribute__((vector_size(16))) I16;\n"
+                            "    return __builtin_ia32_vcvtph2ps256((I16)half);\n"
+                            "#endif\n")
         save(self, str(self._skia_build / "args.gn"), self._windows_skia_args())
         gn = self._skia_root / "bin" / "gn.exe"
         self.run(
@@ -63,8 +76,13 @@ class WindowsBuild:
             template = template.replace("DynamicLibrary", "StaticLibrary")
             template = template.replace("<WholeProgramOptimization>true", "<WholeProgramOptimization>false")
             template = template.replace("<ClCompile>", "<ClCompile><AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>")
-            template = template.replace("v142", values["VC_TOOLSET_VER"])
-            template = template.replace("10.0.19041.0", values["WINDOWS_SDK_VER"])
+            # Upstream pins its own toolset and SDK (4.156: v145 / 10.0.28000.0) and enables
+            # Spectre mitigation, which requires the optional Spectre-mitigated libraries.
+            template = re.sub(r"<PlatformToolset>v\d+</PlatformToolset>",
+                              f"<PlatformToolset>{values['VC_TOOLSET_VER']}</PlatformToolset>", template)
+            template = re.sub(r"<WindowsTargetPlatformVersion>[^<]*</WindowsTargetPlatformVersion>",
+                              f"<WindowsTargetPlatformVersion>{values['WINDOWS_SDK_VER']}</WindowsTargetPlatformVersion>", template)
+            template = re.sub(r"\s*<SpectreMitigation>[^<]*</SpectreMitigation>", "", template)
             wrapper = (Path(self.source_folder) / "harfbuzz-subset-msvc.cc").read_text()
             wrapper = wrapper.replace("../../../externals/skia", self._skia_root.as_posix())
             save(self, str(self._harfbuzz_build / "harfbuzz-subset-msvc.cc"), wrapper)

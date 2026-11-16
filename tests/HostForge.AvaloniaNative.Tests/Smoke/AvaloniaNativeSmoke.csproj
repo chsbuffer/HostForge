@@ -7,7 +7,7 @@
     <PublishAot>true</PublishAot>
     <UseAvaloniaNativeStatic Condition="'$(UseAvaloniaNativeStatic)' == ''">true</UseAvaloniaNativeStatic>
     <StripSymbols>false</StripSymbols>
-    <SmokeAvaloniaVersion Condition="'$(SmokeAvaloniaVersion)' == ''">12.1.4</SmokeAvaloniaVersion>
+    <SmokeAvaloniaVersion Condition="'$(SmokeAvaloniaVersion)' == ''">$(AvaloniaNativeVersion)</SmokeAvaloniaVersion>
     <RestoreAdditionalProjectSources Condition="'$(UseAvaloniaNativeStatic)' == 'true'">$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)</RestoreAdditionalProjectSources>
   </PropertyGroup>
   <ItemGroup>

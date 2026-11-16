@@ -15,6 +15,8 @@
   <Target Name="ResolveAvaloniaAppHostActivation"
           BeforeTargets="PrepareForBuild;_GetAppHostPaths">
     <PropertyGroup>
+      <!-- Templates depend only on the .NET runtime, so net11.0-windows uses the net11.0 template. -->
+      <_AvaloniaTemplateTfm Condition="'$(_AvaloniaTemplateTfm)' == '' and '$(TargetFrameworkIdentifier)' == '.NETCoreApp' and '$(TargetFrameworkVersion)' != ''">net$(TargetFrameworkVersion.TrimStart('vV'))</_AvaloniaTemplateTfm>
       <_AvaloniaTemplateTfm Condition="'$(_AvaloniaTemplateTfm)' == ''">$(TargetFramework)</_AvaloniaTemplateTfm>
       <_AvaloniaTemplateTfm Condition="'$(_AvaloniaTemplateTfm)' == ''">net10.0</_AvaloniaTemplateTfm>
 
@@ -66,7 +68,7 @@
           BeforeTargets="PrepareForBuild"
           DependsOnTargets="ResolveAvaloniaAppHostActivation"
           Condition="'$(TargetFramework)' != '' and '$(AvaloniaAppHostActive)' != 'true'">
-    <Warning Text="ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='$(TargetFramework)' RuntimeIdentifier='$(RuntimeIdentifier)'. No matching AvaloniaAppHostRids item for TFM '$(_AvaloniaTemplateTfm)'. Registered: @(AvaloniaAppHostRids->'%(Identity)', ', '). Host replacement and ANGLE/Skia/HarfBuzz runtime copy suppression are disabled." />
+    <Warning Text="ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='$(TargetFramework)' RuntimeIdentifier='$(RuntimeIdentifier)'. No matching AvaloniaAppHostRids item for TFM '$(_AvaloniaTemplateTfm)' and RID '$(_AvaloniaTemplateRid)'. Registered: @(AvaloniaAppHostRids->'%(AppHostTemplateTfm)/%(Identity)', ', '). Host replacement and ANGLE/Skia/HarfBuzz runtime copy suppression are disabled." />
   </Target>
 
   <Target Name="DisableAnglePublishItems"

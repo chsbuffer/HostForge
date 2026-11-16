@@ -5,7 +5,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PublishAot>true</PublishAot>
-    <AvaloniaVersion>12.1.4</AvaloniaVersion>
     <RestoreAdditionalProjectSources Condition="'$(SmokePackageSource)' != ''">$(RestoreAdditionalProjectSources);$(SmokePackageSource)</RestoreAdditionalProjectSources>
     <SmokeSkiaPackageId Condition="'$(SmokeSkiaPackageId)' == ''">ChsBuffer.SkiaSharp.Static.$(RuntimeIdentifier)</SmokeSkiaPackageId>
     <SmokeSkiaPackageVersion Condition="'$(SmokeSkiaPackageVersion)' == ''">$(SkiaSharpPackageVersion)</SmokeSkiaPackageVersion>
@@ -34,8 +33,8 @@
     <AssemblyMetadata Include="RuntimeIdentifier" Value="$(RuntimeIdentifier)" />
   </ItemGroup>
 
-  <Target Name="ValidateSmokeVersions" BeforeTargets="PrepareForBuild">
-    <Error Condition="'$(SkiaSharpVersion)' != '3.119.4' and '$(SkiaSharpVersion)' != '4.153.1'" Text="The smoke supports SkiaSharp 3.119.4 and 4.153.1." />
-    <Error Condition="('$(SkiaSharpVersion)' == '3.119.4' and '$(HarfBuzzVersion)' != '8.3.1.5') or ('$(SkiaSharpVersion)' == '4.153.1' and '$(HarfBuzzVersion)' != '14.2.1.301')" Text="The smoke requires the matching HarfBuzzSharp version (8.3.1.5 or 14.2.1.301)." />
+  <!-- Directory.Build.props sets HarfBuzzVersion only for supported SkiaSharp versions (native/skiasharp/versions.json). -->
+  <Target Name="ValidateSmokeVersions" BeforeTargets="CollectPackageReferences;PrepareForBuild">
+    <Error Condition="'$(HarfBuzzVersion)' == ''" Text="SkiaSharp $(SkiaSharpVersion) is not supported: Directory.Build.props pairs no HarfBuzzSharp version with it." />
   </Target>
 </Project>

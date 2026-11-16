@@ -1,6 +1,8 @@
 # HostForge.StaticAppHost.Tests
 
-TUnit matrix tests for the source-based `StaticAppHost.targets` integration.
+TUnit matrix tests for the source-based `StaticAppHost.targets` integration. The matrix runs once per
+`HostForgeTargetFrameworks` entry in `Directory.Build.props`, relinking `samples/simple-pinvoke` against the
+host libs of that runtime, so build HostLibs for every runtime version first.
 
 Run:
 

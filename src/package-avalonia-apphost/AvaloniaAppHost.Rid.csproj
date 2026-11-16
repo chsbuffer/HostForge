@@ -14,7 +14,7 @@
     <PackageId>ChsBuffer.Avalonia.AppHost.$(AvaloniaHostRid)</PackageId>
     <Version>$(AvaloniaAppHostPackageVersion)</Version>
     <Authors>ChsBuffer</Authors>
-    <Description>Prelinked Avalonia apphost/singlefilehost templates for $(AvaloniaHostRid), with static native libraries.</Description>
+    <Description>Prelinked Avalonia apphost/singlefilehost templates for $(AvaloniaHostRid) ($(AvaloniaTemplateTfms.Replace(";", ", "))), with static native libraries.</Description>
     <PackageTags>avalonia;apphost;single-file;host-template;$(AvaloniaHostRid)</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
@@ -26,9 +26,9 @@
     <IsPackable>true</IsPackable>
     <DevelopmentDependency>true</DevelopmentDependency>
 
-    <AvaloniaTemplateTfm Condition="'$(AvaloniaTemplateTfm)' == ''">net10.0</AvaloniaTemplateTfm>
     <PackageOutputPath>$(AvaloniaAppHostPackageOutputDir)\</PackageOutputPath>
     <AvaloniaAppHostArtifactRoot>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/avalonia-host/$(TargetAvaloniaVersion)'))</AvaloniaAppHostArtifactRoot>
+    <_AvaloniaRidProps>$(BaseIntermediateOutputPath)$(PackageId).props</_AvaloniaRidProps>
   </PropertyGroup>
 
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
@@ -44,19 +44,29 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="buildTransitive\AvaloniaAppHost.$(AvaloniaHostRid).props" Pack="true" PackagePath="buildTransitive/$(PackageId).props" />
+    <None Include="$(_AvaloniaRidProps)" Pack="true" PackagePath="buildTransitive/$(PackageId).props" />
     <None Include="README.$(AvaloniaHostRid).md" Pack="true" PackagePath="README.md" />
   </ItemGroup>
 
+  <!--
+    Packs template/<tfm>/<rid>/{apphost,singlefilehost}[.exe] for every AvaloniaTemplateTfms entry and
+    registers each one with an AvaloniaAppHostRids item. The Build package activates the item whose
+    RID and TFM match the consuming project.
+  -->
   <Target Name="_CollectAvaloniaHostTemplates"
           BeforeTargets="_GetPackageFiles"
           DependsOnTargets="_ResolveAvaloniaSinglePackRid">
+    <PropertyGroup>
+      <_AvaloniaPackRidExtension>@(_AvaloniaPackRid->'%(ExecutableExtension)')</_AvaloniaPackRidExtension>
+    </PropertyGroup>
+
     <ItemGroup>
-      <_AvaloniaTemplateHostFileToPack Include="@(_AvaloniaPackRid->'%(HostOutputDir)/apphost%(ExecutableExtension)')">
-        <PackagePath>template/$(AvaloniaTemplateTfm)/%(_AvaloniaPackRid.Identity)/</PackagePath>
+      <_AvaloniaPackTfm Include="$(AvaloniaTemplateTfms)" />
+      <_AvaloniaTemplateHostFileToPack Include="@(_AvaloniaPackTfm->'$(AvaloniaAppHostArtifactRoot)/%(Identity)/$(AvaloniaHostRid)/apphost$(_AvaloniaPackRidExtension)')">
+        <PackagePath>template/%(Identity)/$(AvaloniaHostRid)/</PackagePath>
       </_AvaloniaTemplateHostFileToPack>
-      <_AvaloniaTemplateHostFileToPack Include="@(_AvaloniaPackRid->'%(HostOutputDir)/singlefilehost%(ExecutableExtension)')">
-        <PackagePath>template/$(AvaloniaTemplateTfm)/%(_AvaloniaPackRid.Identity)/</PackagePath>
+      <_AvaloniaTemplateHostFileToPack Include="@(_AvaloniaPackTfm->'$(AvaloniaAppHostArtifactRoot)/%(Identity)/$(AvaloniaHostRid)/singlefilehost$(_AvaloniaPackRidExtension)')">
+        <PackagePath>template/%(Identity)/$(AvaloniaHostRid)/</PackagePath>
       </_AvaloniaTemplateHostFileToPack>
 
       <_AvaloniaMissingTemplateHostFile Include="@(_AvaloniaTemplateHostFileToPack)"
@@ -65,9 +75,26 @@
       <None Include="@(_AvaloniaTemplateHostFileToPack)"
             Pack="true"
             PackagePath="%(_AvaloniaTemplateHostFileToPack.PackagePath)" />
+
+      <!-- %24 keeps the MSBuild expressions literal in the generated props. -->
+      <_AvaloniaRidRegistration Include="@(_AvaloniaPackTfm)">
+        <Text><![CDATA[    <AvaloniaAppHostRids Include="$(AvaloniaHostRid)">
+      <AppHostTemplateTfm>%(Identity)</AppHostTemplateTfm>
+      <AppHostTemplatePath>%24([MSBuild]::NormalizePath('%24(MSBuildThisFileDirectory)', '..', 'template/%(Identity)/$(AvaloniaHostRid)/apphost$(_AvaloniaPackRidExtension)'))</AppHostTemplatePath>
+      <SingleFileHostTemplatePath>%24([MSBuild]::NormalizePath('%24(MSBuildThisFileDirectory)', '..', 'template/%(Identity)/$(AvaloniaHostRid)/singlefilehost$(_AvaloniaPackRidExtension)'))</SingleFileHostTemplatePath>
+    </AvaloniaAppHostRids>]]></Text>
+      </_AvaloniaRidRegistration>
     </ItemGroup>
 
+    <Error Condition="'@(_AvaloniaPackTfm)' == ''"
+           Text="AvaloniaTemplateTfms is empty." />
     <Error Condition="'@(_AvaloniaMissingTemplateHostFile)' != ''"
            Text="Missing Avalonia apphost template artifacts under $(AvaloniaAppHostArtifactRoot): @(_AvaloniaMissingTemplateHostFile, ', ')." />
+
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_AvaloniaRidProps)'))" />
+    <WriteLinesToFile File="$(_AvaloniaRidProps)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true"
+                      Lines="&lt;Project&gt;;  &lt;ItemGroup&gt;;@(_AvaloniaRidRegistration->'%(Text)');  &lt;/ItemGroup&gt;;&lt;/Project&gt;" />
   </Target>
 </Project>

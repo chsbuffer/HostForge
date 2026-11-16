@@ -12,10 +12,11 @@ public class AvaloniaAppHostLinuxTests
     }
 
     [Test]
-    public async Task PublishLinuxX64_RunsAndPrintsNativeVersion()
+    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
+    public async Task PublishLinuxX64_RunsAndPrintsNativeVersion(string targetFramework)
     {
         await using var project = await TestProjectWorkspace.CreateAsync(
-            targetFramework: "net10.0",
+            targetFramework: targetFramework,
             runtimeIdentifier: "linux-x64",
             includeNativeAssetsPackages: false);
 
@@ -24,11 +25,11 @@ public class AvaloniaAppHostLinuxTests
             $"publish \"{project.ProjectFilePath}\" -c Release -r linux-x64 -v:minimal",
             project.ProjectDirectory);
 
-        AssertEx.Success(result, "linux-x64-publish");
+        AssertEx.Success(result, $"linux-x64-publish ({targetFramework})");
         AssertEx.NotContains(result.CombinedOutput, "ChsBuffer.Avalonia.AppHost is inactive");
 
         string executablePath = Path.Combine(
-            project.GetPublishDirectory("Release", "net10.0", "linux-x64"),
+            project.GetPublishDirectory("Release", targetFramework, "linux-x64"),
             project.ProjectName);
 
         AssertEx.FileExists(executablePath);
@@ -40,6 +41,40 @@ public class AvaloniaAppHostLinuxTests
 
         AssertEx.Success(runResult, "linux-x64-run");
         AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+    }
+
+    [Test]
+    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
+    public async Task SingleFilePublish_RunsOnPrelinkedSingleFileHost_LinuxX64(string targetFramework)
+    {
+        await using var project = await TestProjectWorkspace.CreateAsync(
+            targetFramework: targetFramework,
+            runtimeIdentifier: "linux-x64",
+            includeNativeAssetsPackages: true,
+            publishSingleFile: true);
+
+        CommandResult result = await CommandRunner.RunAsync(
+            "dotnet",
+            $"publish \"{project.ProjectFilePath}\" -c Release -r linux-x64 -v:minimal",
+            project.ProjectDirectory);
+
+        AssertEx.Success(result, $"linux-x64 single-file publish ({targetFramework})");
+        AssertEx.NotContains(result.CombinedOutput, "ChsBuffer.Avalonia.AppHost is inactive");
+
+        // The bundle runs on the runtime embedded in the template, with Skia and HarfBuzz
+        // resolved from the executable instead of extracted or adjacent native libraries.
+        string outputDirectory = project.GetPublishDirectory("Release", targetFramework, "linux-x64");
+        AssertNativeRuntimeCopy(outputDirectory, expectNativeRuntimeCopy: false);
+
+        CommandResult runResult = await CommandRunner.RunAsync(
+            Path.Combine(outputDirectory, project.ProjectName),
+            string.Empty,
+            outputDirectory);
+
+        AssertEx.Success(runResult, $"linux-x64 single-file run ({targetFramework})");
+        AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        // The bundle pins its managed framework to the runtime embedded in the template.
+        AssertEx.Contains(runResult.CombinedOutput, $"RuntimeVersion={RepoContext.GetHostLibsVersion(targetFramework)}");
     }
 
     [Test]
@@ -92,7 +127,7 @@ public class AvaloniaAppHostLinuxTests
         }
 
         string value = output[start..end].Trim();
-        // Native reports the Skia milestone (119/153), the NuGet version's minor component.
+        // Native reports the Skia milestone (119/156), the NuGet version's minor component.
         if (!Version.TryParse(value, out Version? nativeVersion)
             || !Version.TryParse(RepoContext.SkiaSharpVersion, out Version? expectedVersion)
             || nativeVersion.Major != expectedVersion.Minor)

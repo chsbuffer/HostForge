@@ -1,12 +1,13 @@
 # Avalonia NativeAOT renderer smoke
 
-Publishes Avalonia 12.1.4 with SkiaSharp 3.119.4 or 4.153.1, draws one frame and
+Publishes Avalonia (`AvaloniaVersion` in `Directory.Build.props`) with either
+SkiaSharp version in `native/skiasharp/versions.json`, draws one frame and
 checks the actual Skia backend and red/green/blue/white pixels. A JSON result is
 written to stdout; diagnostics go to stderr. Exit codes are 0 for success,
 1 for failure and 124 for timeout. The default uses official dynamic native assets.
 
 ```sh
-dotnet publish samples/avalonia-nativeaot-smoke -c Release -r linux-x64 -p:SkiaSharpVersion=4.153.1 -o artifacts/smoke
+dotnet publish samples/avalonia-nativeaot-smoke -c Release -r linux-x64 -p:SkiaSharpVersion=<SkiaSharp 4 version> -o artifacts/smoke
 HOSTFORGE_SMOKE_VULKAN_VERSION=1.3.0 VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json xvfb-run -a artifacts/smoke/AvaloniaNativeAotSmoke --mode Vulkan
 ```
 

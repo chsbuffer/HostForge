@@ -1,6 +1,12 @@
 sources:
   url: "https://chromium.googlesource.com/angle/angle.git"
   branch: "chromium/7802"
+  commit: "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"
+
+# Must match the third_party/depot_tools revision pinned by ANGLE's DEPS at the commit above.
+depot_tools:
+  url: "https://chromium.googlesource.com/chromium/tools/depot_tools.git"
+  commit: "442cbd6d584d2c992ca9bcc19ecbd2235bea772e"
 
 patches:
   - patch_file: "patches/angle-deps.patch"

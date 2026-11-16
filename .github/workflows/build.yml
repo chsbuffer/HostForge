@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - main
+  # Pull requests run every job except publish-nuget. Pull requests opened by the upstream workflow with
+  # GITHUB_TOKEN wait for "Approve workflows to run".
+  pull_request:
+    branches:
+      - main
 
 concurrency:
   group: build-${{ github.ref }}-${{ github.ref == 'refs/heads/main' && github.run_id || 'latest' }}
@@ -29,9 +34,14 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            10.0.x
+            11.0.x
       - uses: astral-sh/setup-uv@v10.0.0
       - uses: ./.github/actions/install-task
+      - name: Read pinned versions
+        id: versions
+        run: python scripts/repo_versions.py --github-output
       - name: Verify Xcode and host architecture
         env:
           TARGET_RID: ${{ matrix.rid }}
@@ -49,17 +59,17 @@ jobs:
         id: native-cache
         with:
           component: avalonianative
-          version: 12.1.4
+          version: ${{ steps.versions.outputs.avalonia-native }}
           rid: ${{ matrix.rid }}
-          path: artifacts/avalonianative/12.1.4/${{ matrix.rid }}
+          path: artifacts/avalonianative/${{ steps.versions.outputs.avalonia-native }}/${{ matrix.rid }}
           compiler-cache-size: 32M
           compiler: ccache
       - name: Build AvaloniaNative from source
         if: steps.native-cache.outputs.cache-hit != 'true'
-        run: python scripts/build-with-cache.py task build-avalonianative RID=${{ matrix.rid }}
+        run: python scripts/build-with-cache.py task build-avalonianative RID=${{ matrix.rid }} AVALONIA_VERSION=${{ steps.versions.outputs.avalonia-native }}
       - name: Pack AvaloniaNative
         id: pack
-        run: task pack-avalonianative RID=${{ matrix.rid }}
+        run: task pack-avalonianative RID=${{ matrix.rid }} AVALONIA_VERSION=${{ steps.versions.outputs.avalonia-native }}
       - name: Enforce NuGet size limit
         run: |
           python3 - <<'PY'
@@ -75,21 +85,21 @@ jobs:
         if: always() && steps.pack.outcome == 'success'
         with:
           compression-level: 0
-          name: nuget-native-avalonianative-12.1.4-${{ matrix.rid }}
+          name: nuget-native-avalonianative-${{ steps.versions.outputs.avalonia-native }}-${{ matrix.rid }}
           path: artifacts/packages/Release/ChsBuffer.Avalonia.Native.Static.${{ matrix.rid }}.*.nupkg
           overwrite: true
           if-no-files-found: error
           retention-days: 14
 
   plan-all:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
-      hostlibs-version: '10.0.13'
-      versions: >-
-        [
-          "3.119.4",
-          "4.153.1"
-        ]
+      # .NET runtime versions of native/hostlibs/versions.json (one per target framework).
+      hostlibs-versions: ${{ steps.versions.outputs.hostlibs-versions }}
+      # SkiaSharp versions of native/skiasharp/versions.json in ascending order:
+      # [0] is the Skia 3 line and [1] the Skia 4 line.
+      versions: ${{ steps.versions.outputs.skiasharp-lines }}
+      angle: ${{ steps.versions.outputs.angle }}
       macos: >-
         [
           {"rid": "osx-x64", "runner": "macos-15-intel"},
@@ -119,7 +129,53 @@ jobs:
         ]
     steps:
       - uses: actions/checkout@v6
+      - name: Read pinned versions
+        id: versions
+        run: |
+          python scripts/repo_versions.py --github-output
+          python - <<'PY'
+          import json, os, subprocess, sys
+          versions = json.loads(subprocess.check_output(
+              [sys.executable, "scripts/repo_versions.py", "--get", "skiasharp-versions"], text=True))
+          versions.sort(key=lambda version: tuple(map(int, version.split("."))))
+          # Jobs below index the list: [0] is the Skia 3 line, [1] the Skia 4 line.
+          majors = [version.split(".")[0] for version in versions]
+          assert majors == ["3", "4"], f"expected one Skia 3 and one Skia 4 version, found {versions}"
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              print(f"skiasharp-lines={json.dumps(versions, separators=(',', ':'))}", file=output)
+          PY
       - run: python -m unittest discover -s tests/native -v
+      # Every entry of the package lock at the previous push must still be present unchanged, so a lock entry
+      # cannot be rewritten together with its inputs. The previous push is unreachable after a force push and
+      # may be garbage collected; the step then fails, because a force push is exactly what can rewrite
+      # published entries. Compare by hand (lock --check --base <commit>) and push again to publish.
+      - name: Check the package lock against the previous push
+        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          for delay in 10 20 0; do
+            if git fetch --no-tags --depth=1 origin "$BEFORE"; then
+              exec python scripts/upstream.py lock --check --base FETCH_HEAD
+            fi
+            sleep "$delay"
+          done
+          echo "::error::Cannot fetch the previous push $BEFORE (force push?); the package lock was not compared with it."
+          exit 1
+      # The same comparison for a pull request, against the base commit it was last compared with.
+      - name: Check the package lock against the pull request base
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          for delay in 10 20 0; do
+            if git fetch --no-tags --depth=1 origin "$BASE"; then
+              exec python scripts/upstream.py lock --check --base FETCH_HEAD
+            fi
+            sleep "$delay"
+          done
+          echo "::error::Cannot fetch the pull request base $BASE; the package lock was not compared with it."
+          exit 1
 
   build-angle-windows:
     needs: plan-all
@@ -145,7 +201,7 @@ jobs:
         id: cache_angle
         with:
           component: angle
-          version: 2.1.27548.20260419
+          version: ${{ needs.plan-all.outputs.angle }}
           rid: ${{ matrix.rid }}
           path: artifacts/angle
           compiler-cache-size: 64M
@@ -159,13 +215,7 @@ jobs:
         if: steps.cache_angle.outputs.cache-hit != 'true'
         uses: ./.github/actions/install-task
 
-      - name: Install depot_tools
-        if: steps.cache_angle.outputs.cache-hit != 'true'
-        shell: powershell
-        run: |
-          git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$env:RUNNER_TEMP\depot_tools"
-          "$env:RUNNER_TEMP\depot_tools" | Out-File -FilePath $env:GITHUB_PATH -Append
-
+      # The recipe fetches the depot_tools commit pinned in native/angle/conandata.yml.
       - name: Build and deploy ANGLE
         shell: powershell
         if: steps.cache_angle.outputs.cache-hit != 'true'
@@ -211,7 +261,7 @@ jobs:
         run: python scripts/build-with-cache.py task build-skiasharp RID=${{ matrix.rid }} SKIASHARP_VERSION=${{ matrix.version }} JOBS=4
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
       - name: Pack RID package
         run: dotnet pack src/package-skiasharp-static/SkiaSharp.Static.csproj -c Release -p:AvaloniaHostRid=${{ matrix.rid }} -p:SkiaSharpVersion=${{ matrix.version }}
       - name: Publish and run NativeAOT, guards and non-AOT activation
@@ -251,7 +301,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
       - uses: actions/download-artifact@v8.0.1
         with:
           name: nuget-native-skia-${{ matrix.version }}-win-arm64
@@ -315,7 +365,7 @@ jobs:
           retention-days: 3
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
       - name: Pack RID package
         run: dotnet pack src/package-skiasharp-static/SkiaSharp.Static.csproj -c Release -p:AvaloniaHostRid=linux-x64 -p:SkiaSharpVersion=${{ matrix.version }}
       - name: Publish, run and audit NativeAOT against the target sysroot
@@ -340,7 +390,7 @@ jobs:
 
   build-skia-linux-cross:
     needs: plan-all
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -390,7 +440,7 @@ jobs:
         run: sudo chown -R "$(id -u):$(id -g)" artifacts build
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
       - name: Pack RID package
         run: dotnet pack src/package-skiasharp-static/SkiaSharp.Static.csproj -c Release -p:AvaloniaHostRid="$TARGET_RID" -p:SkiaSharpVersion="$SKIA_VERSION"
       - uses: actions/upload-artifact@v6
@@ -446,7 +496,7 @@ jobs:
       - uses: actions/setup-dotnet@v5
         if: matrix.target.rid == 'linux-arm64'
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
       - name: Publish, run and audit glibc NativeAOT
         if: matrix.target.rid == 'linux-arm64'
         run: |
@@ -458,7 +508,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:$PWD" -w "$PWD" \
             -e ROOTFS_DIR -e HOSTFORGE_NATIVE_RID -e HOSTFORGE_SKIA_VERSION -e HOSTFORGE_CHECK_ANGLE \
-            mcr.microsoft.com/dotnet/sdk@sha256:3f9c03432d664163a90d20e3ed0a3784d0aa82c1b9cbd1a7dd4609fede95669e \
+            mcr.microsoft.com/dotnet/sdk@sha256:52556c0fb9d0f609ae9aeab9efeeba96f4acc2f7038f7696f2235ccbdbb8e290 \
             sh -eu -c 'apk add --no-cache clang lld llvm binutils fontconfig font-dejavu && dotnet test --project tests/HostForge.NativeAot.Tests/HostForge.NativeAot.Tests.csproj -c Release'
 
   build-skia-macos:
@@ -493,7 +543,7 @@ jobs:
         run: python scripts/build-with-cache.py task build-skiasharp RID=${{ matrix.target.rid }} SKIASHARP_VERSION=${{ matrix.version }} JOBS=4
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
       - name: Pack RID package
         run: dotnet pack src/package-skiasharp-static/SkiaSharp.Static.csproj -c Release -p:AvaloniaHostRid=${{ matrix.target.rid }} -p:SkiaSharpVersion=${{ matrix.version }}
       - name: Publish, run and audit Mach-O NativeAOT
@@ -518,12 +568,12 @@ jobs:
 
   pack-all:
     needs: [plan-all, build-skia-windows, build-skia-linux, build-skia-linux-cross, build-skia-macos, build-angle-windows, build-avalonianative-macos]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
       - uses: ./.github/actions/install-task
       - uses: actions/download-artifact@v8.0.1
         with:
@@ -587,7 +637,7 @@ jobs:
       - uses: actions/setup-dotnet@v5
         if: ${{ !startsWith(matrix.target.rid, 'linux-musl-') }}
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
       - uses: actions/download-artifact@v8.0.1
         with:
           name: nuget-native-all
@@ -608,7 +658,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang lld binutils fontconfig fonts-dejavu-core
-      - name: Build without RID and publish and run both RID and three-meta consumers
+      - name: Build without RID and publish and run the three-meta consumer
         if: ${{ !startsWith(matrix.target.rid, 'linux-musl-') }}
         run: dotnet test --project tests/HostForge.NativeAot.Tests -c Release
       - name: Build and publish the three-meta consumer in native Alpine
@@ -616,7 +666,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:$PWD" -w "$PWD" \
             -e ROOTFS_DIR -e HOSTFORGE_NATIVE_RID -e HOSTFORGE_SKIA_VERSION -e HOSTFORGE_CHECK_ANGLE -e HOSTFORGE_TEST_META \
-            mcr.microsoft.com/dotnet/sdk@sha256:3f9c03432d664163a90d20e3ed0a3784d0aa82c1b9cbd1a7dd4609fede95669e \
+            mcr.microsoft.com/dotnet/sdk@sha256:52556c0fb9d0f609ae9aeab9efeeba96f4acc2f7038f7696f2235ccbdbb8e290 \
             sh -eu -c 'apk add --no-cache clang lld llvm binutils fontconfig font-dejavu && dotnet test --project tests/HostForge.NativeAot.Tests -c Release'
       - name: Prepare Mesa software drivers for static Avalonia
         if: matrix.target.rid == 'linux-x64'
@@ -681,8 +731,10 @@ jobs:
     env:
       CONAN_HOME: ${{ github.workspace }}/build/conan
     strategy:
+      fail-fast: false
       matrix:
-        include:
+        version: ${{ fromJSON(needs.plan-all.outputs.hostlibs-versions) }}
+        target:
           - arch: x64
             rid: win-x64
           - arch: arm64
@@ -699,8 +751,8 @@ jobs:
         id: cache_hostlibs
         with:
           component: hostlibs
-          version: ${{ needs.plan-all.outputs.hostlibs-version }}
-          rid: ${{ matrix.rid }}
+          version: ${{ matrix.version }}
+          rid: ${{ matrix.target.rid }}
           path: artifacts/hostlibs
           compiler-cache-size: 256M
           compiler: sccache
@@ -716,12 +768,12 @@ jobs:
       - name: Build and deploy HostLibs
         shell: powershell
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
-        run: python scripts/build-with-cache.py task build-hostlibs ARCH=${{ matrix.arch }} PGO=True JOBS=4
+        run: python scripts/build-with-cache.py task build-hostlibs HOSTLIBS_VERSION=${{ matrix.version }} ARCH=${{ matrix.target.arch }} PGO=True JOBS=4
 
       - name: Upload hostlibs artifact
         uses: actions/upload-artifact@v6
         with:
-          name: native-hostlib-default-${{ matrix.rid }}
+          name: native-hostlib-default-${{ matrix.version }}-${{ matrix.target.rid }}
           path: artifacts\hostlibs
           if-no-files-found: error
 
@@ -743,10 +795,17 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Download HostLibs artifact (default win-x64)
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            10.0.x
+            11.0.x
+
+      - name: Download HostLibs artifacts (default win-x64, all runtimes)
         uses: actions/download-artifact@v8.0.1
         with:
-          name: native-hostlib-default-win-x64
+          pattern: native-hostlib-default-*-win-x64
+          merge-multiple: true
           path: artifacts\hostlibs
 
       - name: Download SkiaSharp artifact (win-x64)
@@ -789,20 +848,23 @@ jobs:
           dotnet-version: |
             9.0.x
             10.0.x
+            11.0.x
 
       - name: Install Task
         uses: ./.github/actions/install-task
 
-      - name: Download HostLibs artifact (win-x64)
+      - name: Download HostLibs artifacts (win-x64, all runtimes)
         uses: actions/download-artifact@v8.0.1
         with:
-          name: native-hostlib-default-win-x64
+          pattern: native-hostlib-default-*-win-x64
+          merge-multiple: true
           path: artifacts\hostlibs
 
-      - name: Download HostLibs artifact (win-arm64)
+      - name: Download HostLibs artifacts (win-arm64, all runtimes)
         uses: actions/download-artifact@v8.0.1
         with:
-          name: native-hostlib-default-win-arm64
+          pattern: native-hostlib-default-*-win-arm64
+          merge-multiple: true
           path: artifacts\hostlibs
 
       - name: Download SkiaSharp artifact (win-x64)
@@ -864,20 +926,23 @@ jobs:
           dotnet-version: |
             9.0.x
             10.0.x
+            11.0.x
 
       - name: Install Task
         uses: ./.github/actions/install-task
 
-      - name: Download HostLibs artifact (win-x64)
+      - name: Download HostLibs artifacts (win-x64, all runtimes)
         uses: actions/download-artifact@v8.0.1
         with:
-          name: native-hostlib-default-win-x64
+          pattern: native-hostlib-default-*-win-x64
+          merge-multiple: true
           path: artifacts\hostlibs
 
-      - name: Download HostLibs artifact (win-arm64)
+      - name: Download HostLibs artifacts (win-arm64, all runtimes)
         uses: actions/download-artifact@v8.0.1
         with:
-          name: native-hostlib-default-win-arm64
+          pattern: native-hostlib-default-*-win-arm64
+          merge-multiple: true
           path: artifacts\hostlibs
 
       - name: Download SkiaSharp artifact (win-x64)
@@ -919,7 +984,7 @@ jobs:
         run: task avalonia-test SKIASHARP_VERSION=${{ env.SKIASHARP_VERSION }}
 
   build-sysroot-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -932,12 +997,16 @@ jobs:
         uses: ./.github/actions/target-rootfs
 
   build-hostlibs-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       CONAN_HOME: ${{ github.workspace }}/build/conan
     needs:
       - plan-all
       - build-sysroot-linux
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.plan-all.outputs.hostlibs-versions) }}
 
     steps:
       - name: Checkout repository
@@ -960,7 +1029,7 @@ jobs:
         id: cache_hostlibs
         with:
           component: hostlibs
-          version: ${{ needs.plan-all.outputs.hostlibs-version }}
+          version: ${{ matrix.version }}
           rid: linux-x64
           path: artifacts/hostlibs
           compiler-cache-size: 512M
@@ -968,17 +1037,17 @@ jobs:
 
       - name: Build and deploy HostLibs
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
-        run: python scripts/build-with-cache.py task build-hostlibs SYSROOT="${{ steps.restore_sysroot.outputs.sysroot-path }}" JOBS=4
+        run: python scripts/build-with-cache.py task build-hostlibs HOSTLIBS_VERSION=${{ matrix.version }} SYSROOT="${{ steps.restore_sysroot.outputs.sysroot-path }}" JOBS=4
 
       - name: Upload hostlibs artifact
         uses: actions/upload-artifact@v6
         with:
-          name: native-hostlib-default-linux-x64
+          name: native-hostlib-default-${{ matrix.version }}-linux-x64
           path: artifacts/hostlibs
           if-no-files-found: error
 
   test-all-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs:
       - plan-all
       - build-sysroot-linux
@@ -995,6 +1064,12 @@ jobs:
           fetch-depth: 1
           submodules: false
 
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            10.0.x
+            11.0.x
+
       - name: Install Task
         uses: ./.github/actions/install-task
 
@@ -1006,10 +1081,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y llvm clang zlib1g-dev libfontconfig1-dev python-is-python3
 
-      - name: Download HostLibs artifact (linux-x64)
+      - name: Download HostLibs artifacts (linux-x64, all runtimes)
         uses: actions/download-artifact@v8.0.1
         with:
-          name: native-hostlib-default-linux-x64
+          pattern: native-hostlib-default-*-linux-x64
+          merge-multiple: true
           path: artifacts/hostlibs
 
       - name: Download SkiaSharp artifact (linux-x64)
@@ -1022,7 +1098,7 @@ jobs:
         run: task matrix SKIASHARP_VERSION=${{ env.SKIASHARP_VERSION }}
 
   link-avalonia-apphost-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs:
       - plan-all
       - build-sysroot-linux
@@ -1037,6 +1113,12 @@ jobs:
           fetch-depth: 1
           submodules: false
 
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            10.0.x
+            11.0.x
+
       - name: Install Task
         uses: ./.github/actions/install-task
 
@@ -1044,10 +1126,11 @@ jobs:
         id: restore_sysroot
         uses: ./.github/actions/target-rootfs
 
-      - name: Download HostLibs artifact (linux-x64)
+      - name: Download HostLibs artifacts (linux-x64, all runtimes)
         uses: actions/download-artifact@v8.0.1
         with:
-          name: native-hostlib-default-linux-x64
+          pattern: native-hostlib-default-*-linux-x64
+          merge-multiple: true
           path: artifacts/hostlibs
 
       - name: Download SkiaSharp artifact (linux-x64)
@@ -1068,7 +1151,7 @@ jobs:
           if-no-files-found: error
 
   link-avalonia-apphost-skia4-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs:
       - plan-all
       - build-sysroot-linux
@@ -1083,6 +1166,12 @@ jobs:
           fetch-depth: 1
           submodules: false
 
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            10.0.x
+            11.0.x
+
       - name: Install Task
         uses: ./.github/actions/install-task
 
@@ -1090,10 +1179,11 @@ jobs:
         id: restore_sysroot
         uses: ./.github/actions/target-rootfs
 
-      - name: Download HostLibs artifact (linux-x64)
+      - name: Download HostLibs artifacts (linux-x64, all runtimes)
         uses: actions/download-artifact@v8.0.1
         with:
-          name: native-hostlib-default-linux-x64
+          pattern: native-hostlib-default-*-linux-x64
+          merge-multiple: true
           path: artifacts/hostlibs
 
       - name: Download SkiaSharp artifact (linux-x64)
@@ -1127,6 +1217,10 @@ jobs:
         with:
           fetch-depth: 1
           submodules: false
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 11.0.x
 
       - name: Install Task
         uses: ./.github/actions/install-task
@@ -1169,6 +1263,10 @@ jobs:
           fetch-depth: 1
           submodules: false
 
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 11.0.x
+
       - name: Install Task
         uses: ./.github/actions/install-task
 
@@ -1196,7 +1294,7 @@ jobs:
           if-no-files-found: error
 
   publish-nuget:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs:
       - pack-all
@@ -1215,7 +1313,7 @@ jobs:
     steps:
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
       - name: Download native packages
         uses: actions/download-artifact@v8.0.1
         with:
@@ -1246,8 +1344,17 @@ jobs:
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
 
+  # On main it runs only when every needed job succeeded (publish-nuget included). On pull requests
+  # publish-nuget is skipped, which would skip this job too, so the condition accepts that skip but still no
+  # failure anywhere upstream (failure() covers every ancestor job). Fork pull requests get a read-only
+  # token, so they keep their artifacts until retention expires.
   cleanup-all:
-    runs-on: ubuntu-latest
+    if: >-
+      ${{ !cancelled() && !failure() && (
+      (github.event_name == 'push' && needs.publish-nuget.result == 'success') ||
+      (github.event_name == 'pull_request' && needs.publish-nuget.result == 'skipped' &&
+      github.event.pull_request.head.repo.full_name == github.repository)) }}
+    runs-on: ubuntu-24.04
     needs:
       - publish-nuget
       - test-skia-linux-cross

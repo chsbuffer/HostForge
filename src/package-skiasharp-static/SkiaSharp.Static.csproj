@@ -40,7 +40,7 @@
     <None Include="README.md" Pack="true" PackagePath="" />
     <!-- LLVM 20.1.8 libc++ from the pinned Linux cross images. -->
     <None Include="licenses/libcxx.LICENSE.TXT" Pack="true" PackagePath="licenses/"
-          Condition="$(AvaloniaHostRid.StartsWith('linux-')) and '$(_SkiaLine)' == '4.153'" />
+          Condition="$(AvaloniaHostRid.StartsWith('linux-')) and $(_SkiaLine.StartsWith('4.'))" />
   </ItemGroup>
 
   <ItemGroup>

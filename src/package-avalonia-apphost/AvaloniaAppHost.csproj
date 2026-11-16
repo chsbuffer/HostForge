@@ -13,7 +13,7 @@
     <PackageId>ChsBuffer.Avalonia.AppHost</PackageId>
     <Version>$(AvaloniaAppHostPackageVersion)</Version>
     <Authors>ChsBuffer</Authors>
-    <Description>Prelinked Avalonia apphost/singlefilehost template package for .NET 10 on Windows and Linux, with static ANGLE, SkiaSharp, and HarfBuzz native libraries.</Description>
+    <Description>Prelinked Avalonia apphost/singlefilehost template package for .NET 10 and .NET 11 on Windows and Linux, with static ANGLE, SkiaSharp, and HarfBuzz native libraries.</Description>
     <PackageTags>avalonia;apphost;single-file;host-template;angle;skia;harfbuzz</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>

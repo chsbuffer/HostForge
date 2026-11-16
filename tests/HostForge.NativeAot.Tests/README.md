@@ -2,11 +2,16 @@
 
 Tests package layout, AOT/RID activation, version protection, executable
 architecture, software pixels, HarfBuzz shaping and absence of dynamic graphics
-libraries. Build the native artifacts first; Windows also requires ANGLE.
+libraries. The publish-and-run matrix covers every `HostForgeTargetFrameworks`
+entry; `NativeAotMatrixTargetFramework` selects the TFM of
+`samples/nativeaot-matrix`. Build the native artifacts first; Windows also requires ANGLE.
 
 ```sh
-task matrix-nativeaot SKIASHARP_VERSION=3.119.4
+task matrix-nativeaot
 ```
+
+`SKIASHARP_VERSION` selects another version from `native/skiasharp/versions.json`;
+the default is `SkiaSharpVersion` in `Directory.Build.props`.
 
 For prepacked artifacts, select the RID and version with `HOSTFORGE_NATIVE_RID`
 and `HOSTFORGE_SKIA_VERSION`, then run:
@@ -15,8 +20,10 @@ and `HOSTFORGE_SKIA_VERSION`, then run:
 dotnet test --project tests/HostForge.NativeAot.Tests -c Release
 ```
 
-`HOSTFORGE_TEST_META=true` adds three-meta-package consumers and
-a build without a RID, with warnings treated as errors.
+`HOSTFORGE_TEST_META=true` publishes through the three meta packages instead of the
+RID packages and adds a build without a RID, with warnings treated as errors. The meta
+packages restore the same RID packages, so CI tests RID consumers in the jobs that build
+each RID package and meta consumers in `test-all`, both for every TFM.
 
 Run musl targets inside Alpine. `ROOTFS_DIR` selects the matching Linux sysroot
 and enables ABI version checks. `HOSTFORGE_NATIVE_RUNNER` can name an executable

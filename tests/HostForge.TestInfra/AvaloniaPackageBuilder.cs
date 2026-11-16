@@ -35,7 +35,7 @@ public static class AvaloniaPackageBuilder
                 RepoContext.RepoRoot,
                 "artifacts", "tmp", "nuget", "packages");
 
-            // Discover available RIDs from linked artifacts
+            // A RID package contains every template TFM, so pack only RIDs linked for all of them.
             string artifactRoot = Path.Combine(
                 RepoContext.RepoRoot,
                 "artifacts", "avalonia-host", RepoContext.TargetAvaloniaVersion);
@@ -44,12 +44,12 @@ public static class AvaloniaPackageBuilder
 
             foreach (string rid in knownRids)
             {
-                string ridDir = Path.Combine(artifactRoot, rid);
-                string apphostName = rid.StartsWith("win", StringComparison.Ordinal) ? "apphost.exe" : "apphost";
-                string singlefilehostName = rid.StartsWith("win", StringComparison.Ordinal) ? "singlefilehost.exe" : "singlefilehost";
+                string extension = rid.StartsWith("win", StringComparison.Ordinal) ? ".exe" : string.Empty;
+                bool linked = RepoContext.AvaloniaTemplateTfms.All(tfm =>
+                    File.Exists(Path.Combine(artifactRoot, tfm, rid, $"apphost{extension}"))
+                    && File.Exists(Path.Combine(artifactRoot, tfm, rid, $"singlefilehost{extension}")));
 
-                if (File.Exists(Path.Combine(ridDir, apphostName))
-                    && File.Exists(Path.Combine(ridDir, singlefilehostName)))
+                if (linked)
                 {
                     availableRids.Add(rid);
                 }
@@ -58,7 +58,7 @@ public static class AvaloniaPackageBuilder
             if (availableRids.Count == 0)
             {
                 throw new InvalidOperationException(
-                    $"No linked Avalonia apphost templates found under {artifactRoot}.");
+                    $"No Avalonia apphost templates are linked for all of {string.Join(", ", RepoContext.AvaloniaTemplateTfms)} under {artifactRoot}.");
             }
 
             // Pack each available RID

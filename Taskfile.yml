@@ -12,28 +12,31 @@ tasks:
       - task --list
 
   build-hostlibs:
-    desc: Build and deploy HostLibs static libraries (ARCH=x64|arm64, PGO=true|false, SYSROOT=…)
+    desc: Build and deploy HostLibs static libraries (HOSTLIBS_VERSION=<runtime in native/hostlibs/versions.json>, ARCH=x64|arm64, PGO=True|False, SYSROOT=…)
     vars:
       ARCH: '{{.ARCH | default "x64"}}'
       PGO: '{{.PGO | default "True"}}'
       SYSROOT: '{{.SYSROOT | default ""}}'
+      HOSTLIBS_VERSION:
+        sh: '{{if .HOSTLIBS_VERSION}}echo {{.HOSTLIBS_VERSION}}{{else}}uv run python scripts/repo_versions.py --get hostlibs{{end}}'
     cmds:
       - task: _hostlibs-windows
-        vars: {ARCH: "{{.ARCH}}", PGO: "{{.PGO}}"}
+        vars: {ARCH: "{{.ARCH}}", PGO: "{{.PGO}}", HOSTLIBS_VERSION: "{{.HOSTLIBS_VERSION}}"}
         platforms: [windows]
       - task: _hostlibs-linux
-        vars: {SYSROOT: "{{.SYSROOT}}"}
+        vars: {SYSROOT: "{{.SYSROOT}}", HOSTLIBS_VERSION: "{{.HOSTLIBS_VERSION}}"}
         platforms: [linux]
 
   _hostlibs-windows:
     internal: true
     platforms: [windows]
-    vars:
-      FLAVOR: '{{if eq .PGO "True"}}default{{else}}no-pgo{{end}}'
+    requires:
+      vars:
+        - HOSTLIBS_VERSION
     cmds:
-      - uv run conan export native/hostlibs
+      - uv run conan export native/hostlibs --version={{.HOSTLIBS_VERSION}}
       - >-
-        uv run conan install --requires="hostlibs/[>=0.0.0]" --build=missing --no-remote --envs-generation=false
+        uv run conan install --requires="hostlibs/{{.HOSTLIBS_VERSION}}" --build=missing --no-remote --envs-generation=false
         -pr:b=native/hostlibs/profiles/windows-{{.ARCH}}
         -pr:h=native/hostlibs/profiles/windows-{{.ARCH}}
         -o "hostlibs/*:pgo={{.PGO}}"
@@ -44,12 +47,15 @@ tasks:
   _hostlibs-linux:
     internal: true
     platforms: [linux]
+    requires:
+      vars:
+        - HOSTLIBS_VERSION
     env:
       ROOTFS_DIR: '{{.SYSROOT}}'
     cmds:
-      - uv run conan export native/hostlibs
+      - uv run conan export native/hostlibs --version={{.HOSTLIBS_VERSION}}
       - >-
-        uv run conan install --requires="hostlibs/[>=0.0.0]" --build=missing --no-remote --envs-generation=false
+        uv run conan install --requires="hostlibs/{{.HOSTLIBS_VERSION}}" --build=missing --no-remote --envs-generation=false
         -pr:b=native/hostlibs/profiles/linux-x64
         -pr:h=native/hostlibs/profiles/linux-x64
         -c tools.build:jobs={{.JOBS}}
@@ -59,11 +65,12 @@ tasks:
         --deployer-folder=artifacts/hostlibs
 
   build-skiasharp:
-    desc: Build SkiaSharp + HarfBuzz (SKIASHARP_VERSION=3.119.4|4.153.1, RID=<supported RID>, ARCH=x64|arm64, SYSROOT=…)
+    desc: Build SkiaSharp + HarfBuzz (SKIASHARP_VERSION=<version in native/skiasharp/versions.json>, RID=<supported RID>, ARCH=x64|arm64, SYSROOT=…)
     vars:
       ARCH: '{{.ARCH | default "x64"}}'
       RID: '{{.RID | default ""}}'
-      SKIASHARP_VERSION: '{{.SKIASHARP_VERSION | default "3.119.4"}}'
+      SKIASHARP_VERSION:
+        sh: '{{if .SKIASHARP_VERSION}}echo {{.SKIASHARP_VERSION}}{{else}}uv run python scripts/repo_versions.py --get skiasharp{{end}}'
       SYSROOT: '{{.SYSROOT | default .ROOTFS_DIR | default ""}}'
     cmds:
       - task: _skiasharp-windows
@@ -88,8 +95,7 @@ tasks:
       vars:
         - name: TARGET_ARCH
           enum: [x64, arm64]
-        - name: SKIASHARP_VERSION
-          enum: ["3.119.4", "4.153.1"]
+        - SKIASHARP_VERSION
     cmds:
       - uv run conan export native/skiasharp --version={{.SKIASHARP_VERSION}}
       - >-
@@ -98,7 +104,7 @@ tasks:
         -pr:h=native/skiasharp/profiles/macos-{{.TARGET_ARCH}}
         -s:b compiler.version={{index (splitList "." .CLANG_VERSION) 0}}
         -s:h compiler.version={{index (splitList "." .CLANG_VERSION) 0}}
-        -s:h compiler.cppstd={{if eq .SKIASHARP_VERSION "3.119.4"}}17{{else}}20{{end}}
+        -s:h compiler.cppstd={{if lt (atoi (first (splitList "." .SKIASHARP_VERSION))) 4}}17{{else}}20{{end}}
         -c tools.build:jobs={{min (atoi .JOBS) 4}}
         --deployer=native/skiasharp/deploy.py
         --deployer-folder=artifacts/skiasharp
@@ -112,15 +118,14 @@ tasks:
       vars:
         - name: TARGET_ARCH
           enum: [x64, arm64]
-        - name: SKIASHARP_VERSION
-          enum: ["3.119.4", "4.153.1"]
+        - SKIASHARP_VERSION
     cmds:
       - uv run conan export native/skiasharp --version={{.SKIASHARP_VERSION}}
       - >-
         uv run conan install --requires="skiasharp/{{.SKIASHARP_VERSION}}" --build=missing --no-remote --envs-generation=false
         -pr:b=native/skiasharp/profiles/windows-x64
         -pr:h=native/skiasharp/profiles/windows-{{.TARGET_ARCH}}
-        -s:h compiler.cppstd={{if eq .SKIASHARP_VERSION "3.119.4"}}17{{else}}20{{end}}
+        -s:h compiler.cppstd={{if lt (atoi (first (splitList "." .SKIASHARP_VERSION))) 4}}17{{else}}20{{end}}
         -c tools.build:jobs={{.JOBS}}
         --deployer=native/skiasharp/deploy.py
         --deployer-folder=artifacts/skiasharp
@@ -136,8 +141,7 @@ tasks:
       vars:
         - name: TARGET_RID
           enum: [linux-x64, linux-arm64, linux-musl-x64, linux-musl-arm64]
-        - name: SKIASHARP_VERSION
-          enum: ["3.119.4", "4.153.1"]
+        - SKIASHARP_VERSION
     env:
       ROOTFS_DIR: '{{.SYSROOT}}'
     cmds:
@@ -147,8 +151,8 @@ tasks:
         -pr:b=native/skiasharp/profiles/linux-x64
         -pr:h=native/skiasharp/profiles/{{.TARGET_RID}}
         -s:h compiler.version={{first (splitList "." .CLANG_VERSION)}}
-        -s:h compiler.cppstd={{if eq .SKIASHARP_VERSION "3.119.4"}}17{{else}}20{{end}}
-        -s:h compiler.libcxx={{if eq .SKIASHARP_VERSION "3.119.4"}}libstdc++11{{else}}libc++{{end}}
+        -s:h compiler.cppstd={{if lt (atoi (first (splitList "." .SKIASHARP_VERSION))) 4}}17{{else}}20{{end}}
+        -s:h compiler.libcxx={{if lt (atoi (first (splitList "." .SKIASHARP_VERSION))) 4}}libstdc++11{{else}}libc++{{end}}
         -c tools.build:jobs={{.JOBS}}
         -c tools.system.package_manager:mode=install
         -c tools.system.package_manager:sudo=True
@@ -171,14 +175,15 @@ tasks:
         --deployer-folder=artifacts/angle
 
   build-avalonianative:
-    desc: Build and deploy AvaloniaNative (macOS, RID=osx-x64|osx-arm64, AVALONIA_VERSION=12.1.4)
+    desc: Build and deploy AvaloniaNative (macOS, RID=osx-x64|osx-arm64, AVALONIA_VERSION=<version in native/avalonianative/conandata.yml>)
     platforms: [darwin]
     vars:
       RID: '{{.RID | default "osx-arm64"}}'
       BUILD_ARCH:
         sh: uname -m
       BUILD_RID: '{{if eq .BUILD_ARCH "arm64"}}osx-arm64{{else}}osx-x64{{end}}'
-      AVALONIA_VERSION: '{{.AVALONIA_VERSION | default "12.1.4"}}'
+      AVALONIA_VERSION:
+        sh: '{{if .AVALONIA_VERSION}}echo {{.AVALONIA_VERSION}}{{else}}uv run python scripts/repo_versions.py --get avalonia-native{{end}}'
     requires:
       vars:
         - name: RID
@@ -193,9 +198,7 @@ tasks:
         --deployer-folder=artifacts/avalonianative
 
   pack-avalonianative:
-    desc: Pack one AvaloniaNative RID (RID=osx-x64|osx-arm64, AVALONIA_VERSION=12.1.4)
-    vars:
-      AVALONIA_VERSION: '{{.AVALONIA_VERSION | default "12.1.4"}}'
+    desc: Pack one AvaloniaNative RID (RID=osx-x64|osx-arm64, AVALONIA_VERSION defaults to AvaloniaNativeVersion in Directory.Build.props)
     requires:
       vars:
         - name: RID
@@ -203,17 +206,15 @@ tasks:
     cmds:
       - >-
         dotnet pack src/package-avalonia-native-static/Avalonia.Native.Static.Rid.csproj -c Release
-        -p:AvaloniaNativeRid={{.RID}} -p:AvaloniaNativeVersion={{.AVALONIA_VERSION}}
+        -p:AvaloniaNativeRid={{.RID}} {{if .AVALONIA_VERSION}}-p:AvaloniaNativeVersion={{.AVALONIA_VERSION}}{{end}}
         -v:{{.VERBOSITY}}
 
   pack-avalonianative-meta:
     desc: Pack the AvaloniaNative meta package (requires both RID packages)
-    vars:
-      AVALONIA_VERSION: '{{.AVALONIA_VERSION | default "12.1.4"}}'
     cmds:
       - >-
         dotnet pack src/package-static-graphics/StaticGraphics.csproj -c Release -p:StaticGraphicsComponent=Avalonia.Native
-        -p:AvaloniaNativeVersion={{.AVALONIA_VERSION}}
+        {{if .AVALONIA_VERSION}}-p:AvaloniaNativeVersion={{.AVALONIA_VERSION}}{{end}}
         -v:{{.VERBOSITY}}
 
   test-avalonianative:
@@ -241,8 +242,6 @@ tasks:
 
   link-avalonia:
     desc: Link Avalonia apphost templates for one target OS
-    vars:
-      SKIASHARP_VERSION: '{{.SKIASHARP_VERSION | default "3.119.4"}}'
     requires:
       vars:
         - name: TARGET_OS
@@ -252,7 +251,7 @@ tasks:
         dotnet msbuild src/package-avalonia-apphost/AvaloniaAppHost.Link.proj
         /t:LinkAvaloniaHosts
         -p:AvaloniaAppHostTarget={{.TARGET_OS}}
-        -p:SkiaSharpVersion={{.SKIASHARP_VERSION}}
+        {{if .SKIASHARP_VERSION}}-p:SkiaSharpVersion={{.SKIASHARP_VERSION}}{{end}}
         -p:HostLibsFlavor=default
         {{if .SYSROOT}}-p:Sysroot="{{.SYSROOT}}"{{end}}
         -v:{{.VERBOSITY}}
@@ -260,7 +259,6 @@ tasks:
   avalonia-test:
     desc: Run the Avalonia AppHost integration tests
     vars:
-      SKIASHARP_VERSION: '{{.SKIASHARP_VERSION | default "3.119.4"}}'
       SYSROOT: '{{.SYSROOT | default .ROOTFS_DIR | default ""}}'
     env:
       SkiaSharpVersion: '{{.SKIASHARP_VERSION}}'
@@ -274,8 +272,6 @@ tasks:
 
   pack-avalonia-rid:
     desc: Pack one Avalonia AppHost RID package (requires linked templates)
-    vars:
-      SKIASHARP_VERSION: '{{.SKIASHARP_VERSION | default "3.119.4"}}'
     requires:
       vars:
         - name: RID
@@ -285,35 +281,29 @@ tasks:
         dotnet pack src/package-avalonia-apphost/AvaloniaAppHost.Rid.csproj
         -c Release
         -p:AvaloniaHostRid={{.RID}}
-        -p:SkiaSharpVersion={{.SKIASHARP_VERSION}}
+        {{if .SKIASHARP_VERSION}}-p:SkiaSharpVersion={{.SKIASHARP_VERSION}}{{end}}
         -v:{{.VERBOSITY}}
 
   pack-avalonia-build:
     desc: Pack the Avalonia AppHost Build package
-    vars:
-      SKIASHARP_VERSION: '{{.SKIASHARP_VERSION | default "3.119.4"}}'
     cmds:
       - >-
         dotnet pack src/package-avalonia-apphost/AvaloniaAppHost.Build.csproj
         -c Release
-        -p:SkiaSharpVersion={{.SKIASHARP_VERSION}}
+        {{if .SKIASHARP_VERSION}}-p:SkiaSharpVersion={{.SKIASHARP_VERSION}}{{end}}
         -v:{{.VERBOSITY}}
 
   pack-avalonia-meta:
     desc: Pack the meta package (requires all RID + Build packages already packed)
-    vars:
-      SKIASHARP_VERSION: '{{.SKIASHARP_VERSION | default "3.119.4"}}'
     cmds:
       - >-
         dotnet pack src/package-avalonia-apphost/AvaloniaAppHost.csproj
         -c Release
-        -p:SkiaSharpVersion={{.SKIASHARP_VERSION}}
+        {{if .SKIASHARP_VERSION}}-p:SkiaSharpVersion={{.SKIASHARP_VERSION}}{{end}}
         -v:{{.VERBOSITY}}
 
   pack-avalonia:
     desc: Pack all Avalonia AppHost packages (requires linked templates for all RIDs)
-    vars:
-      SKIASHARP_VERSION: '{{.SKIASHARP_VERSION | default "3.119.4"}}'
     cmds:
       - task: pack-avalonia-rid
         vars: {RID: win-x64, SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
@@ -327,7 +317,7 @@ tasks:
         vars: {SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
 
   pack-static-apphost:
-    desc: Pack the generic Static AppHost package
+    desc: Pack the generic Static AppHost package for one runtime line (TFM=<one of HostForgeTargetFrameworks>, default HostLibsTargetFramework)
     vars:
       RID: '{{.RID | default "win-x64"}}'
     requires:
@@ -338,6 +328,7 @@ tasks:
       - >-
         dotnet pack src/package-apphost-static/AppHostStatic.csproj
         -p:StaticAppHostRid={{.RID}}
+        {{if .TFM}}-p:HostLibsTargetFramework={{.TFM}}{{end}}
         -p:HostLibsFlavor=no-pgo
         -v:{{.VERBOSITY}}
 
@@ -345,7 +336,6 @@ tasks:
     desc: Pack the SkiaSharp static-link inputs
     vars:
       RID: '{{.RID | default "win-x64"}}'
-      SKIASHARP_VERSION: '{{.SKIASHARP_VERSION | default "3.119.4"}}'
     requires:
       vars:
         - name: RID
@@ -355,7 +345,7 @@ tasks:
         dotnet pack src/package-skiasharp-static/SkiaSharp.Static.csproj
         -c Release
         -p:AvaloniaHostRid={{.RID}}
-        -p:SkiaSharpVersion={{.SKIASHARP_VERSION}}
+        {{if .SKIASHARP_VERSION}}-p:SkiaSharpVersion={{.SKIASHARP_VERSION}}{{end}}
         -v:{{.VERBOSITY}}
 
   pack-angle-static:
@@ -379,12 +369,10 @@ tasks:
       vars:
         - name: COMPONENT
           enum: [SkiaSharp, Angle, Avalonia.Native]
-    vars:
-      SKIASHARP_VERSION: '{{.SKIASHARP_VERSION | default "3.119.4"}}'
     cmds:
       - >-
         dotnet pack src/package-static-graphics/StaticGraphics.csproj -c Release
-        -p:StaticGraphicsComponent={{.COMPONENT}} -p:SkiaSharpVersion={{.SKIASHARP_VERSION}}
+        -p:StaticGraphicsComponent={{.COMPONENT}} {{if .SKIASHARP_VERSION}}-p:SkiaSharpVersion={{.SKIASHARP_VERSION}}{{end}}
         -v:{{.VERBOSITY}}
 
   matrix-nativeaot:
@@ -420,3 +408,20 @@ tasks:
     cmds:
       - task: pack-skia-static
         vars: {RID: 'osx-{{if eq ARCH "arm64"}}arm64{{else}}x64{{end}}'}
+
+  # ── Upstream tracking ─────────────────────────────────────────
+
+  upstream-check:
+    desc: Report newer upstream releases and pending security fixes (read-only; -- --json, -- --fail-on-security)
+    cmds:
+      - uv run --no-project python scripts/upstream.py check {{.CLI_ARGS}}
+
+  upstream-apply:
+    desc: Update the files of one upstream group and the package lock (-- --group <name>, default inputs; -- --dry-run to preview)
+    cmds:
+      - uv run --no-project python scripts/upstream.py apply {{.CLI_ARGS}}
+
+  upstream-lock:
+    desc: Append the current package versions to package-inputs.lock.json (-- --check to verify)
+    cmds:
+      - uv run --no-project python scripts/upstream.py lock {{.CLI_ARGS}}

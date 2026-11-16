@@ -12,7 +12,7 @@
     <PackageId>ChsBuffer.AppHost.Static.$(StaticAppHostRid)</PackageId>
     <Version>$(HostLibsVersion)-alpha.1</Version>
     <Authors>ChsBuffer</Authors>
-    <Description>Relink AppHost and SingleFileHost from NativeLibrary items with static host libs for $(StaticAppHostRid).</Description>
+    <Description>Relink AppHost and SingleFileHost from NativeLibrary items with static .NET $(HostLibsVersion) host libs for $(HostLibsTargetFramework) $(StaticAppHostRid).</Description>
     <PackageTags>apphost;single-file;host-template</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
@@ -27,11 +27,13 @@
     <PackageOutputPath>$(AvaloniaAppHostPackageOutputDir)\</PackageOutputPath>
 
     <PackageAssetsDir>$([MSBuild]::NormalizePath('$(HostLibsRoot)', '$(StaticAppHostRid)'))</PackageAssetsDir>
+    <_StaticAppHostProps>$(BaseIntermediateOutputPath)$(PackageId).$(HostLibsVersion).props</_StaticAppHostProps>
   </PropertyGroup>
 
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
 
   <ItemGroup>
+    <None Include="$(_StaticAppHostProps)" Pack="true" PackagePath="build/$(PackageId).props" />
     <None Include="AppHost.Static.targets" Pack="true" PackagePath="build/$(PackageId).targets" />
     <None Include="..\findvcvarsall.bat" Pack="true" PackagePath="build/findvcvarsall.bat" />
     <None Include="..\StaticAppHost.props" Pack="true" PackagePath="build/StaticAppHost.props" />
@@ -41,5 +43,16 @@
     <None Include="README.md" Pack="true" PackagePath="" />
     <!-- None Include="README.txt" Pack="true" PackagePath="" /-->
   </ItemGroup>
+
+  <Target Name="_GenerateStaticAppHostProps" BeforeTargets="_GetPackageFiles">
+    <Error Condition="'$(HostLibsVersion)' == ''"
+           Text="No host libs version is defined for HostLibsTargetFramework='$(HostLibsTargetFramework)'. Supported: $(HostForgeTargetFrameworks)." />
+    <Error Condition="!Exists('$(PackageAssetsDir)')" Text="Host libs directory not found: $(PackageAssetsDir)" />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_StaticAppHostProps)'))" />
+    <WriteLinesToFile File="$(_StaticAppHostProps)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true"
+                      Lines="&lt;Project&gt;;  &lt;PropertyGroup&gt;;    &lt;HostForgeStaticAppHostTargetFramework&gt;$(HostLibsTargetFramework)&lt;/HostForgeStaticAppHostTargetFramework&gt;;  &lt;/PropertyGroup&gt;;&lt;/Project&gt;" />
+  </Target>
 
 </Project>

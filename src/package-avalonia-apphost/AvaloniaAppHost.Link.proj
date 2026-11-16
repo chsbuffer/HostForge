@@ -3,15 +3,18 @@
 
   Responsibilities:
   - Resolve the RID set for one OS at a time (`AvaloniaAppHostTarget=windows|linux`).
-  - Link `apphost` and `singlefilehost` into `artifacts/avalonia-host/<version>/<rid>/`.
+  - Link `apphost` and `singlefilehost` for every `AvaloniaTemplateTfms` entry into
+    `artifacts/avalonia-host/<version>/<tfm>/<rid>/`. Each TFM links the host libs of its own
+    .NET runtime (`HostLibsTargetFramework` selects `HostLibsVersion` in Directory.Build.props).
   - Produce artifact folders that can be consumed either by local OS-specific packing or by CI's aggregate `all` pack job.
 
   Required inputs:
-  - `HostLibsRoot`
   - `AvaloniaNativeLibsRoot`
   - `AvaloniaAppHostTarget`
 
   Optional inputs:
+  - `AvaloniaTemplateTfms` (default: `HostForgeTargetFrameworks`)
+  - `AvaloniaHostRids`
   - `Sysroot`
 
   This file intentionally does not pack anything. `ChsBuffer.Avalonia.AppHost.rid.csproj` and `.Build.csproj` are the package orchestrators.
@@ -23,7 +26,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <NoBuild>true</NoBuild>
 
-    <AvaloniaTemplateTfm Condition="'$(AvaloniaTemplateTfm)' == ''">net10.0</AvaloniaTemplateTfm>
+    <AvaloniaTemplateTfm Condition="'$(AvaloniaTemplateTfm)' == ''">$(HostLibsTargetFramework)</AvaloniaTemplateTfm>
     <AvaloniaAppHostArtifactRoot>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/avalonia-host/$(TargetAvaloniaVersion)'))</AvaloniaAppHostArtifactRoot>
     <_ResolvedSysroot Condition="'$(Sysroot)' != ''">$([MSBuild]::NormalizePath('$(RepoRoot)', '$(Sysroot)'))</_ResolvedSysroot>
     <_AvaloniaAppHostExportsFile>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', 'apphost.exports'))</_AvaloniaAppHostExportsFile>
@@ -44,7 +47,7 @@
     <AngleNativeLibsDir>$([MSBuild]::NormalizePath('$(AngleNativeLibsRoot)', '$(AvaloniaHostRid)'))</AngleNativeLibsDir>
 
     <StaticHostAssetsBaseDir>$(HostLibsRoot)</StaticHostAssetsBaseDir>
-    <AvaloniaHostOutputDir>$([MSBuild]::NormalizePath('$(AvaloniaAppHostArtifactRoot)', '$(AvaloniaHostRid)'))</AvaloniaHostOutputDir>
+    <AvaloniaHostOutputDir>$([MSBuild]::NormalizePath('$(AvaloniaAppHostArtifactRoot)', '$(AvaloniaTemplateTfm)', '$(AvaloniaHostRid)'))</AvaloniaHostOutputDir>
     <AppHostLinkPath>$([MSBuild]::NormalizePath('$(AvaloniaHostOutputDir)', 'apphost$(_AvaloniaHostExecutableExtension)'))</AppHostLinkPath>
     <SingleFileHostLinkPath>$([MSBuild]::NormalizePath('$(AvaloniaHostOutputDir)', 'singlefilehost$(_AvaloniaHostExecutableExtension)'))</SingleFileHostLinkPath>
   </PropertyGroup>
@@ -70,6 +73,8 @@
 
     <Error Condition="'$(AvaloniaHostRid)' == ''"
            Text="AvaloniaHostRid is required for _ResolveAvaloniaLinkInputs." />
+    <Error Condition="'$(HostLibsVersion)' == ''"
+           Text="No host libs version is defined for target framework '$(HostLibsTargetFramework)'. Supported: $(HostForgeTargetFrameworks)." />
     <Error Condition="!Exists('$(PackageAssetsDir)')" Text="Host libs directory not found: $(PackageAssetsDir)" />
     <Error Condition="!Exists('$(AvaloniaNativeLibsDir)')" Text="Avalonia native libs directory not found: $(AvaloniaNativeLibsDir)" />
     <Error Condition="'$(_AvaloniaHostRidIsWindows)' == 'True' and !Exists('$(AngleNativeLibsDir)')"
@@ -127,13 +132,31 @@
 
   <Target Name="LinkAvaloniaHosts"
           DependsOnTargets="_ResolveAvaloniaTargetRids">
-    <MSBuild Projects="$(MSBuildProjectFullPath)"
+    <ItemGroup>
+      <_AvaloniaLinkTfm Include="$(AvaloniaTemplateTfms)" />
+      <!-- Cross join: one link target per template TFM and RID. -->
+      <_AvaloniaLinkTarget Include="@(_AvaloniaLinkTfm)">
+        <Rid>%(_AvaloniaTargetRid.Identity)</Rid>
+      </_AvaloniaLinkTarget>
+      <!-- HostLibsRoot is derived from HostLibsTargetFramework inside each link evaluation. -->
+      <_AvaloniaLinkTarget>
+        <AdditionalProperties>HostLibsTargetFramework=%(Identity);AvaloniaTemplateTfm=%(Identity)</AdditionalProperties>
+      </_AvaloniaLinkTarget>
+    </ItemGroup>
+
+    <Error Condition="'@(_AvaloniaLinkTfm)' == ''" Text="AvaloniaTemplateTfms is empty." />
+
+    <!--
+      Batches run one RID at a time and the TFMs of that RID link in parallel. Each TFM writes its own
+      <tfm>/<rid> output, stamp and merged module definition, so at most one link per TFM runs at once.
+    -->
+    <MSBuild Projects="@(_AvaloniaLinkTarget->'$(MSBuildProjectFullPath)')"
              Targets="_LinkAvaloniaAppHostForRid"
-             BuildInParallel="false"
-             Properties="Configuration=$(Configuration);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AngleNativeLibsRoot=$(AngleNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);AvaloniaHostRid=%(_AvaloniaTargetRid.Identity);Sysroot=$(_ResolvedSysroot);AvaloniaExportsFile=$(_AvaloniaAppHostExportsFile)" />
-    <MSBuild Projects="$(MSBuildProjectFullPath)"
+             BuildInParallel="true"
+             Properties="Configuration=$(Configuration);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AngleNativeLibsRoot=$(AngleNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaHostRid=%(_AvaloniaLinkTarget.Rid);Sysroot=$(_ResolvedSysroot);AvaloniaExportsFile=$(_AvaloniaAppHostExportsFile)" />
+    <MSBuild Projects="@(_AvaloniaLinkTarget->'$(MSBuildProjectFullPath)')"
              Targets="_LinkAvaloniaSingleFileHostForRid"
-             BuildInParallel="false"
-             Properties="Configuration=$(Configuration);HostLibsRoot=$(HostLibsRoot);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AngleNativeLibsRoot=$(AngleNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaTemplateTfm=$(AvaloniaTemplateTfm);AvaloniaHostRid=%(_AvaloniaTargetRid.Identity);Sysroot=$(_ResolvedSysroot);AvaloniaExportsFile=$(_AvaloniaSingleFileHostExportsFile)" />
+             BuildInParallel="true"
+             Properties="Configuration=$(Configuration);AvaloniaNativeLibsRoot=$(AvaloniaNativeLibsRoot);AngleNativeLibsRoot=$(AngleNativeLibsRoot);AvaloniaAppHostArtifactRoot=$(AvaloniaAppHostArtifactRoot);AvaloniaHostRid=%(_AvaloniaLinkTarget.Rid);Sysroot=$(_ResolvedSysroot);AvaloniaExportsFile=$(_AvaloniaSingleFileHostExportsFile)" />
   </Target>
 </Project>

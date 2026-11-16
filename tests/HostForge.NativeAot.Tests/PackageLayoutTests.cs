@@ -46,7 +46,7 @@ public class PackageLayoutTests
         if (new FileInfo(path).Length >= 250_000_000)
             throw new InvalidOperationException("The RID package exceeds the 250 MB publishing limit.");
         using ZipArchive zip = ZipFile.OpenRead(path);
-        if (version == "4.153.1" && rid.StartsWith("linux-", StringComparison.Ordinal) && zip.GetEntry("licenses/libcxx.LICENSE.TXT") is null)
+        if (version.StartsWith("4.", StringComparison.Ordinal) && rid.StartsWith("linux-", StringComparison.Ordinal) && zip.GetEntry("licenses/libcxx.LICENSE.TXT") is null)
             throw new InvalidOperationException("The bundled libc++ runtime license is missing.");
         string nativeRoot = $"build/native/{rid}/";
         ZipArchiveEntry manifest = zip.GetEntry(nativeRoot + "manifest.json") ?? throw new InvalidOperationException("Missing native manifest.");

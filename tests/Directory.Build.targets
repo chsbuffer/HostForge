@@ -1,4 +1,8 @@
 <Project>
+  <PropertyGroup>
+    <!-- One exact TUnit version for every test project; MSBuild evaluates this before the projects' PackageReference items. -->
+    <TUnitVersion>1.85.0</TUnitVersion>
+  </PropertyGroup>
   <ItemGroup Condition="'$(OutputType)' == 'Exe'">
     <RuntimeHostConfigurationOption Include="HostForgeRepoRoot" Value="$(RepoRoot)" />
   </ItemGroup>

@@ -11,6 +11,15 @@ ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("cache_key", ROOT / "scripts/native-cache-key.py")
 cache_key = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cache_key)
+spec = importlib.util.spec_from_file_location("repo_versions", ROOT / "scripts/repo_versions.py")
+repo_versions = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(repo_versions)
+VERSIONS = repo_versions.load()
+# A second supported version of each multi-version component, so tests can change one without the other.
+SKIA = VERSIONS["skiasharp"]
+OTHER_SKIA = next((v for v in VERSIONS["skiasharp-versions"] if v != SKIA), None)
+HOSTLIBS = VERSIONS["hostlibs"]
+OTHER_HOSTLIBS = next((v for v in VERSIONS["hostlibs-versions"] if v != HOSTLIBS), None)
 
 
 class NativeCacheKeyTests(unittest.TestCase):
@@ -24,7 +33,7 @@ class NativeCacheKeyTests(unittest.TestCase):
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, destination)
 
-    def key(self, version="3.119.4", rid="win-x64", component="skiasharp", toolchain="compiler-1"):
+    def key(self, version=SKIA, rid="win-x64", component="skiasharp", toolchain="compiler-1"):
         return cache_key.fingerprint(self.root, component, version, rid, toolchain)["key"]
 
     def change(self, name):
@@ -49,13 +58,26 @@ class NativeCacheKeyTests(unittest.TestCase):
         self.assertNotEqual(original, self.key())
 
     def test_version_source_is_scoped_to_selected_version(self):
-        old, modern = self.key(), self.key("4.153.1")
+        if OTHER_SKIA is None:
+            self.skipTest("needs two supported versions")
+        selected, other = self.key(), self.key(OTHER_SKIA)
         file = self.root / "native/skiasharp/versions.json"
         versions = json.loads(file.read_text())
-        versions["4.153.1"][0] = "different-source-commit"
+        versions[OTHER_SKIA][0] = "different-source-commit"
         file.write_text(json.dumps(versions))
-        self.assertEqual(old, self.key())
-        self.assertNotEqual(modern, self.key("4.153.1"))
+        self.assertEqual(selected, self.key())
+        self.assertNotEqual(other, self.key(OTHER_SKIA))
+
+    def test_hostlibs_source_is_scoped_to_selected_runtime(self):
+        if OTHER_HOSTLIBS is None:
+            self.skipTest("needs two supported versions")
+        selected, other = self.key(HOSTLIBS, component="hostlibs"), self.key(OTHER_HOSTLIBS, component="hostlibs")
+        file = self.root / "native/hostlibs/versions.json"
+        versions = json.loads(file.read_text())
+        versions[OTHER_HOSTLIBS]["commit"] = "different-vmr-commit"
+        file.write_text(json.dumps(versions))
+        self.assertEqual(selected, self.key(HOSTLIBS, component="hostlibs"))
+        self.assertNotEqual(other, self.key(OTHER_HOSTLIBS, component="hostlibs"))
 
     def test_sysroot_and_checksums_are_rid_specific(self):
         glibc, musl = self.key(rid="linux-x64"), self.key(rid="linux-musl-arm64")
@@ -74,9 +96,9 @@ class NativeCacheKeyTests(unittest.TestCase):
 
     def test_other_components_only_use_selected_profile(self):
         for component, version, rid, other in (
-            ("angle", "2.1.27548.20260419", "win-x64", "windows-arm64"),
-            ("hostlibs", "10.0.13", "win-x64", "linux-x64"),
-            ("avalonianative", "12.1.4", "osx-arm64", "osx-x64"),
+            ("angle", VERSIONS["angle"], "win-x64", "windows-arm64"),
+            ("hostlibs", HOSTLIBS, "win-x64", "linux-x64"),
+            ("avalonianative", VERSIONS["avalonia-native"], "osx-arm64", "osx-x64"),
         ):
             with self.subTest(component=component):
                 original = self.key(version, rid, component)
@@ -84,7 +106,7 @@ class NativeCacheKeyTests(unittest.TestCase):
                 self.assertEqual(original, self.key(version, rid, component))
 
     def test_generator_update_rebuilds_payload_but_can_reuse_objects(self):
-        before, after = [cache_key.fingerprint(self.root, "hostlibs", "10.0.13", "win-x64",
+        before, after = [cache_key.fingerprint(self.root, "hostlibs", HOSTLIBS, "win-x64",
                                               "compiler-1", generator)
                          for generator in ("cmake 3.29", "cmake 4.0")]
         self.assertNotEqual(before["key"], after["key"])

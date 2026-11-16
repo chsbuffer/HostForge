@@ -1,4 +1,3 @@
-using System.Xml.Linq;
 using System.Runtime.InteropServices;
 using HostForge.TestInfra;
 
@@ -9,8 +8,11 @@ public class StaticAppHostMatrixTests
     private const string LinkAppHostMessageMarker = "[HostForge.StaticAppHost] LinkAppHost executed";
     private const string LinkSingleFileHostMessageMarker = "[HostForge.StaticAppHost] LinkSingleFileHost executed";
 
+    // Every target framework builds the same sample in place, so the runs must not overlap.
     [Test]
-    public async Task CurrentOsX64_Matrix_BuildPublish_IncrementalLinkerBehavior()
+    [NotInParallel("samples/simple-pinvoke")]
+    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.TargetFrameworkCases))]
+    public async Task CurrentOsX64_Matrix_BuildPublish_IncrementalLinkerBehavior(string targetFramework)
     {
         string configuration = "Release";
         string rid = GetCurrentOsX64Rid();
@@ -25,7 +27,8 @@ public class StaticAppHostMatrixTests
             "SimplePInvoke.csproj");
 
         string consumerDir = Path.GetDirectoryName(consumerProject)!;
-        string targetFramework = ReadTargetFramework(consumerProject);
+        // The sample targets HostLibsTargetFramework, which also selects the matching host libs.
+        string properties = $"-c {configuration} -p:HostLibsTargetFramework={targetFramework} -v:minimal";
 
         if (!noClean)
         {
@@ -35,12 +38,12 @@ public class StaticAppHostMatrixTests
 
         var steps = new (string Name, string Arguments, bool? ExpectUpToDate)[]
         {
-            ("01-build-no-rid-first", $"build \"{consumerProject}\" -c {configuration} -v:minimal", true),
-            ("02-build-no-rid-second", $"build \"{consumerProject}\" -c {configuration} -v:minimal", false),
-            ("03-build-rid-first", $"build \"{consumerProject}\" -c {configuration} -r {rid} -v:minimal", true),
-            ("04-build-rid-second", $"build \"{consumerProject}\" -c {configuration} -r {rid} -v:minimal", false),
-            ("05-publish-first", $"publish \"{consumerProject}\" -c {configuration} -r {rid} /p:PublishSingleFile=true -v:minimal", true),
-            ("06-publish-second", $"publish \"{consumerProject}\" -c {configuration} -r {rid} /p:PublishSingleFile=true -v:minimal", false)
+            ("01-build-no-rid-first", $"build \"{consumerProject}\" {properties}", true),
+            ("02-build-no-rid-second", $"build \"{consumerProject}\" {properties}", false),
+            ("03-build-rid-first", $"build \"{consumerProject}\" {properties} -r {rid}", true),
+            ("04-build-rid-second", $"build \"{consumerProject}\" {properties} -r {rid}", false),
+            ("05-publish-first", $"publish \"{consumerProject}\" {properties} -r {rid} /p:PublishSingleFile=true", true),
+            ("06-publish-second", $"publish \"{consumerProject}\" {properties} -r {rid} /p:PublishSingleFile=true", false)
         };
 
         foreach ((string name, string arguments, bool? expectedUpToDate) in steps)
@@ -50,7 +53,7 @@ public class StaticAppHostMatrixTests
                 arguments,
                 RepoContext.RepoRoot);
 
-            AssertEx.Success(result, name);
+            AssertEx.Success(result, $"{targetFramework} {name}");
 
             if (expectedUpToDate is not null)
             {
@@ -60,7 +63,7 @@ public class StaticAppHostMatrixTests
                     string expected = expectedUpToDate.Value ? "HIT" : "MISS";
                     string value = actual ? "HIT" : "MISS";
                     throw new InvalidOperationException(
-                        $"Step {name} up-to-date validation failed. Expected {expected}, actual {value}.{Environment.NewLine}{result.CombinedOutput}");
+                        $"Step {name} ({targetFramework}) up-to-date validation failed. Expected {expected}, actual {value}.{Environment.NewLine}{result.CombinedOutput}");
                 }
             }
         }
@@ -83,7 +86,8 @@ public class StaticAppHostMatrixTests
                 string.Empty,
                 Path.GetDirectoryName(executablePath)!);
 
-            AssertEx.Success(runResult, "07-run-exe");
+            AssertEx.Success(runResult, $"{targetFramework} 07-run-exe");
+            AssertEx.Contains(runResult.CombinedOutput, "Hello, World!2");
         }
     }
 
@@ -120,23 +124,6 @@ public class StaticAppHostMatrixTests
         string? value = Environment.GetEnvironmentVariable(name);
         return string.Equals(value, "1", StringComparison.Ordinal) ||
                string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string ReadTargetFramework(string projectPath)
-    {
-        var document = XDocument.Load(projectPath);
-        string? tfm = document.Root?
-            .Descendants()
-            .FirstOrDefault(x => x.Name.LocalName == "TargetFramework")
-            ?.Value
-            .Trim();
-
-        if (string.IsNullOrWhiteSpace(tfm))
-        {
-            throw new InvalidOperationException($"Unable to resolve TargetFramework from {projectPath}");
-        }
-
-        return tfm;
     }
 
     private static void DeleteDirectory(string path)

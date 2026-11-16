@@ -39,11 +39,18 @@ class MacosBuild:
             )
 
 
+    @property
+    def _min_macos_version(self):
+        # Matches native/macos/build.cake of the SkiaSharp tag: 4.156 requires macOS 12.0.
+        if self._modern:
+            return "12.0"
+        return "10.13" if self._target_arch == "x64" else "11.0"
+
     def _macos_common_args(self):
         return [
             'target_os = "mac"',
             f'target_cpu = "{self._target_arch}"',
-            f'min_macos_version = "{"10.13" if self._target_arch == "x64" else "11.0"}"',
+            f'min_macos_version = "{self._min_macos_version}"',
             "is_official_build = true",
             "is_debug = false",
             "is_static_skiasharp = true",

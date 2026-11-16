@@ -2,31 +2,32 @@
 
 Reference `ChsBuffer.SkiaSharp.Static`, `ChsBuffer.Angle.Static` and
 `ChsBuffer.Avalonia.Native.Static` alongside Avalonia. Publish with
-`PublishAot=true` and an explicit runtime identifier.
+`PublishAot=true` and an explicit runtime identifier. The packages support
+.NET 10 and .NET 11 NativeAOT.
 
 ```xml
 <PropertyGroup>
   <PublishAot>true</PublishAot>
 </PropertyGroup>
 <ItemGroup>
-  <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
+  <PackageReference Include="Avalonia.Desktop" Version="12.1.6" />
   <PackageReference Include="ChsBuffer.SkiaSharp.Static" Version="3.119.4.1" />
   <PackageReference Include="ChsBuffer.Angle.Static" Version="2.1.27548.1" />
-  <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="12.1.4.1" />
+  <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="12.1.6.1" />
 </ItemGroup>
 ```
 
 Run `dotnet publish -c Release -r <RID>`. Change only the SkiaSharp static package
-version to `4.153.1` to use SkiaSharp 4.
+version to `4.156.1` to use SkiaSharp 4.
 
 The SkiaSharp meta package selects compatible managed SkiaSharp and HarfBuzzSharp
 versions through its RID package dependencies. No additional managed graphics
 package references are required. Only the matching RID contributes native inputs.
 ANGLE applies to Windows; Avalonia.Native applies to macOS.
 
-SkiaSharp 3.119.4 and 4.153.1 each include eight RIDs: `win-x64`, `win-arm64`,
+SkiaSharp 3.119.4 and 4.156.1 each include eight RIDs: `win-x64`, `win-arm64`,
 `linux-x64`, `linux-arm64`, `linux-musl-x64`, `linux-musl-arm64`, `osx-x64` and
-`osx-arm64`. ANGLE includes both Windows RIDs; Avalonia.Native 12.1.4 includes
+`osx-arm64`. ANGLE includes both Windows RIDs; Avalonia.Native 12.1.6 includes
 both macOS RIDs. Meta packages require the exact matching RID package versions.
 
 All packages share the same build integration and error codes:

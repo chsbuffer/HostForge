@@ -37,7 +37,10 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
     exports = "windows.py", "linux.py", "macos.py", "versions.json"
 
     def set_version(self):
-        self.version = self.version or "3.119.4"
+        # No default here: Taskfile.yml always passes --version, defaulting to the version scripts/repo_versions.py reads.
+        if str(self.version) not in VERSIONS:
+            raise ConanException(f"Unsupported SkiaSharp version: {self.version}; pass --version with one of "
+                                 f"{', '.join(VERSIONS)} (native/skiasharp/versions.json)")
 
     def config_options(self):
         if self.settings.os != "Linux":
