@@ -40,7 +40,7 @@ jobs:
         run: >-
           echo "::notice::This is a re-run: the pr job runs only on the first attempt of a run, so pull requests are
           not updated. To retry, start a new run (Actions > upstream > Run workflow)."
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Check upstream releases and plan the updates
@@ -83,7 +83,7 @@ jobs:
           done
           printf '%s}}\n' "$status" > "$PLAN/status.json"
           cat "$PLAN/status.json"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: upstream-plan
           path: ${{ runner.temp }}/plan
@@ -103,10 +103,10 @@ jobs:
       pull-requests: write
     steps:
       # Only the stdlib script, git and gh run here; nothing processes upstream data beyond the plan files.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/download-artifact@v8.0.1
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: upstream-plan
           path: ${{ runner.temp }}/plan

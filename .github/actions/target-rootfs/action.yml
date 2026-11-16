@@ -11,7 +11,7 @@ runs:
       shell: bash
       # The rootfs key depends only on the RID; any pinned SkiaSharp version selects it.
       run: python scripts/native-cache-key.py skiasharp "$(python scripts/repo_versions.py --get skiasharp)" linux-x64
-    - uses: actions/cache@v5
+    - uses: actions/cache@v6
       id: cache
       with:
         path: artifacts/rootfs/target.tar.gz
