@@ -3,6 +3,6 @@ name = "hostforge"
 version = "0.0.0"
 requires-python = ">=3.10"
 dependencies = [
-    "conan==2.31.2",
-    "ninja==1.13.0",
+    "conan==2.34.0",
+    "ninja==1.13.2",
 ]
