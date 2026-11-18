@@ -5,7 +5,7 @@
     <AngleVersion>2.1.27548.20260419</AngleVersion>
     <SkiaSharpVersion Condition="'$(SkiaSharpVersion)' == ''">3.119.4</SkiaSharpVersion>
     <HarfBuzzVersion Condition="'$(HarfBuzzVersion)' == '' and '$(SkiaSharpVersion)' == '3.119.4'">8.3.1.5</HarfBuzzVersion>
-    <HarfBuzzVersion Condition="'$(HarfBuzzVersion)' == '' and '$(SkiaSharpVersion)' == '4.156.1'">14.4.0.101</HarfBuzzVersion>
+    <HarfBuzzVersion Condition="'$(HarfBuzzVersion)' == '' and '$(SkiaSharpVersion)' == '4.156.2'">14.4.0.102</HarfBuzzVersion>
     <AvaloniaNativeVersion Condition="'$(AvaloniaNativeVersion)' == ''">12.1.6</AvaloniaNativeVersion>
   </PropertyGroup>
 
@@ -34,7 +34,7 @@
 
   <PropertyGroup>
     <TargetAvaloniaVersion>12.0</TargetAvaloniaVersion>
-    <_Major>2</_Major>
+    <_Major>3</_Major>
     <_Preview Condition="'$(_Preview)' == ''"></_Preview>
 
     <_AvaloniaAppHostPreview>$(_Preview)</_AvaloniaAppHostPreview>
