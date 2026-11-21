@@ -7,8 +7,8 @@
 
   <PropertyGroup>
     <_AvaloniaModuleInitializer>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', 'ModuleInitializer.cs'))</_AvaloniaModuleInitializer>
-    <_AvaloniaSkiaHarfBuzzNativeFileNames>;libSkiaSharp.dll;libSkiaSharp.so;libHarfBuzzSharp.dll;libHarfBuzzSharp.so;</_AvaloniaSkiaHarfBuzzNativeFileNames>
-    <_AvaloniaAngleNativeFileNames>;av_libglesv2.dll;</_AvaloniaAngleNativeFileNames>
+    <_AvaloniaSkiaHarfBuzzNativeFileNames>;libSkiaSharp.dll;libSkiaSharp.so;libSkiaSharp.pdb;libHarfBuzzSharp.dll;libHarfBuzzSharp.so;libHarfBuzzSharp.pdb;</_AvaloniaSkiaHarfBuzzNativeFileNames>
+    <_AvaloniaAngleNativeFileNames>;av_libglesv2.dll;av_libglesv2.pdb;</_AvaloniaAngleNativeFileNames>
   </PropertyGroup>
 
   <Target Name="ResolveAvaloniaAppHostActivation"
@@ -72,6 +72,7 @@
 
   <!--
     The templates link these libraries statically and resolve their DllImports from the main program.
+    The symbol files belong to the packages' dynamic libraries and cannot symbolize the linked code.
     Single-file bundling and the publish directory copy both start from ResolvedFileToPublish after
     ComputeResolvedFilesToPublishList, so removing the libraries here keeps them out of both.
     The activation check is in the body because a target condition is evaluated before DependsOnTargets runs.

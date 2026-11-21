@@ -334,8 +334,11 @@ public class AvaloniaAppHostTests
         }
         else
         {
+            // SkiaSharp and HarfBuzzSharp 14 ship symbol files next to their libraries.
             AssertEx.FileMissing(skiaDllPath);
             AssertEx.FileMissing(harfBuzzDllPath);
+            AssertEx.FileMissing(Path.ChangeExtension(skiaDllPath, ".pdb"));
+            AssertEx.FileMissing(Path.ChangeExtension(harfBuzzDllPath, ".pdb"));
         }
 
         if (expectAngleRuntimeCopy)
@@ -345,6 +348,7 @@ public class AvaloniaAppHostTests
         else
         {
             AssertEx.FileMissing(angleDllPath);
+            AssertEx.FileMissing(Path.ChangeExtension(angleDllPath, ".pdb"));
         }
     }
 

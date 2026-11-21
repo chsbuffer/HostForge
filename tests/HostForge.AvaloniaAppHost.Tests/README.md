@@ -13,8 +13,8 @@ Current coverage:
 - Self-contained single-file publish on Windows and Linux for every template TFM, without and with
   `IncludeNativeLibrariesForSelfExtract`: `RuntimeFrameworkVersion` is pinned to the template's runtime version,
   as the package README requires; the bundle runs on the prelinked singlefilehost (exact runtime version checked)
-  and resolves ANGLE / Skia / HarfBuzz from the executable, with none of their dynamic libraries in the publish
-  directory or extracted from the bundle (`DOTNET_BUNDLE_EXTRACT_BASE_DIR` points extraction into the test project)
+  and resolves ANGLE / Skia / HarfBuzz from the executable, with none of their dynamic libraries (or, on Windows, their
+  symbol files) in the publish directory or extracted from the bundle (`DOTNET_BUNDLE_EXTRACT_BASE_DIR` points extraction into the test project)
 - Linux `linux-x64` publish-and-run output validation for `ChsBuffer.Avalonia.AppHost.Linux` for every template TFM
 - Linux `linux-x64` Skia/HarfBuzz native runtime copy suppression switch behavior
 - Skia 3 / 4 package versions, optional preview labels, managed dependencies and unchanged template paths
