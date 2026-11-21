@@ -24,6 +24,10 @@
         <TargetOs>linux</TargetOs>
         <ExecutableExtension></ExecutableExtension>
       </_AvaloniaKnownRid>
+      <_AvaloniaKnownRid Include="linux-musl-x64">
+        <TargetOs>linux-musl</TargetOs>
+        <ExecutableExtension></ExecutableExtension>
+      </_AvaloniaKnownRid>
     </ItemGroup>
   </Target>
 
