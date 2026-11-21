@@ -28,8 +28,8 @@ class HostLibsConan(ConanFile):
     description = ".NET apphost and single-file host static link inputs"
 
     settings = "os", "arch", "compiler", "build_type"
-    options = {"pgo": [True, False]}
-    default_options = {"pgo": True}
+    options = {"pgo": [True, False], "libc": ["glibc", "musl"]}
+    default_options = {"pgo": True, "libc": "glibc"}
     exports = "versions.json"
 
     _arch = {
@@ -42,6 +42,10 @@ class HostLibsConan(ConanFile):
         if str(self.version) not in VERSIONS:
             raise ConanException(f"Unsupported .NET runtime version: {self.version}; pass --version with one of "
                                  f"{', '.join(VERSIONS)} (native/hostlibs/versions.json)")
+
+    def config_options(self):
+        if self.settings.os != "Linux":
+            self.options.rm_safe("libc")
 
     def validate(self):
         if str(self.version) not in VERSIONS:
@@ -60,12 +64,17 @@ class HostLibsConan(ConanFile):
         return self._arch[str(self.settings.arch)]
 
     @property
+    def _musl(self):
+        return self.settings.os == "Linux" and self.options.libc == "musl"
+
+    @property
     def _rid(self):
-        prefix = "win" if self.settings.os == "Windows" else "linux"
+        prefix = "win" if self.settings.os == "Windows" else "linux-musl" if self._musl else "linux"
         return f"{prefix}-{self._target_arch}"
 
     def system_requirements(self):
-        if self.settings.os == "Linux":
+        # musl builds run in the upstream cross image, which already has the Runtime's build dependencies.
+        if self.settings.os == "Linux" and not self._musl:
             Apt(self).install(
                 [
                     "build-essential",
@@ -161,10 +170,9 @@ class HostLibsConan(ConanFile):
             self._msvc_configure_build("host.native", "apphost", root,
                                        extra_args="/p:ConfigureOnly=true", pre_ninja=pre)
         else:
-            cross = " --cross" if self._sysroot() else ""
             self.run(
                 f'"{self._runtime_root / "build.sh"}" host.native -ninja '
-                f"-c release -arch {self._target_arch}{cross} -p:ConfigureOnly=true "
+                f"-c release -arch {self._target_arch}{self._unix_target()} -p:ConfigureOnly=true "
                 f"{self._runtime_properties('-p:')}",
                 cwd=str(self._runtime_root),
                 env="conanbuild",
@@ -182,10 +190,9 @@ class HostLibsConan(ConanFile):
             self._msvc_configure_build("clr.runtime", "singlefilehost", root,
                                        extra_args=extra)
         else:
-            cross = " --cross" if self._sysroot() else ""
             self.run(
                 f'"{self._runtime_root / "build.sh"}" clr.runtime -ninja '
-                f"-c release -arch {self._target_arch}{cross} -p:ConfigureOnly=true "
+                f"-c release -arch {self._target_arch}{self._unix_target()} -p:ConfigureOnly=true "
                 f"{self._runtime_properties('-p:')}",
                 cwd=str(self._runtime_root),
                 env="conanbuild",
@@ -288,23 +295,33 @@ class HostLibsConan(ConanFile):
     def _sysroot(self):
         return os.environ.get("ROOTFS_DIR")
 
+    def _unix_target(self):
+        # build.sh derives the musl RID, CMake defines and PGO data from --os, as in the official builds.
+        cross = " --cross" if self._sysroot() else ""
+        return f"{cross} --os linux-musl" if self._musl else cross
+
     def _bundle(self, name: str, build_root: Path):
         tokens, link_flags, flags = self._parse_link_rule(build_root, name)
         copied: set[Path] = set()
         package = Path(self.package_folder)
+        response = []
         for token in tokens:
             path = self._token_input_path(token)
             source = self._resolve_token(build_root, path)
-            if source is None:
-                continue
-            target = package / self._token_output_path(path)
-            if target in copied:
-                continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, target)
-            copied.add(target)
+            if source is not None:
+                relative = self._token_output_path(path)
+                target = package / relative
+                if target not in copied:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(source, target)
+                    copied.add(target)
+                if self._is_absolute(path):
+                    # A library outside the build tree, such as the libpthread.a stub that CMake finds in the
+                    # musl rootfs. The link runs in the package directory, so name the packaged copy.
+                    token = token[:len(token) - len(path)] + relative.as_posix()
+            response.append(token)
 
-        save(self, str(package / f"{name}.rsp"), "\n".join(tokens) + "\n")
+        save(self, str(package / f"{name}.rsp"), "\n".join(response) + "\n")
         save(
             self,
             str(package / f"{name}.linkflags"),
@@ -320,12 +337,14 @@ class HostLibsConan(ConanFile):
         return token[len(option):] if token.upper().startswith(option) else token
 
     @staticmethod
-    def _resolve_token(build_root: Path, token: str):
+    def _is_absolute(token: str):
         normalized = token.replace("\\", "/")
-        absolute = normalized.startswith("/") or (
-            len(normalized) >= 3 and normalized[1:3] == ":/"
-        )
-        candidate = Path(normalized) if absolute else build_root / normalized
+        return normalized.startswith("/") or (len(normalized) >= 3 and normalized[1:3] == ":/")
+
+    @classmethod
+    def _resolve_token(cls, build_root: Path, token: str):
+        normalized = token.replace("\\", "/")
+        candidate = Path(normalized) if cls._is_absolute(token) else build_root / normalized
         return candidate if candidate.exists() else None
 
     @staticmethod

@@ -30,7 +30,7 @@ RIDs link one after another; the TFMs of a RID link in parallel because each wri
 
 | Project | Purpose |
 |---|---|
-| `AvaloniaAppHost.Link.proj` | Links apphost templates for one OS at a time (`TARGET_OS=windows\|linux`), for every template TFM |
+| `AvaloniaAppHost.Link.proj` | Links apphost templates for one OS at a time (`TARGET_OS=windows\|linux\|linux-musl`, optionally one `RID`), for every template TFM |
 | `AvaloniaAppHost.Rids.targets` | Shared RID definitions for link/pack orchestration |
 | `AvaloniaAppHost.Rid.csproj` | Packs one RID's templates for every template TFM and generates its `.props` (`-p:AvaloniaHostRid=win-x64`) |
 | `AvaloniaAppHost.Build.csproj` | Packs `.targets` + `ModuleInitializer.cs` |
@@ -82,8 +82,32 @@ The `skia4` suffix is added automatically; keep `_Preview` as the desired base l
 
 Linked templates keep the same `artifacts/avalonia-host/<version>/<tfm>/<rid>/` paths.
 For local builds, link and pack one Skia variant before linking the other variant.
-CI uses separate jobs and `avalonia-host-skia4-windows` / `avalonia-host-skia4-linux`
-artifacts, then uploads the five Skia 4 packages as `nuget-avalonia-apphost-skia4`.
+CI uses separate jobs and `avalonia-host-skia4-windows` / `avalonia-host-skia4-linux` /
+`avalonia-host-skia4-linux-musl-<arch>` artifacts, then uploads the seven Skia 4 packages
+as `nuget-avalonia-apphost-skia4`.
+
+## Alpine (linux-musl) templates
+
+The musl templates link in the `link` stage of
+[`native/hostlibs/linux-musl.Dockerfile`](../../native/hostlibs/linux-musl.Dockerfile), built
+from the official linux-musl build container of the newest runtime in
+`native/hostlibs/versions.json`. The PGO build of the .NET 11 GC is compiled with LTO, so its
+HostLibs contain LLVM bitcode that only an LLVM at least as new as the compiling one can link;
+the container of the newest runtime has that LLVM. The stage adds fontconfig to the Alpine rootfs
+of the container, from the package checksums of the SkiaSharp musl images, because the templates
+link `-lfontconfig`.
+
+```sh
+docker build -f native/hostlibs/linux-musl.Dockerfile --target link --build-arg IMAGE=<container> --build-arg ARCH=arm64 -t hostforge-musl-link .
+docker run --rm -v "$PWD:/work" -v "$DOTNET_ROOT:$DOTNET_ROOT:ro" -e DOTNET_ROOT hostforge-musl-link \
+    bash -c 'PATH="$DOTNET_ROOT:$PATH" task link-avalonia TARGET_OS=linux-musl RID=linux-musl-arm64 SYSROOT=/crossrootfs/arm64'
+```
+
+`<container>` is the `linux-musl-arm64` (or `linux-musl-x64`) entry of the newest runtime.
+Each musl RID needs its own sysroot, so `TARGET_OS=linux-musl` links one `RID` at a time.
+Run `task avalonia-test` in an Alpine container of the same architecture with `fontconfig`,
+`binutils` and the .NET 10 runtime installed; CI uses the Alpine .NET SDK image of
+`test-skia-linux-cross`.
 
 ## Local commands
 
@@ -111,6 +135,7 @@ Pack one RID (requires linked templates for that RID):
 ```powershell
 task pack-avalonia-rid RID=win-x64
 task pack-avalonia-rid RID=linux-x64
+task pack-avalonia-rid RID=linux-musl-arm64
 ```
 
 Pack Build package:

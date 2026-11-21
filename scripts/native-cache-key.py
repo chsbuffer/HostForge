@@ -42,10 +42,15 @@ def fingerprint(root, component, version, rid, toolchain, generator=""):
         files += [f"{directory}/conandata.yml", *[p.relative_to(root).as_posix() for p in (root / directory / "patches").glob("*")]]
         tasks = ["build-angle"]
     elif component == "hostlibs":
-        values["source"] = json.loads((root / directory / "versions.json").read_text())[version]
-        tasks = [f"_hostlibs-{profile_os}"]
+        source = json.loads((root / directory / "versions.json").read_text())[version]
+        values["source"] = {key: value for key, value in source.items() if key != "containers"}
+        tasks = [f"_hostlibs-{profile_os.split('-')[0]}"]
         if platform == "linux":
             files += ["native/skiasharp/linux-x64.Dockerfile"]
+        elif platform == "linux-musl":
+            # Built in the upstream container of this runtime and RID, with the glibc build profile.
+            values["source"]["container"] = source["containers"][rid]
+            files += [f"{directory}/linux-musl.Dockerfile", f"{directory}/profiles/linux-x64"]
         values["pgo"] = True
         values["generator"] = generator
     elif component == "avalonianative":
@@ -73,7 +78,7 @@ def fingerprint(root, component, version, rid, toolchain, generator=""):
             "rootfs-key": rootfs_key(root, rid) if rid.startswith("linux") else ""}
 
 
-def detect_toolchain(component, rid):
+def detect_toolchain(component, rid, version):
     if rid.startswith("win-"):
         installer = Path(os.environ["ProgramFiles(x86)"]) / "Microsoft Visual Studio/Installer/vswhere.exe"
         vs = subprocess.check_output([str(installer), "-latest", "-prerelease", "-products", "*",
@@ -96,6 +101,10 @@ def detect_toolchain(component, rid):
         return subprocess.check_output(["xcodebuild", "-version"], text=True).strip() + " / " + subprocess.check_output(["xcrun", "--show-sdk-version"], text=True).strip()
     if component == "skiasharp":
         return "llvm-20.1.8-cross"  # The per-RID Dockerfile pins the complete image digest.
+    if rid.startswith("linux-musl-"):
+        # The pinned upstream container supplies the compiler and CMake.
+        versions = Path(__file__).resolve().parent.parent / "native/hostlibs/versions.json"
+        return json.loads(versions.read_text(encoding="utf-8"))[version]["containers"][rid]
     return subprocess.check_output(["clang", "--version"], text=True).splitlines()[0]
 
 
@@ -107,9 +116,9 @@ if __name__ == "__main__":
     parser.add_argument("--toolchain")
     args = parser.parse_args()
     generator = (subprocess.check_output(["cmake", "--version"], text=True).splitlines()[0]
-                 if args.component == "hostlibs" else "")
+                 if args.component == "hostlibs" and not args.rid.startswith("linux-musl-") else "")
     result = fingerprint(Path(__file__).resolve().parent.parent, args.component, args.version, args.rid,
-                         args.toolchain or detect_toolchain(args.component, args.rid), generator)
+                         args.toolchain or detect_toolchain(args.component, args.rid, args.version), generator)
     print(json.dumps(result, indent=2))
     if "GITHUB_OUTPUT" in os.environ:
         with open(os.environ["GITHUB_OUTPUT"], "a") as output:

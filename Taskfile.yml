@@ -12,10 +12,11 @@ tasks:
       - task --list
 
   build-hostlibs:
-    desc: Build and deploy HostLibs static libraries (HOSTLIBS_VERSION=<runtime in native/hostlibs/versions.json>, ARCH=x64|arm64, PGO=True|False, SYSROOT=…)
+    desc: Build and deploy HostLibs static libraries (HOSTLIBS_VERSION=<runtime in native/hostlibs/versions.json>, ARCH=x64|arm64, PGO=True|False, RID=<Linux RID>, SYSROOT=…)
     vars:
       ARCH: '{{.ARCH | default "x64"}}'
       PGO: '{{.PGO | default "True"}}'
+      RID: '{{.RID | default ""}}'
       SYSROOT: '{{.SYSROOT | default ""}}'
       HOSTLIBS_VERSION:
         sh: '{{if .HOSTLIBS_VERSION}}echo {{.HOSTLIBS_VERSION}}{{else}}uv run python scripts/repo_versions.py --get hostlibs{{end}}'
@@ -24,7 +25,7 @@ tasks:
         vars: {ARCH: "{{.ARCH}}", PGO: "{{.PGO}}", HOSTLIBS_VERSION: "{{.HOSTLIBS_VERSION}}"}
         platforms: [windows]
       - task: _hostlibs-linux
-        vars: {SYSROOT: "{{.SYSROOT}}", HOSTLIBS_VERSION: "{{.HOSTLIBS_VERSION}}"}
+        vars: {RID: "{{.RID}}", SYSROOT: "{{.SYSROOT}}", HOSTLIBS_VERSION: "{{.HOSTLIBS_VERSION}}"}
         platforms: [linux]
 
   _hostlibs-windows:
@@ -47,8 +48,12 @@ tasks:
   _hostlibs-linux:
     internal: true
     platforms: [linux]
+    vars:
+      TARGET_RID: '{{.RID | default "linux-x64"}}'
     requires:
       vars:
+        - name: TARGET_RID
+          enum: [linux-x64, linux-musl-x64, linux-musl-arm64]
         - HOSTLIBS_VERSION
     env:
       ROOTFS_DIR: '{{.SYSROOT}}'
@@ -57,7 +62,7 @@ tasks:
       - >-
         uv run conan install --requires="hostlibs/{{.HOSTLIBS_VERSION}}" --build=missing --no-remote --envs-generation=false
         -pr:b=native/hostlibs/profiles/linux-x64
-        -pr:h=native/hostlibs/profiles/linux-x64
+        -pr:h=native/hostlibs/profiles/{{.TARGET_RID}}
         -c tools.build:jobs={{.JOBS}}
         -c tools.system.package_manager:mode=install
         -c tools.system.package_manager:sudo=True
@@ -241,16 +246,17 @@ tasks:
       - task: matrix-nativeaot
 
   link-avalonia:
-    desc: Link Avalonia apphost templates for one target OS
+    desc: Link Avalonia apphost templates for one target OS (RID=<one RID of TARGET_OS>, SYSROOT=…)
     requires:
       vars:
         - name: TARGET_OS
-          enum: [windows, linux]
+          enum: [windows, linux, linux-musl]
     cmds:
       - >-
         dotnet msbuild src/package-avalonia-apphost/AvaloniaAppHost.Link.proj
         /t:LinkAvaloniaHosts
         -p:AvaloniaAppHostTarget={{.TARGET_OS}}
+        {{if .RID}}-p:AvaloniaHostRids={{.RID}}{{end}}
         {{if .SKIASHARP_VERSION}}-p:SkiaSharpVersion={{.SKIASHARP_VERSION}}{{end}}
         -p:HostLibsFlavor=default
         {{if .SYSROOT}}-p:Sysroot="{{.SYSROOT}}"{{end}}
@@ -275,7 +281,7 @@ tasks:
     requires:
       vars:
         - name: RID
-          enum: [win-x64, win-arm64, linux-x64]
+          enum: [win-x64, win-arm64, linux-x64, linux-musl-x64, linux-musl-arm64]
     cmds:
       - >-
         dotnet pack src/package-avalonia-apphost/AvaloniaAppHost.Rid.csproj
@@ -311,6 +317,10 @@ tasks:
         vars: {RID: win-arm64, SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
       - task: pack-avalonia-rid
         vars: {RID: linux-x64, SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
+      - task: pack-avalonia-rid
+        vars: {RID: linux-musl-x64, SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
+      - task: pack-avalonia-rid
+        vars: {RID: linux-musl-arm64, SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
       - task: pack-avalonia-build
         vars: {SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
       - task: pack-avalonia-meta
