@@ -56,7 +56,7 @@ flowchart LR
 dotnet publish -c Release
 ```
 
-当目标框架（`net10.0` / `net11.0`，含 `net11.0-windows` 等平台后缀）和 RID 存在匹配模板时，包会自动替换 `AppHost` 与 `SingleFileHost`，注入本机库解析器，并从发布目录移除 ANGLE / SkiaSharp / HarfBuzzSharp 动态本机库。
+当目标框架（`net10.0` / `net11.0`，含 `net11.0-windows` 等平台后缀）和 RID 存在匹配模板时，包会自动替换 `AppHost` 与 `SingleFileHost`，注入本机库解析器，并把 ANGLE / SkiaSharp / HarfBuzzSharp 动态本机库排除在发布目录和单文件包之外（包括 `IncludeNativeLibrariesForSelfExtract=true` 时）。
 
 完整行为和可选开关见 [Avalonia AppHost 包文档](src/package-avalonia-apphost/README.md)。通用静态链接用法见 [Static AppHost 包文档](src/package-apphost-static/README.md)。
 

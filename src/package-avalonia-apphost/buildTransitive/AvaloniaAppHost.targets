@@ -7,8 +7,7 @@
 
   <PropertyGroup>
     <_AvaloniaModuleInitializer>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', 'ModuleInitializer.cs'))</_AvaloniaModuleInitializer>
-    <_AvaloniaSkiaNativeFileNames>;libSkiaSharp.dll;libSkiaSharp.so;</_AvaloniaSkiaNativeFileNames>
-    <_AvaloniaHarfBuzzNativeFileNames>;libHarfBuzzSharp.dll;libHarfBuzzSharp.so;</_AvaloniaHarfBuzzNativeFileNames>
+    <_AvaloniaSkiaHarfBuzzNativeFileNames>;libSkiaSharp.dll;libSkiaSharp.so;libHarfBuzzSharp.dll;libHarfBuzzSharp.so;</_AvaloniaSkiaHarfBuzzNativeFileNames>
     <_AvaloniaAngleNativeFileNames>;av_libglesv2.dll;</_AvaloniaAngleNativeFileNames>
   </PropertyGroup>
 
@@ -71,31 +70,20 @@
     <Warning Text="ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='$(TargetFramework)' RuntimeIdentifier='$(RuntimeIdentifier)'. No matching AvaloniaAppHostRids item for TFM '$(_AvaloniaTemplateTfm)' and RID '$(_AvaloniaTemplateRid)'. Registered: @(AvaloniaAppHostRids->'%(AppHostTemplateTfm)/%(Identity)', ', '). Host replacement and ANGLE/Skia/HarfBuzz runtime copy suppression are disabled." />
   </Target>
 
-  <Target Name="DisableAnglePublishItems"
-          BeforeTargets="_CopyResolvedFilesToPublishPreserveNewest;_CopyResolvedFilesToPublishAlways"
-          DependsOnTargets="ResolveAvaloniaAppHostActivation"
-          Condition="'$(DisableAngleRuntimeCopy)' == 'true' and '$(AvaloniaAppHostActive)' == 'true'">
-    <ItemGroup>
+  <!--
+    The templates link these libraries statically and resolve their DllImports from the main program.
+    Single-file bundling and the publish directory copy both start from ResolvedFileToPublish after
+    ComputeResolvedFilesToPublishList, so removing the libraries here keeps them out of both.
+    The activation check is in the body because a target condition is evaluated before DependsOnTargets runs.
+  -->
+  <Target Name="RemovePrelinkedNativePublishItems"
+          AfterTargets="ComputeResolvedFilesToPublishList"
+          DependsOnTargets="ResolveAvaloniaAppHostActivation">
+    <ItemGroup Condition="'$(AvaloniaAppHostActive)' == 'true'">
       <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
-                             Condition="$(_AvaloniaAngleNativeFileNames.Contains(';%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension);'))" />
-      <_ResolvedFileToPublishPreserveNewest Remove="@(_ResolvedFileToPublishPreserveNewest)"
-                                            Condition="$(_AvaloniaAngleNativeFileNames.Contains(';%(_ResolvedFileToPublishPreserveNewest.Filename)%(_ResolvedFileToPublishPreserveNewest.Extension);'))" />
-      <_ResolvedFileToPublishAlways Remove="@(_ResolvedFileToPublishAlways)"
-                                    Condition="$(_AvaloniaAngleNativeFileNames.Contains(';%(_ResolvedFileToPublishAlways.Filename)%(_ResolvedFileToPublishAlways.Extension);'))" />
-    </ItemGroup>
-  </Target>
-
-  <Target Name="DisableSkiaHarfBuzzPublishItems"
-          BeforeTargets="_CopyResolvedFilesToPublishPreserveNewest;_CopyResolvedFilesToPublishAlways"
-          DependsOnTargets="ResolveAvaloniaAppHostActivation"
-          Condition="'$(DisableSkiaHarfBuzzRuntimeCopy)' == 'true' and '$(AvaloniaAppHostActive)' == 'true'">
-    <ItemGroup>
+                             Condition="'$(DisableSkiaHarfBuzzRuntimeCopy)' == 'true' and $(_AvaloniaSkiaHarfBuzzNativeFileNames.Contains(';%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension);'))" />
       <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
-                             Condition="$(_AvaloniaSkiaNativeFileNames.Contains(';%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension);')) or $(_AvaloniaHarfBuzzNativeFileNames.Contains(';%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension);'))" />
-      <_ResolvedFileToPublishPreserveNewest Remove="@(_ResolvedFileToPublishPreserveNewest)"
-                                            Condition="$(_AvaloniaSkiaNativeFileNames.Contains(';%(_ResolvedFileToPublishPreserveNewest.Filename)%(_ResolvedFileToPublishPreserveNewest.Extension);')) or $(_AvaloniaHarfBuzzNativeFileNames.Contains(';%(_ResolvedFileToPublishPreserveNewest.Filename)%(_ResolvedFileToPublishPreserveNewest.Extension);'))" />
-      <_ResolvedFileToPublishAlways Remove="@(_ResolvedFileToPublishAlways)"
-                                    Condition="$(_AvaloniaSkiaNativeFileNames.Contains(';%(_ResolvedFileToPublishAlways.Filename)%(_ResolvedFileToPublishAlways.Extension);')) or $(_AvaloniaHarfBuzzNativeFileNames.Contains(';%(_ResolvedFileToPublishAlways.Filename)%(_ResolvedFileToPublishAlways.Extension);'))" />
+                             Condition="'$(DisableAngleRuntimeCopy)' == 'true' and $(_AvaloniaAngleNativeFileNames.Contains(';%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension);'))" />
     </ItemGroup>
   </Target>
 </Project>

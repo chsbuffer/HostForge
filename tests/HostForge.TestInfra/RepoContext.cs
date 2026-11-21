@@ -75,6 +75,16 @@ public static class RepoContext
     public static IEnumerable<Func<string>> AvaloniaTemplateTfmCases() =>
         AvaloniaTemplateTfms.Select(targetFramework => (Func<string>)(() => targetFramework));
 
+    /// <summary>
+    /// Data source for single-file publish tests: every template TFM, without and with
+    /// <c>IncludeNativeLibrariesForSelfExtract</c>, which moves native libraries from the publish directory
+    /// into the bundle and extracts them at startup.
+    /// </summary>
+    public static IEnumerable<Func<(string TargetFramework, bool IncludeNativeLibrariesForSelfExtract)>> AvaloniaSingleFilePublishCases() =>
+        from targetFramework in AvaloniaTemplateTfms
+        from includeNativeLibrariesForSelfExtract in new[] { false, true }
+        select (Func<(string, bool)>)(() => (targetFramework, includeNativeLibrariesForSelfExtract));
+
     public static string AvaloniaPackageOutputDir { get; } =
         Path.Combine(RepoRoot, "artifacts", "packages", "Release");
 

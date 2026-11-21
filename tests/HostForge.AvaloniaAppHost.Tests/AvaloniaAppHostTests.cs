@@ -146,27 +146,41 @@ public class AvaloniaAppHostTests
     }
 
     [Test]
-    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
-    public async Task SingleFilePublish_RunsOnPrelinkedSingleFileHost_WinX64(string targetFramework)
+    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaSingleFilePublishCases))]
+    public async Task SingleFilePublish_RunsOnPrelinkedSingleFileHost_WinX64(string targetFramework, bool includeNativeLibrariesForSelfExtract)
     {
+        string caseName = $"{targetFramework}_single-file{(includeNativeLibrariesForSelfExtract ? "_self-extract" : string.Empty)}";
         await using var project = await TestProjectWorkspace.CreateAsync(
             targetFramework: targetFramework,
             runtimeIdentifier: "win-x64",
             includeNativeAssetsPackages: true,
             publishSingleFile: true);
 
-        CommandResult result = await RunDotNetCommandAsync("publish", project.ProjectFilePath, project.ProjectDirectory);
-        AssertEx.Success(result, $"{targetFramework} single-file publish");
+        CommandResult result = await RunDotNetCommandAsync(
+            "publish",
+            project.ProjectFilePath,
+            project.ProjectDirectory,
+            includeNativeLibrariesForSelfExtract ? "-p:IncludeNativeLibrariesForSelfExtract=true" : null);
+        AssertEx.Success(result, $"{caseName}:publish");
         AssertActivationState(result.CombinedOutput, expectedActive: true, targetFramework, "win-x64");
 
         // The bundle runs on the runtime embedded in the template, with ANGLE, Skia and HarfBuzz
         // resolved from the executable instead of extracted or adjacent native libraries.
         string outputDirectory = project.GetPublishDirectory("Release", targetFramework, "win-x64");
         AssertNativeRuntimeCopy(outputDirectory, expectSkiaHarfBuzzRuntimeCopy: false, expectAngleRuntimeCopy: false);
+        string extractionDirectory = Path.Combine(project.ProjectDirectory, "bundle-extraction");
         await RunExeAndAssertSuccess(
-            $"{targetFramework}_single-file",
+            caseName,
             Path.Combine(outputDirectory, $"{project.ProjectName}.exe"),
-            RepoContext.GetHostLibsVersion(targetFramework));
+            RepoContext.GetHostLibsVersion(targetFramework),
+            new Dictionary<string, string> { ["DOTNET_BUNDLE_EXTRACT_BASE_DIR"] = extractionDirectory });
+
+        // The host extracts bundled native libraries to <base>/<app>/<bundle id>/ at startup.
+        if (Directory.Exists(extractionDirectory))
+        {
+            foreach (string directory in Directory.EnumerateDirectories(extractionDirectory, "*", SearchOption.AllDirectories))
+                AssertNativeRuntimeCopy(directory, expectSkiaHarfBuzzRuntimeCopy: false, expectAngleRuntimeCopy: false);
+        }
     }
 
     [Test]
@@ -295,11 +309,12 @@ public class AvaloniaAppHostTests
     private static async Task<CommandResult> RunDotNetCommandAsync(
         string verb,
         string projectFilePath,
-        string workingDirectory)
+        string workingDirectory,
+        string? additionalArguments = null)
     {
         return await CommandRunner.RunAsync(
             "dotnet",
-            $"{verb} \"{projectFilePath}\" -c Release -v:minimal",
+            $"{verb} \"{projectFilePath}\" -c Release -v:minimal {additionalArguments}",
             workingDirectory);
     }
 
@@ -333,14 +348,19 @@ public class AvaloniaAppHostTests
         }
     }
 
-    private static async Task RunExeAndAssertSuccess(string caseName, string exePath, string? expectedRuntimeVersion = null)
+    private static async Task RunExeAndAssertSuccess(
+        string caseName,
+        string exePath,
+        string? expectedRuntimeVersion = null,
+        IReadOnlyDictionary<string, string>? environmentVariables = null)
     {
         AssertEx.FileExists(exePath);
 
         CommandResult runResult = await CommandRunner.RunAsync(
             exePath,
             string.Empty,
-            Path.GetDirectoryName(exePath)!);
+            Path.GetDirectoryName(exePath)!,
+            environmentVariables: environmentVariables);
 
         AssertEx.Success(runResult, $"{caseName}:run-exe");
         AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
