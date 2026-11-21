@@ -1,0 +1,20 @@
+{
+  "3.119.4": {
+    "native/linux/build.cake": "9fedb793539d1aa51878ba7f4e743f8ee6fd33d2",
+    "native/macos/build.cake": "cf83e7538b31ce196c4d1a4a195675876b277b6b",
+    "native/macos/libHarfBuzzSharp/libHarfBuzzSharp.xcodeproj/project.pbxproj": "95c6bfdc82f0f8a2655f6de9123585c6251e36aa",
+    "native/macos/libSkiaSharp/libSkiaSharp.xcodeproj/project.pbxproj": "eb40fd610aafaecf34c61afbee415fe275b18f49",
+    "native/windows/build.cake": "c3c5367990cc0dd4eda6ad9d0027474bf4773536",
+    "native/windows/libHarfBuzzSharp/libHarfBuzzSharp.vcxproj": "bc83e87fd6d3c1e9d36c53a88e4de3c6a035ee67",
+    "scripts/cake/native-shared.cake": "ea264584dfab9fed4f525e4d195711f9efebdcd5"
+  },
+  "4.157.0": {
+    "native/linux/build.cake": "89f4b3726c4bb38eb96a88eb480cfe9614edb8f8",
+    "native/macos/build.cake": "fad17af09658225e78114c2c53b4ed86243b86c3",
+    "native/macos/libHarfBuzzSharp/libHarfBuzzSharp.xcodeproj/project.pbxproj": "380d5b15460c63d9006a1f91a88797b1741c0d90",
+    "native/macos/libSkiaSharp/libSkiaSharp.xcodeproj/project.pbxproj": "80a17daef5eff0631d7261442b1fc9e1f2098c37",
+    "native/windows/build.cake": "f496ddbf38c4434b3cff84a97afff4ac700d70c4",
+    "native/windows/libHarfBuzzSharp/libHarfBuzzSharp.vcxproj": "5e14fa59d5310db6b1c95fd469452ab8bfef84c1",
+    "scripts/infra/native/shared/native-shared.cake": "acc869cb5703bc81d82158c7dbc918489651cbd1"
+  }
+}

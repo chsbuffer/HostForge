@@ -76,7 +76,7 @@ class FakeClient:
     def get(self, url):
         self.requests.append(url)
         if url not in self.responses:
-            raise upstream.UpstreamError(f"GET {url}: HTTP 404 Not Found")
+            raise upstream.NotFound(f"GET {url}: HTTP 404 Not Found")
         return self.responses[url]
 
     def json(self, url):
@@ -175,7 +175,7 @@ TOOL_FILES = list(dict.fromkeys([tool.path for tool in upstream.TOOLS] + [upstre
 def fake_upstream(root, dotnet=False, security=True, mismatched_vmr=False, avalonia=False, avalonia_skia=None,
                   skiasharp=False, vulnerable=False, angle_head=None, eol=(), angle_depot_tools=None,
                   avalonia_minor=False, avalonia_minor_skia=None, avalonia_major=False, skiasharp_milestone=False,
-                  skiasharp_major=False, tools=False, llvm=None, llvm_asset=True):
+                  skiasharp_major=False, tools=False, llvm=None, llvm_asset=True, skiasharp_build=None):
     """A FakeClient whose releases are the repository's pins plus the requested newer releases."""
     pinned = repo_versions.load(root)
     client = FakeClient()
@@ -229,9 +229,24 @@ def fake_upstream(root, dotnet=False, security=True, mismatched_vmr=False, avalo
         versions.append(f"{major + 1}.0.0")
     client.add_json(f"{upstream.NUGET}/avalonia/index.json", {"versions": versions})
 
-    def add_skiasharp(version, harfbuzz_version):
+    build_files = json.loads((Path(root) / upstream.SKIASHARP_BUILD).read_text(encoding="utf-8"))
+
+    def add_skiasharp(version, harfbuzz_version, line):
         client.add_json(f"{upstream.GITHUB_API}/repos/mono/SkiaSharp/contents/externals/skia?ref=v{version}",
                         {"type": "submodule", "sha": fake_commit("skia " + version)})
+        # Unchanged build files unless skiasharp_build maps a path to its new text (None: removed at the tag).
+        for path, sha in build_files.get(line, {}).items():
+            text = (skiasharp_build or {}).get(path, False)
+            if text is not False:
+                client.add_json(f"{upstream.GITHUB_API}/repos/mono/SkiaSharp/git/blobs/{sha}",
+                                {"content": base64.b64encode(f"old {path}\n".encode()).decode()})
+                if text is None:
+                    continue
+                sha = hashlib.sha1(text.encode()).hexdigest()
+                client.add_json(f"{upstream.GITHUB_API}/repos/mono/SkiaSharp/git/blobs/{sha}",
+                                {"content": base64.b64encode(text.encode()).decode()})
+            client.add_json(f"{upstream.GITHUB_API}/repos/mono/SkiaSharp/contents/{path}?ref=v{version}",
+                            {"type": "file", "sha": sha})
         client.add_nuspec("SkiaSharp.HarfBuzz", version, [("SkiaSharp", version), ("HarfBuzzSharp", harfbuzz_version)])
         client.add_nuspec("SkiaSharp", version, commit=fake_commit("skiasharp " + version))
         client.add_ref(upstream.SKIASHARP_REPOSITORY, f"refs/tags/v{version}", fake_commit("skiasharp " + version))
@@ -242,10 +257,10 @@ def fake_upstream(root, dotnet=False, security=True, mismatched_vmr=False, avalo
         line_harfbuzz = pinned["skiasharp-sources"][line]["harfbuzz"]
         if skiasharp:
             skia_versions.append(next_patch(line))
-            add_skiasharp(next_patch(line), next_patch(line_harfbuzz))
+            add_skiasharp(next_patch(line), next_patch(line_harfbuzz), line)
         if skiasharp_milestone:
             skia_versions.append(skiasharp_milestone_version(line))
-            add_skiasharp(skiasharp_milestone_version(line), next_patch(next_patch(line_harfbuzz)))
+            add_skiasharp(skiasharp_milestone_version(line), next_patch(next_patch(line_harfbuzz)), line)
     if skiasharp_major:
         skia_versions.append(f"{max(int(line.split('.')[0]) for line in lines) + 1}.0.0")
     client.add_json(f"{upstream.NUGET}/skiasharp/index.json", {"versions": skia_versions})
@@ -306,7 +321,7 @@ class UpstreamTestCase(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory(prefix="hostforge-upstream-test-")
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        for relative in [*package_inputs.SOURCES, *TOOL_FILES]:
+        for relative in [*package_inputs.SOURCES, *TOOL_FILES, upstream.SKIASHARP_BUILD]:
             (self.root / relative).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / relative, self.root / relative)
         self.relock()
@@ -954,6 +969,42 @@ class SkiaSharpLineTests(UpstreamTestCase):
                          readme.read_text(encoding="utf-8"))
         self.assertIn("src/package-skiasharp-static/README.md", metadata["changed"])
 
+    def build_record(self):
+        return json.loads((self.root / upstream.SKIASHARP_BUILD).read_text(encoding="utf-8"))
+
+    def test_unchanged_build_files_carry_over(self):
+        line = self.pinned["skiasharp-versions"][0]
+        files = self.build_record()[line]
+        client = fake_upstream(self.root, skiasharp=True, skiasharp_milestone=True)
+        code, _, stderr, metadata = self.apply(client, "--group", f"skiasharp-{line.split('.')[0]}")
+        self.assertEqual(0, code, stderr)
+        record = self.build_record()
+        self.assertNotIn(line, record)
+        self.assertEqual(files, record[skiasharp_milestone_version(line)])
+        self.assertIn(upstream.SKIASHARP_BUILD, metadata["changed"])
+        self.assertNotIn("Upstream build changes", metadata["body"])
+
+    def test_changed_build_files_need_a_review(self):
+        line = self.pinned["skiasharp-versions"][0]
+        changed, removed = sorted(self.build_record()[line])[:2]
+        client = fake_upstream(self.root, skiasharp=True, skiasharp_milestone=True,
+                               skiasharp_build={changed: "new ~~~ text\n", removed: None})
+        code, _, stderr, metadata = self.apply(client, "--group", f"skiasharp-{line.split('.')[0]}")
+        self.assertEqual(0, code, stderr)
+        new = skiasharp_milestone_version(line)
+        record = self.build_record()
+        self.assertNotIn(line, record)
+        self.assertNotIn(new, record, "a changed build needs a review before it is recorded")
+        body = metadata["body"]
+        self.assertIn(f"### Upstream build changes ({line} -> {new})", body)
+        self.assertIn(f"-old {changed}", body)
+        self.assertIn("+new ~~~ text", body)
+        self.assertIn("~~~~diff", body, "the fence is longer than any run of tildes in the diff")
+        self.assertIn(f"`{removed}` (removed)", body)
+        self.assertIn(f'"{changed}": "{hashlib.sha1(b"new ~~~ text" + chr(10).encode()).hexdigest()}"', body)
+        self.assertIn(f'"{removed}": null', body)
+        self.assertTrue(any("see Upstream build changes" in note for note in metadata["notes"]))
+
     def test_newer_major_is_report_only(self):
         majors = sorted({int(line.split(".")[0]) for line in self.pinned["skiasharp-versions"]})
         before = self.snapshot()
@@ -1019,6 +1070,19 @@ class ToolsTests(UpstreamTestCase):
         code, _, stderr, metadata = self.apply(fake_upstream(self.root), "--group", "tools")
         self.assertEqual(0, code, stderr)
         self.assertEqual(([], ""), (metadata["changed"], metadata["target"]))
+
+
+class RepositoryRecordTests(unittest.TestCase):
+    def test_every_skiasharp_version_records_its_reviewed_build_files(self):
+        versions = json.loads((ROOT / "native/skiasharp/versions.json").read_text(encoding="utf-8"))
+        record = json.loads((ROOT / upstream.SKIASHARP_BUILD).read_text(encoding="utf-8"))
+        missing = sorted(set(versions) - set(record))
+        self.assertEqual([], missing, f"The upstream build files of SkiaSharp {', '.join(missing)} are not reviewed: "
+                         "port the changes listed in the pull request to native/skiasharp, then add the entry it "
+                         f"shows to {upstream.SKIASHARP_BUILD}")
+        self.assertEqual(sorted(versions), sorted(record), f"{upstream.SKIASHARP_BUILD} lists other versions")
+        for version, files in record.items():
+            self.assertTrue(files and all(isinstance(sha, str) for sha in files.values()), version)
 
 
 class LlvmTests(UpstreamTestCase):

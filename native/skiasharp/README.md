@@ -7,6 +7,10 @@ each with its mono/skia commit and HarfBuzzSharp version) and deploys to
 `artifacts/skiasharp/<version>/<rid>/`. Pass the version with `--version`; Task's
 `SKIASHARP_VERSION` defaults to `SkiaSharpVersion` in `Directory.Build.props`.
 
+The GN arguments and project settings follow the build files of the mono/SkiaSharp tag.
+[`upstream-build.json`](upstream-build.json) records, for each version in `versions.json`, the git blob
+SHAs of the upstream build files the recipe was checked against.
+
 SkiaSharp 4 also packages the separate `jsonreader` archive required by Skottie.
 Linux SkiaSharp 4 includes the matching target `cxx/libc++.a` archive.
 

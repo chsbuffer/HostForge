@@ -94,6 +94,9 @@ SEVERITY = {0: "low", 1: "moderate", 2: "high", 3: "critical"}
 APPHOST = "ChsBuffer.Avalonia.AppHost"
 
 ANGLE_DATA = "native/angle/conandata.yml"
+# The mono/SkiaSharp build files (git blob SHAs) that the native/skiasharp recipes were checked against, per version.
+SKIASHARP_BUILD = "native/skiasharp/upstream-build.json"
+BUILD_DIFF_LINES = 200
 # The depot_tools revision in ANGLE's DEPS. native/angle/conanfile.py checks conandata.yml with the same
 # expression (the recipe runs under conan and cannot import this script; tests/native keeps the two equal).
 DEPOT_TOOLS_REVISION = r"/chromium/tools/depot_tools\.git@([0-9a-f]{40})"
@@ -115,6 +118,10 @@ class UpstreamError(Exception):
 
 class LookupFailed(UpstreamError):
     """A failed upstream lookup of one item; --keep-going records it and skips the item instead."""
+
+
+class NotFound(UpstreamError):
+    """HTTP 404."""
 
 
 def _reason(error):
@@ -175,7 +182,8 @@ class Client:
                     hint = ""
                     if error.code in (403, 429) and urlsplit(url).hostname == "api.github.com" and not self.token:
                         hint = " (GitHub API rate limit? set GITHUB_TOKEN)"
-                    raise UpstreamError(f"GET {url}: HTTP {error.code} {error.reason}{hint}") from None
+                    raise (NotFound if error.code == 404 else UpstreamError)(
+                        f"GET {url}: HTTP {error.code} {error.reason}{hint}") from None
             except (OSError, http.client.HTTPException, EOFError, zlib.error) as error:
                 # URLError, timeouts and resets are OSErrors; IncompleteRead is an HTTPException; a truncated gzip
                 # body raises EOFError or zlib.error.
@@ -550,6 +558,46 @@ def skiasharp_source(client, version):
     problems += _malformed(version=(version, _VERSION), **{"skia commit": (skia_commit, _COMMIT),
                                                             "HarfBuzzSharp version": (harfbuzz_version, _VERSION)})
     return {"version": version, "skia-commit": skia_commit, "harfbuzz": harfbuzz_version, "problems": problems}
+
+
+def skiasharp_blob(client, path, version):
+    """Git blob SHA of `path` in mono/SkiaSharp at tag v<version>; None when the tag has no such file."""
+    try:
+        item = client.json(f"{GITHUB_API}/repos/mono/SkiaSharp/contents/{path}?ref=v{version}")
+    except NotFound:
+        return None
+    sha = item.get("sha") if isinstance(item, dict) and item.get("type") == "file" else None
+    if not isinstance(sha, str) or not _COMMIT.fullmatch(sha):
+        raise UpstreamError(f"mono/SkiaSharp {path} at v{version} is not a file")
+    return sha
+
+
+def skiasharp_blob_text(client, sha):
+    item = client.json(f"{GITHUB_API}/repos/mono/SkiaSharp/git/blobs/{sha}")
+    try:
+        return base64.b64decode(item["content"]).decode("utf-8")
+    except (KeyError, TypeError, ValueError) as error:
+        raise UpstreamError(f"mono/SkiaSharp blob {sha}: {_reason(error)}") from None
+
+
+def skiasharp_build_files(client, root, line, version):
+    """The build files recorded for `line` with their blobs at `version`: {"files", "changed": [(path, diff)]}."""
+    record = json.loads((Path(root) / SKIASHARP_BUILD).read_text(encoding="utf-8"))
+    if not record.get(line):
+        raise UpstreamError(f"{SKIASHARP_BUILD} records no build files for SkiaSharp {line}")
+    files, changed = {}, []
+    for path, old in sorted(record[line].items()):
+        files[path] = new = skiasharp_blob(client, path, version)
+        if new == old:
+            continue
+        before = skiasharp_blob_text(client, old).splitlines(True)
+        after = skiasharp_blob_text(client, new).splitlines(True) if new else []
+        diff = [item if item.endswith("\n") else item + "\n" for item in
+                difflib.unified_diff(before, after, f"v{line}/{path}", f"v{version}/{path}" if new else "/dev/null")]
+        if len(diff) > BUILD_DIFF_LINES:
+            diff = diff[:BUILD_DIFF_LINES] + [f"... {len(diff) - BUILD_DIFF_LINES} more lines\n"]
+        changed.append((path, "".join(diff)))
+    return {"files": files, "changed": changed}
 
 
 def skiasharp_versions(client):
@@ -1379,6 +1427,7 @@ class Run:
         self.keep_going = keep_going
         self.pinned = repo_versions.load(self.root)
         self.notes, self.group_notes, self.errors = [], [], []
+        self.build_changes = []
 
     def attempt(self, label, lookup):
         """lookup() for the item `label`. A failure aborts the run, or with --keep-going is recorded in errors and
@@ -1505,12 +1554,25 @@ def plan_avalonia_minor(run):
     return avalonia_update(run, found["candidate"]) if found["candidate"] else []
 
 
-def skiasharp_update(run, line, source):
-    """The edits that move the SkiaSharp line `line` to the checked release `source`."""
+def skiasharp_update(run, line, source, build):
+    """The edits that move the SkiaSharp line `line` to the checked release `source`. The build files recorded for
+    `line` carry over to `new` when unchanged; otherwise the recipes need a review, so `new` gets no record."""
     pinned, new = run.pinned, source["version"]
     if source["problems"]:
         run.notes.append(f"SkiaSharp {new} not applied: " + "; ".join(source["problems"]))
         return []
+    if build["changed"]:
+        run.group_notes.append(f"SkiaSharp {new}: the upstream build files "
+                               f"{', '.join(path for path, _ in build['changed'])} changed since {line}; "
+                               "see Upstream build changes")
+        run.build_changes.append({"line": line, "version": new, "files": build["files"], "changed": build["changed"]})
+
+    def record(text):
+        data = json.loads(text)
+        data.pop(line, None)
+        if not build["changed"]:
+            data[new] = build["files"]
+        return json.dumps(dict(sorted(data.items(), key=lambda item: version_key(item[0]))), indent=2) + "\n"
     old_harfbuzz, major = pinned["skiasharp-sources"][line]["harfbuzz"], line.split(".")[0]
     old_commit = pinned["skiasharp-sources"][line]["skia-commit"]
     condition = rf"StartsWith\('{major}\.'\)"
@@ -1530,6 +1592,7 @@ def skiasharp_update(run, line, source):
         _edit(root, package_inputs.PROPS, props)
         _edit(root, "native/skiasharp/versions.json",
               lambda text: _replace_entry(text, line, new, [source["skia-commit"], source["harfbuzz"]]))
+        _edit(root, SKIASHARP_BUILD, record)
 
     return [Update("skiasharp", f"SkiaSharp {line} -> {new} (skia {source['skia-commit']}, HarfBuzzSharp "
                                 f"{old_harfbuzz} -> {source['harfbuzz']})", [line, old_harfbuzz, old_commit], edit,
@@ -1539,7 +1602,11 @@ def skiasharp_update(run, line, source):
 
 def _skiasharp_line(run, line, version):
     source = run.attempt(f"SkiaSharp {version}", lambda: skiasharp_source(run.client, version))
-    return skiasharp_update(run, line, source) if source else []
+    if not source:
+        return []
+    build = run.attempt(f"SkiaSharp {version} build files",
+                        lambda: skiasharp_build_files(run.client, run.root, line, version))
+    return skiasharp_update(run, line, source, build) if build else []
 
 
 def plan_skiasharp(run):
@@ -1713,7 +1780,7 @@ def staged_files(group, root):
         return list(dict.fromkeys(tool.path for tool in TOOLS))
     if group == "llvm":
         return [LLVM_ACTION]
-    return [*package_inputs.SOURCES, package_inputs.LOCK, *DOC_FILES]
+    return [*package_inputs.SOURCES, package_inputs.LOCK, SKIASHARP_BUILD, *DOC_FILES]
 
 
 # Package documentation that names the packaged versions; the package input groups keep it up to date.
@@ -1907,6 +1974,27 @@ def _code(text):
     return f"{fence} {text} {fence}" if fence == "``" else f"`{text}`"
 
 
+def _fenced(text, info=""):
+    """`text` as a code block whose fence no line of it can close."""
+    longest = max((len(run) for run in re.findall(r"~+", text)), default=0)
+    fence = "~" * max(3, longest + 1)
+    return [fence + info, text.rstrip("\n"), fence]
+
+
+def build_changes_section(item):
+    line, version = item["line"], item["version"]
+    entry = json.dumps({version: item["files"]}, indent=2)[1:-1].strip("\n")
+    out = ["", f"### Upstream build changes ({line} -> {version})", "",
+           f"The recipes in `native/skiasharp` follow these mono/SkiaSharp files, which changed between v{line} and "
+           f"v{version} ([compare](https://github.com/mono/SkiaSharp/compare/v{line}...v{version})). Port the "
+           f"changes to the recipes, then add this entry to `{SKIASHARP_BUILD}`; the native tests fail until then:",
+           ""]
+    out += _fenced(entry, "json")
+    for path, diff in item["changed"]:
+        out += ["", f"`{path}`" + ("" if item["files"][path] else " (removed)"), ""] + _fenced(diff, "diff")
+    return out
+
+
 def pull_request_body(group, changed, updates, versions, run, security, olds, mentions):
     out = [f"Updates of the `{group}` group, computed by `python scripts/upstream.py apply --group {group}`.", ""]
     out += ["### Applied", ""] + ([f"- {_markdown(update.description)}" for update in updates] or ["- Nothing."])
@@ -1927,6 +2015,8 @@ def pull_request_body(group, changed, updates, versions, run, security, olds, me
         out += ["", "### Notes", ""] + [f"- {_markdown(note)}" for note in run.group_notes]
     if run.notes:
         out += ["", "### Not applied", ""] + [f"- {_markdown(note)}" for note in run.notes]
+    for item in run.build_changes if changed else []:
+        out += build_changes_section(item)
     if mentions:
         shown = mentions[:50]
         out += ["", "### Old versions still mentioned", "",
