@@ -938,6 +938,22 @@ class SkiaSharpLineTests(UpstreamTestCase):
         self.assertIn("ChsBuffer.SkiaSharp.Static (skia", metadata["body"])
         self.assert_consistent()
 
+    def test_package_docs_follow_the_new_versions(self):
+        line = self.pinned["skiasharp-versions"][0]
+        harfbuzz = self.pinned["skiasharp-sources"][line]["harfbuzz"]
+        readme = self.root / "src/package-skiasharp-static/README.md"
+        readme.parent.mkdir(parents=True, exist_ok=True)
+        readme.write_text(f"Use {line} ({line}.1, HarfBuzzSharp {harfbuzz}); not {line}.9 or 1{line}.\n",
+                          encoding="utf-8")
+        client = fake_upstream(self.root, skiasharp=True, skiasharp_milestone=True)
+        code, _, stderr, metadata = self.apply(client, "--group", f"skiasharp-{line.split('.')[0]}")
+        self.assertEqual(0, code, stderr)
+        new = skiasharp_milestone_version(line)
+        new_harfbuzz = repo_versions.load(self.root)["skiasharp-sources"][new]["harfbuzz"]
+        self.assertEqual(f"Use {new} ({new}.1, HarfBuzzSharp {new_harfbuzz}); not {line}.9 or 1{line}.\n",
+                         readme.read_text(encoding="utf-8"))
+        self.assertIn("src/package-skiasharp-static/README.md", metadata["changed"])
+
     def test_newer_major_is_report_only(self):
         majors = sorted({int(line.split(".")[0]) for line in self.pinned["skiasharp-versions"]})
         before = self.snapshot()

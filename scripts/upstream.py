@@ -1293,6 +1293,13 @@ def version_changes(before, after):
             if before.get(family, {}).get(variant, {}).get("version") != record["version"]]
 
 
+def version_pairs(before, after):
+    """[(old, new)] package versions of every computed variant whose version changed."""
+    return [(before[family][variant]["version"], record["version"])
+            for family, variants in after.items() for variant, record in variants.items()
+            if before.get(family, {}).get(variant, {}).get("version") not in (None, record["version"])]
+
+
 def bump_package_versions(stage, lock):
     """Give every package family whose computed version is locked with other inputs a new version: <_Major> + 1
     once for the AppHost, otherwise the revision (or the prerelease number of ChsBuffer.AppHost.Static) + 1.
@@ -1346,12 +1353,15 @@ def bump_package_versions(stage, lock):
 
 class Update:
     """One planned change. `name` and `version` make up the pull request title, `target` the deterministic
-    description of what the update moves to; `skippable` updates may fail without aborting under --keep-going."""
+    description of what the update moves to; `skippable` updates may fail without aborting under --keep-going.
+    `new_strings[i]` replaces `old_strings[i]` in the package documentation (DOC_FILES)."""
 
-    def __init__(self, kind, description, old_strings, edit, name=None, version=None, target=None, skippable=False):
+    def __init__(self, kind, description, old_strings, edit, name=None, version=None, target=None, skippable=False,
+                 new_strings=()):
         self.kind = kind
         self.description = description
         self.old_strings = old_strings
+        self.new_strings = new_strings
         self.edit = edit
         self.name = name
         self.version = version
@@ -1407,7 +1417,7 @@ def plan_dotnet(run):
         description = (f".NET {item['framework']}: {old} -> {new} ({source['tag']} {source['commit']})"
                        + (f"; security: {', '.join(cves)}" if cves else ""))
         updates.append(Update("dotnet", description, [old, old_source["tag"][1:], old_source["commit"]], edit,
-                              name=".NET", version=new,
+                              name=".NET", version=new, new_strings=[new, source["tag"][1:], source["commit"]],
                               target=f".NET {item['framework']} {new} ({source['tag']} {source['commit']})"))
     return updates
 
@@ -1457,7 +1467,8 @@ def avalonia_update(run, candidate):
 
     olds = list(dict.fromkeys([current, native]))
     return [Update("avalonia", f"Avalonia {', '.join(olds)} -> {version} ({commit}, sha256 {sha256})", olds, edit,
-                   name="Avalonia", version=version, target=f"Avalonia {version} ({commit})")]
+                   name="Avalonia", version=version, target=f"Avalonia {version} ({commit})",
+                   new_strings=[version] * len(olds))]
 
 
 def plan_avalonia(run):
@@ -1522,7 +1533,7 @@ def skiasharp_update(run, line, source):
 
     return [Update("skiasharp", f"SkiaSharp {line} -> {new} (skia {source['skia-commit']}, HarfBuzzSharp "
                                 f"{old_harfbuzz} -> {source['harfbuzz']})", [line, old_harfbuzz, old_commit], edit,
-                   name="SkiaSharp", version=new,
+                   name="SkiaSharp", version=new, new_strings=[new, source["harfbuzz"], source["skia-commit"]],
                    target=f"SkiaSharp {new} (skia {source['skia-commit']}, HarfBuzzSharp {source['harfbuzz']})")]
 
 
@@ -1615,6 +1626,7 @@ def plan_angle(run):
     return [Update("angle", f"ANGLE {branch}: {old} -> {head}; {tools} from DEPS",
                    [old] + ([old_tools] if old_tools and new_tools != old_tools else []), edit,
                    name="ANGLE", version=f"{branch}@{head[:12]}",
+                   new_strings=[head] + ([new_tools] if old_tools and new_tools != old_tools else []),
                    target=f"ANGLE {branch} {head} (depot_tools {new_tools})")]
 
 
@@ -1701,7 +1713,30 @@ def staged_files(group, root):
         return list(dict.fromkeys(tool.path for tool in TOOLS))
     if group == "llvm":
         return [LLVM_ACTION]
-    return [*package_inputs.SOURCES, package_inputs.LOCK]
+    return [*package_inputs.SOURCES, package_inputs.LOCK, *DOC_FILES]
+
+
+# Package documentation that names the packaged versions; the package input groups keep it up to date.
+DOC_FILES = ("README.md", "src/package-angle-static/README.md", "src/package-apphost-static/README.md",
+             "src/package-avalonia-apphost/README.md", "src/package-avalonia-native-static/README.md",
+             "src/package-skiasharp-static/README.md", "src/package-static-graphics/README.md")
+
+
+def _mention_pattern(strings):
+    """Whole-word matches of `strings`: 1.2.3 matches neither 1.2.3.4 nor 11.2.3."""
+    return re.compile("|".join(rf"(?<![\w.]){re.escape(item)}(?![\w]|\.\d)"
+                               for item in sorted(strings, key=len, reverse=True)))
+
+
+def update_docs(stage, pairs):
+    """Replace every old string of `pairs` [(old, new)] in the staged DOC_FILES by its new string."""
+    mapping = {old: new for old, new in pairs if old and new and old != new}
+    if not mapping:
+        return
+    pattern = _mention_pattern(mapping)
+    for relative in DOC_FILES:
+        if (Path(stage) / relative).exists():
+            _edit(stage, relative, lambda text: pattern.sub(lambda match: mapping[match.group()], text))
 
 
 def plan_group(run, group, selection):
@@ -1781,6 +1816,8 @@ def apply_group(client, root, group="inputs", selection=INPUT_KINDS, dry_run=Fal
             history = package_inputs.append(package_inputs.history(lock), after)
             (stage / package_inputs.LOCK).write_bytes(package_inputs.render(history).encode("utf-8"))
             versions = version_changes(before, after)
+            update_docs(stage, [pair for update in updates for pair in zip(update.old_strings, update.new_strings)]
+                        + version_pairs(before, after))
         if evaluate:
             findings_after = security_state(run.client, repo_versions.load(stage))
 
@@ -1818,7 +1855,7 @@ def remaining_mentions(root, strings, exclude):
     """[(path, line number, line)] of tracked text files still mentioning any of `strings`."""
     if not strings:
         return []
-    pattern = re.compile("|".join(rf"(?<![\w.]){re.escape(item)}(?![\w]|\.\d)" for item in strings))
+    pattern = _mention_pattern(strings)
     found = []
     for path in tracked_files(root):
         relative = path.relative_to(root).as_posix()

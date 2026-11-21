@@ -87,6 +87,13 @@ PACKAGE_INPUT_FILES = frozenset({
     "native/avalonianative/conandata.yml",
     "native/angle/conandata.yml",
     "package-inputs.lock.json",
+    "README.md",
+    "src/package-angle-static/README.md",
+    "src/package-apphost-static/README.md",
+    "src/package-avalonia-apphost/README.md",
+    "src/package-avalonia-native-static/README.md",
+    "src/package-skiasharp-static/README.md",
+    "src/package-static-graphics/README.md",
 })
 GROUP_FILES = {
     "inputs": PACKAGE_INPUT_FILES,
