@@ -19,8 +19,9 @@ spec = importlib.util.spec_from_file_location("package_inputs", ROOT / "scripts/
 package_inputs = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(package_inputs)
 
-# Files that may contain pinned versions: documentation, the canonical files, the lock generated from them,
-# and the Python tests whose fixtures use realistic versions. Every other file is scanned.
+# Files that may contain pinned versions: documentation, the canonical files, the lock generated from them, the
+# record of reviewed SkiaSharp build files (keyed like native/skiasharp/versions.json) and the Python tests whose
+# fixtures use realistic versions. Every other file is scanned.
 EXCLUDED = (
     "*.md",
     "*.txt",
@@ -29,6 +30,7 @@ EXCLUDED = (
     "Directory.Build.props",
     "native/hostlibs/versions.json",
     "native/skiasharp/versions.json",
+    "native/skiasharp/upstream-build.json",
     "native/avalonianative/conandata.yml",
     "native/angle/conandata.yml",
 )
