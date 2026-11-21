@@ -55,7 +55,7 @@ public class AvaloniaAppHostLinuxTests
 
         CommandResult result = await CommandRunner.RunAsync(
             "dotnet",
-            $"publish \"{project.ProjectFilePath}\" -c Release -r linux-x64 -v:minimal",
+            $"publish \"{project.ProjectFilePath}\" -c Release -r linux-x64 -p:IncludeNativeLibrariesForSelfExtract=true -v:minimal",
             project.ProjectDirectory);
 
         AssertEx.Success(result, $"linux-x64 single-file publish ({targetFramework})");
@@ -66,12 +66,22 @@ public class AvaloniaAppHostLinuxTests
         string outputDirectory = project.GetPublishDirectory("Release", targetFramework, "linux-x64");
         AssertNativeRuntimeCopy(outputDirectory, expectNativeRuntimeCopy: false);
 
+        string extractionDirectory = Path.Combine(project.ProjectDirectory, "bundle-extraction");
         CommandResult runResult = await CommandRunner.RunAsync(
             Path.Combine(outputDirectory, project.ProjectName),
             string.Empty,
-            outputDirectory);
+            outputDirectory,
+            environmentVariables: new Dictionary<string, string>
+            {
+                ["DOTNET_BUNDLE_EXTRACT_BASE_DIR"] = extractionDirectory
+            });
 
         AssertEx.Success(runResult, $"linux-x64 single-file run ({targetFramework})");
+        if (Directory.Exists(extractionDirectory))
+        {
+            foreach (string directory in Directory.EnumerateDirectories(extractionDirectory, "*", SearchOption.AllDirectories))
+                AssertNativeRuntimeCopy(directory, expectNativeRuntimeCopy: false);
+        }
         AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
         // The bundle pins its managed framework to the runtime embedded in the template.
         AssertEx.Contains(runResult.CombinedOutput, $"RuntimeVersion={RepoContext.GetHostLibsVersion(targetFramework)}");

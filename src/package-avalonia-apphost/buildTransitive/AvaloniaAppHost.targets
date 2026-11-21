@@ -98,4 +98,18 @@
                                     Condition="$(_AvaloniaSkiaNativeFileNames.Contains(';%(_ResolvedFileToPublishAlways.Filename)%(_ResolvedFileToPublishAlways.Extension);')) or $(_AvaloniaHarfBuzzNativeFileNames.Contains(';%(_ResolvedFileToPublishAlways.Filename)%(_ResolvedFileToPublishAlways.Extension);'))" />
     </ItemGroup>
   </Target>
+  <Target Name="ExcludeStaticGraphicsFromBundle"
+          AfterTargets="PrepareForBundle"
+          DependsOnTargets="ResolveAvaloniaAppHostActivation"
+          Condition="'$(PublishSingleFile)' == 'true'">
+    <ItemGroup Condition="'$(AvaloniaAppHostActive)' == 'true'">
+      <FilesToBundle Remove="@(FilesToBundle)"
+                     Condition="'$(DisableSkiaHarfBuzzRuntimeCopy)' == 'true'
+                                and ($(_AvaloniaSkiaNativeFileNames.Contains(';%(FilesToBundle.Filename)%(FilesToBundle.Extension);'))
+                                  or $(_AvaloniaHarfBuzzNativeFileNames.Contains(';%(FilesToBundle.Filename)%(FilesToBundle.Extension);')))" />
+      <FilesToBundle Remove="@(FilesToBundle)"
+                     Condition="'$(DisableAngleRuntimeCopy)' == 'true'
+                                and $(_AvaloniaAngleNativeFileNames.Contains(';%(FilesToBundle.Filename)%(FilesToBundle.Extension);'))" />
+    </ItemGroup>
+  </Target>
 </Project>
