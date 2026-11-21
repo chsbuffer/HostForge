@@ -68,6 +68,8 @@
       <_AvaloniaHostRidIsWindows>$(AvaloniaHostRid.StartsWith('win'))</_AvaloniaHostRidIsWindows>
       <_AvaloniaNativeLibExtension Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'">.lib</_AvaloniaNativeLibExtension>
       <_AvaloniaNativeLibExtension Condition="'$(_AvaloniaHostRidIsWindows)' != 'True'">.a</_AvaloniaNativeLibExtension>
+      <_AvaloniaAlpineTarget Condition="'$(AvaloniaHostRid)' == 'linux-musl-x64'">x86_64-alpine-linux-musl</_AvaloniaAlpineTarget>
+      <_AvaloniaAlpineTarget Condition="'$(AvaloniaHostRid)' == 'linux-musl-arm64'">aarch64-alpine-linux-musl</_AvaloniaAlpineTarget>
       <GroupNativeLibraries Condition="'$(_AvaloniaHostRidIsWindows)' != 'True' and $(SkiaSharpVersion.StartsWith('4.'))">true</GroupNativeLibraries>
     </PropertyGroup>
 
@@ -117,6 +119,8 @@
                  Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'" />
       <LinkerArg Include="--sysroot=&quot;$(_ResolvedSysroot)&quot;"
                  Condition="'$(_AvaloniaHostRidIsWindows)' != 'True' and '$(_ResolvedSysroot)' != ''" />
+      <LinkerArg Include="--target=$(_AvaloniaAlpineTarget);--gcc-toolchain=&quot;$(_ResolvedSysroot)/usr&quot;"
+                 Condition="'$(_AvaloniaAlpineTarget)' != '' and '$(_ResolvedSysroot)' != ''" />
       <LinkerArg Include="-lfontconfig"
                  Condition="'$(_AvaloniaHostRidIsWindows)' != 'True'" />
       <LinkerArg Include="-Wl,--version-script=$(AvaloniaExportsFile)"

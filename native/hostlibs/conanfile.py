@@ -125,8 +125,12 @@ class HostLibsConan(ConanFile):
         VCVars(self).generate()
 
     def build(self):
-        if self.options.musl and (not Path("/etc/alpine-release").is_file() or self._sysroot()):
-            raise ConanInvalidConfiguration("Build musl host libraries natively on Alpine without SYSROOT")
+        if self.options.musl:
+            target_root = Path(self._sysroot() or "/")
+            if not (target_root / "etc/alpine-release").is_file():
+                raise ConanInvalidConfiguration(
+                    "Build musl host libraries on Alpine or set ROOTFS_DIR to an Alpine sysroot"
+                )
         self._build_apphost()
         self._build_singlefilehost()
 
@@ -191,13 +195,14 @@ class HostLibsConan(ConanFile):
             return
 
         if self.options.musl:
+            cross = " -cross" if self._sysroot() else ""
             # host.native has already generated the version files. Use the
             # runtime's native entry point to avoid restoring unrelated PGO
             # profiles. Keep the same EventSource features as the
             # corresponding Microsoft.NETCore.App runtime pack.
             self.run(
                 f'"{self._runtime_root / "src/coreclr/build-runtime.sh"}" '
-                f"-release -{self._target_arch} -ninja -configureonly -component runtime "
+                f"-release -{self._target_arch} -ninja -configureonly{cross} -component runtime "
                 f"-targetrid {self._rid} -cmakeargs -DCLR_DOTNET_RID={self._rid} "
                 f"-cmakeargs -DCLI_CMAKE_COMMIT_HASH={self._source_commit} "
                 "-cmakeargs -DFEATURE_EVENTSOURCE_XPLAT=1 "
