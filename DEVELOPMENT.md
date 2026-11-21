@@ -11,7 +11,7 @@
 | 文件 | 内容 |
 | --- | --- |
 | [`Directory.Build.props`](Directory.Build.props) | `AvaloniaVersion` / `AvaloniaNativeVersion`（两者必须相等）、`AngleVersion`、默认 `SkiaSharpVersion`、各 SkiaSharp 版本对应的 `HarfBuzzVersion`、`HostForgeTargetFrameworks` 与各 TFM 的 `HostLibsNet*Version`；以及各包的版本公式 |
-| [`native/hostlibs/versions.json`](native/hostlibs/versions.json) | 每个 .NET 运行时版本对应的 VMR 标签与 commit |
+| [`native/hostlibs/versions.json`](native/hostlibs/versions.json) | 每个 .NET 运行时版本对应的 VMR 标签与 commit，以及该 commit 的 linux-musl 官方构建容器（`containers`，每个 RID 一个，以 digest 固定） |
 | [`native/skiasharp/versions.json`](native/skiasharp/versions.json) | 每个 SkiaSharp 版本对应的 mono/skia commit 与 HarfBuzzSharp 版本 |
 | [`native/avalonianative/conandata.yml`](native/avalonianative/conandata.yml) | 每个 Avalonia 版本的源码归档 URL、SHA-256 与 commit |
 | [`native/angle/conandata.yml`](native/angle/conandata.yml) | ANGLE 的分支（仅记录）、固定 commit，以及 depot_tools commit |
@@ -52,7 +52,7 @@ Windows 构建环境：
 - [LLVM](https://github.com/llvm/llvm-project/releases)，版本与 CI 的 [`install-llvm`](.github/actions/install-llvm/action.yml) 一致，默认路径为 `C:\Program Files\LLVM`
 - Git for Windows（ANGLE 构建需要；depot_tools 由 recipe 自行获取，无需安装）
 
-Linux 构建使用 Clang，并通过 sysroot 对齐 .NET Host、SkiaSharp 和 HarfBuzzSharp 的目标 ABI。背景和工具链说明见 [Linux 构建方法](docs/roadmap/2026-03-13-linux-build-methodology.md)。
+Linux 构建使用 Clang，并通过 sysroot 对齐 .NET Host、SkiaSharp 和 HarfBuzzSharp 的目标 ABI。背景和工具链说明见 [Linux 构建方法](docs/roadmap/2026-03-13-linux-build-methodology.md)。linux-musl 的 HostLibs 构建与 Avalonia 模板链接在容器中进行，需要 Docker 或 Podman。
 
 macOS 的 SkiaSharp 构建需要 Command Line Tools；AvaloniaNative 构建需要完整的 Xcode 26.0.1，以及满足 Avalonia 源码 `global.json` 的 .NET 10 SDK（10.0.201 及以上）。
 
@@ -60,9 +60,9 @@ macOS 的 SkiaSharp 构建需要 Command Line Tools；AvaloniaNative 构建需�
 
 HostLibs 从 [VMR](https://github.com/dotnet/dotnet) 发布标签中的 `src/runtime` 构建。官方运行时由 VMR 构建，安全修复会先直接合入 VMR，之后才回流到 `dotnet/runtime`。SingleFileHost 静态链接 CoreCLR，原生部分必须与官方运行时包中的托管部分同源。
 
-[`native/hostlibs/versions.json`](native/hostlibs/versions.json) 为每个运行时版本记录构建它的 1xx SDK 带标签与 commit；该 commit 也是 `Microsoft.NETCore.App.Ref` nuspec 记录的 commit，以及已安装运行时 `shared/Microsoft.NETCore.App/<version>/.version` 的第一行。运行时补丁升级用 `task upstream-apply`（见 [上游跟踪与版本守卫](#上游跟踪与版本守卫)）。新增 TFM 时手动修改：
+[`native/hostlibs/versions.json`](native/hostlibs/versions.json) 为每个运行时版本记录构建它的 1xx SDK 带标签与 commit；该 commit 也是 `Microsoft.NETCore.App.Ref` nuspec 记录的 commit，以及已安装运行时 `shared/Microsoft.NETCore.App/<version>/.version` 的第一行。`containers` 是该 commit 的 `src/runtime/eng/pipelines/common/templates/pipeline-with-resources.yml` 中 `linux_musl_x64` / `linux_musl_arm64` 的镜像，即官方 linux-musl 构建使用的 Azure Linux 交叉编译容器（上游 LLVM 与目标 Alpine rootfs）；上游只写标签时，按记录时该标签的 digest 固定。运行时补丁升级用 `task upstream-apply`（见 [上游跟踪与版本守卫](#上游跟踪与版本守卫)），它同时记录新 commit 的容器。新增 TFM 时手动修改：
 
-1. 在 `versions.json` 中加入该运行时的标签与 commit。
+1. 在 `versions.json` 中加入该运行时的标签、commit 与 `containers`。
 2. 在 `Directory.Build.props` 中把 TFM 加入 `HostForgeTargetFrameworks`，并加入对应的 `HostLibsNet<N>Version` 与 `HostLibsVersion` 条件。
 3. 递增 `_Major`，然后运行 `task upstream-lock`。
 
@@ -76,7 +76,7 @@ recipe 只稀疏检出 VMR 的 `src/runtime`，并关闭构建期依赖的 NuGet
 
 | 命令 | 作用 |
 | --- | --- |
-| `build-hostlibs` | 构建 .NET AppHost / SingleFileHost 静态库；`HOSTLIBS_VERSION` 取 `native/hostlibs/versions.json` 中的运行时版本，默认为 `HostLibsTargetFramework` 对应的运行时；`JOBS` 控制 Ninja 并发 |
+| `build-hostlibs` | 构建 .NET AppHost / SingleFileHost 静态库；`HOSTLIBS_VERSION` 取 `native/hostlibs/versions.json` 中的运行时版本，默认为 `HostLibsTargetFramework` 对应的运行时；Linux 的 `RID` 为 `linux-x64`（默认）、`linux-musl-x64` 或 `linux-musl-arm64`；`JOBS` 控制 Ninja 并发 |
 | `build-skiasharp` | 构建 SkiaSharp / HarfBuzzSharp 静态库；`SKIASHARP_VERSION` 取 `native/skiasharp/versions.json` 中的版本，默认为 `Directory.Build.props` 的 `SkiaSharpVersion`；`RID`、`SYSROOT`、`JOBS` 可选；macOS 支持 `RID=osx-x64\|osx-arm64`，使用 CLT + GN，最多 4 并发 |
 | `pack-graphics-meta` | 打包 SkiaSharp / Angle / Avalonia.Native 元包（依赖该组件全部支持 RID） |
 | `build-angle` | 构建 Windows x64 / arm64 ANGLE 静态库 |
@@ -86,10 +86,10 @@ recipe 只稀疏检出 VMR 的 `src/runtime`，并关闭构建期依赖的 NuGet
 | `test-avalonianative` | 验证版本与 AOT/RID 门控；macOS 上发布并运行窗口和字体测试 |
 | `matrix` | 运行 Static AppHost 与 NativeAOT 集成矩阵 |
 | `matrix-nativeaot` | 打包本地静态图形库并验证 NativeAOT 发布与运行 |
-| `link-avalonia` | 生成指定操作系统的 Avalonia 宿主模板；每个模板 TFM（`net10.0` / `net11.0`）链接各自运行时版本的 HostLibs |
+| `link-avalonia` | 生成指定操作系统（`TARGET_OS=windows\|linux\|linux-musl`）的 Avalonia 宿主模板，`RID` 只链接其中一个 RID；每个模板 TFM（`net10.0` / `net11.0`）链接各自运行时版本的 HostLibs |
 | `avalonia-test` | 运行 Avalonia AppHost 集成测试 |
 | `pack-avalonia` | 打包全部 Avalonia AppHost（RID 包 + Build + 元包） |
-| `pack-avalonia-rid` | 打包单个 RID 的 Avalonia AppHost 模板（RID=win-x64\|win-arm64\|linux-x64） |
+| `pack-avalonia-rid` | 打包单个 RID 的 Avalonia AppHost 模板（RID=win-x64\|win-arm64\|linux-x64\|linux-musl-x64\|linux-musl-arm64） |
 | `pack-avalonia-build` | 打包 Build 包（targets + ModuleInitializer） |
 | `pack-avalonia-meta` | 打包元包（依赖所有子包） |
 | `pack-static-apphost` | 打包通用 Static AppHost；`TFM` 取 `HostForgeTargetFrameworks` 中的一项，默认为 `HostLibsTargetFramework`；每个运行时一个包版本 |
@@ -167,7 +167,7 @@ task matrix-nativeaot
 
 ## Linux 构建
 
-HostLibs / AppHost 模板保持 `linux-x64`；NativeAOT 静态图形包支持 `linux-x64`、`linux-arm64`、`linux-musl-x64`、`linux-musl-arm64`。
+HostLibs / AppHost 模板支持 `linux-x64`、`linux-musl-x64`、`linux-musl-arm64`；NativeAOT 静态图形包支持 `linux-x64`、`linux-arm64`、`linux-musl-x64`、`linux-musl-arm64`。
 
 ### 1. 构建 HostLibs
 
@@ -177,6 +177,13 @@ task build-hostlibs HOSTLIBS_VERSION=<运行时版本> SYSROOT=build/rootfs/x64
 ```
 
 使用 `native/hostlibs/profiles/linux-x64`，通过 `ROOTFS_DIR` 环境变量传入 sysroot。CI 同时启用 Conan system package manager 安装 Runtime 声明的 Ubuntu 构建依赖。不指定 SYSROOT 时使用系统原生工具链。
+
+musl RID 在该运行时与 RID 的官方 linux-musl 构建容器（`versions.json` 的 `containers`）中交叉编译，工具链与 Alpine rootfs 均与官方 .NET 构建相同。`native/hostlibs/profiles/linux-musl-*` 设置 `libc=musl`，recipe 向 Runtime 的 `build.sh` 传入 `--os linux-musl`，由上游脚本选择 musl RID、CMake 定义与 PGO 数据。[`linux-musl.Dockerfile`](native/hostlibs/linux-musl.Dockerfile) 的 `build` 阶段只在容器上加入运行 Task 的工具：
+
+```bash
+docker build -f native/hostlibs/linux-musl.Dockerfile --target build --build-arg IMAGE=<containers 中的镜像> -t hostforge-hostlibs-musl .
+docker run --rm -v "$PWD:/work" hostforge-hostlibs-musl task build-hostlibs RID=linux-musl-arm64 HOSTLIBS_VERSION=<运行时版本> SYSROOT=/crossrootfs/arm64
+```
 
 ### 2. 构建 SkiaSharp / HarfBuzzSharp
 
@@ -204,6 +211,8 @@ task pack-skia-static RID=linux-musl-arm64 SKIASHARP_VERSION=<版本>
 task link-avalonia TARGET_OS=linux SYSROOT=build/rootfs/x64
 task avalonia-test SYSROOT=build/rootfs/x64
 ```
+
+Alpine 模板在最新运行时的官方 linux-musl 构建容器中链接（`linux-musl.Dockerfile` 的 `link` 阶段，rootfs 中加入 fontconfig），再在相同架构的 Alpine 容器中测试，见 [Avalonia 打包说明](src/package-avalonia-apphost/DEVELOPMENT.md#alpine-linux-musl-templates)。
 
 ### 4. 验证通用链接流程
 
@@ -247,7 +256,7 @@ dotnet test --project .\tests\HostForge.StaticAppHost.Tests\HostForge.StaticAppH
 dotnet test --project .\tests\HostForge.AvaloniaAppHost.Tests\HostForge.AvaloniaAppHost.Tests.csproj -c Release -v:minimal
 ```
 
-Avalonia 测试包含平台特定用例：Windows 用例在非 Windows 系统跳过，Linux 用例在非 Linux 系统跳过。
+Avalonia 测试包含平台特定用例：Windows 用例在非 Windows 系统跳过，Linux 用例在非 Linux 系统跳过。Linux 用例使用当前系统的 RID（可用 `HOSTFORGE_NATIVE_RID` 覆盖）：glibc 上为 `linux-x64`，Alpine 上为 `linux-musl-x64` / `linux-musl-arm64`；它们同时审计模板的 ELF 架构、解释器与 libc 依赖。
 
 ## 产物布局
 
@@ -308,6 +317,11 @@ flowchart LR
     NP --> LM
     NP --> WH
     NP --> LH
+    NP --> MH
+    NP --> MLA
+    NP --> MLA4
+    NP --> MTA
+    NP --> MTA4
     subgraph W["Windows lane"]
         direction LR
         WH["build-hostlibs-windows<br/>10.0 / 11.0 × x64/arm64"]
@@ -347,8 +361,24 @@ flowchart LR
         NL --> LM
     end
 
-    PA["pack-avalonia-apphost<br/>3 RIDs + Build + meta"]
-    PA4["pack-avalonia-apphost-skia4<br/>3 RIDs + Build + meta / skia4 suffix"]
+    subgraph M["Alpine lane"]
+        direction LR
+        MH["build-hostlibs-linux-musl<br/>10.0 / 11.0 × musl-x64/arm64<br/>upstream musl container"]
+        MLA["link-avalonia-apphost-linux-musl<br/>newest upstream musl container"]
+        MLA4["link-avalonia-apphost-skia4-linux-musl<br/>Skia 4 link"]
+        MTA["test-avalonia-apphost-linux-musl<br/>native Alpine x64/arm64"]
+        MTA4["test-avalonia-apphost-skia4-linux-musl<br/>Skia 4 native Alpine"]
+
+        MH --> MLA
+        NLC --> MLA
+        MH --> MLA4
+        NLC --> MLA4
+        MLA --> MTA
+        MLA4 --> MTA4
+    end
+
+    PA["pack-avalonia-apphost<br/>5 RIDs + Build + meta"]
+    PA4["pack-avalonia-apphost-skia4<br/>5 RIDs + Build + meta / skia4 suffix"]
     PUB["publish-nuget<br/>OIDC / nuget.org"]
     NMP --> PUB
     NLCT --> PUB
@@ -364,8 +394,12 @@ flowchart LR
 
     WLA --> PA
     LLA --> PA
+    MTA --> PA
     WLA4 --> PA4
     LLA4 --> PA4
+    MTA4 --> PA4
+    MTA --> CLEAN
+    MTA4 --> CLEAN
     PA4 --> CLEAN
     WM --> CLEAN
     LM --> CLEAN
@@ -397,12 +431,17 @@ flowchart LR
 | `test-all-linux` | Linux | Static AppHost 与 linux-x64 NativeAOT 集成验证 |
 | `link-avalonia-apphost-linux` | Linux | Linux Avalonia 模板及测试结果 |
 | `link-avalonia-apphost-skia4-linux` | Linux | SkiaSharp 4 的 Linux Avalonia 模板及版本匹配测试 |
-| `pack-avalonia-apphost` | Windows | 3 个 RID 包 + Build 包 + 元包（ChsBuffer.Avalonia.AppHost） |
-| `pack-avalonia-apphost-skia4` | Windows | SkiaSharp 4 的 3 个 RID 包 + Build 包 + 元包；版本追加 `skia4` |
+| `build-hostlibs-linux-musl` | Linux，运行时的官方 linux-musl 构建容器 | 两个运行时版本 × `linux-musl-x64` / `linux-musl-arm64` 的 HostLib 缓存 |
+| `link-avalonia-apphost-linux-musl` | Linux，最新运行时的官方 linux-musl 构建容器 | `linux-musl-x64` / `linux-musl-arm64` Avalonia 模板 |
+| `link-avalonia-apphost-skia4-linux-musl` | 同上 | SkiaSharp 4 的 Alpine Avalonia 模板 |
+| `test-avalonia-apphost-linux-musl` | Linux x64 / ARM64 上的原生 Alpine 容器 | Alpine 模板的发布、运行、单文件与 ELF 解释器 / libc 审计 |
+| `test-avalonia-apphost-skia4-linux-musl` | 同上 | SkiaSharp 4 的 Alpine 模板测试及版本匹配 |
+| `pack-avalonia-apphost` | Windows | 5 个 RID 包 + Build 包 + 元包（ChsBuffer.Avalonia.AppHost） |
+| `pack-avalonia-apphost-skia4` | Windows | SkiaSharp 4 的 5 个 RID 包 + Build 包 + 元包；版本追加 `skia4` |
 | `publish-nuget` | Linux | 测试成功后，通过 Trusted Publishing 发布 native 和两条 Avalonia AppHost 版本线的 NuGet 包 |
 | `cleanup-all` | Linux | 测试和发布成功后删除已打包的中间工件；PR 中在测试成功后删除，fork 的 PR 除外 |
 
-AppHost 的 link、pack 与平台集成测试从 `plan-all.outputs.versions` 选择 Skia 版本。Skia 4 使用独立 job 与 `avalonia-host-skia4-*` / `nuget-avalonia-apphost-skia4` 工件，链接产物路径保持 `artifacts/avalonia-host/<版本>/<TFM>/<RID>`。设置 `_Preview=beta` 时，Skia 4 包版本为 `12.0.<_Major>-beta.skia4`；留空时为 `12.0.<_Major>-skia4`。本地把 `SKIASHARP_VERSION` 设为 Skia 4 版本，依次 link、test、pack，详见 [Avalonia AppHost 打包说明](src/package-avalonia-apphost/DEVELOPMENT.md)。
+AppHost 的 link、pack 与平台集成测试从 `plan-all.outputs.versions` 选择 Skia 版本，Alpine job 的 RID 与 runner 来自 `plan-all.outputs.linux-musl-targets`。Skia 4 使用独立 job 与 `avalonia-host-skia4-*` / `nuget-avalonia-apphost-skia4` 工件，链接产物路径保持 `artifacts/avalonia-host/<版本>/<TFM>/<RID>`。设置 `_Preview=beta` 时，Skia 4 包版本为 `12.0.<_Major>-beta.skia4`；留空时为 `12.0.<_Major>-skia4`。本地把 `SKIASHARP_VERSION` 设为 Skia 4 版本，依次 link、test、pack，详见 [Avalonia AppHost 打包说明](src/package-avalonia-apphost/DEVELOPMENT.md)。
 
 NativeAOT 发布测试按阶段分工，两处都覆盖全部 TFM：RID 包在构建它的 job（`build-skia-*`、`test-skia-*`）里由 RID 消费者验证；`test-all` 设置 `HOSTFORGE_TEST_META=true`，只验证三元包消费者，元包恢复的是同一批 RID 包。AppHost 链接时，同一 RID 的各 TFM 并行链接。
 
@@ -420,9 +459,9 @@ job 通过 `scripts/repo_versions.py` 读取上游版本，workflow 中不写这
 
 原生库产物键按组件、版本、RID、实际工具链版本，以及对应 recipe 核心 / 平台模块 / profile / Dockerfile / 校验和与相关 Task 片段生成。版本表只读取当前版本条目；无关 Task、其它平台 profile 和 Python 项目元数据不参与。AppHost 与 NativeAOT 共享 Skia 3 产物。`plan-all` 运行 `tests/native` 的缓存键边界测试。
 
-产物 miss 时恢复同组件、版本、RID、工具链前缀的编译缓存。Skia、HarfBuzz、ANGLE 和 HostLibs 使用 sccache 0.18，关闭直接模式。HostLibs 保留 MSVC 预编译头，只缓存独立对象；Clang 预编译头在当前目录重新生成。AvaloniaNative 使用 ccache depend 模式与正常模块头文件校验。单元上限：Windows Skia 128 MiB、ANGLE 64 MiB、Windows HostLibs 256 MiB、Linux HostLibs 512 MiB、Linux / macOS Skia 64 MiB、AvaloniaNative 32 MiB，合计 2.44 GiB；另为产物、目标 sysroot 和工具缓存留出空间。旧输入代际由 Actions LRU 回收。
+产物 miss 时恢复同组件、版本、RID、工具链前缀的编译缓存。Skia、HarfBuzz、ANGLE 和 HostLibs 使用 sccache 0.18，关闭直接模式。HostLibs 保留 MSVC 预编译头，只缓存独立对象；Clang 预编译头在当前目录重新生成。AvaloniaNative 使用 ccache depend 模式与正常模块头文件校验。单元上限：Windows Skia 128 MiB、ANGLE 64 MiB、Windows HostLibs 256 MiB、Linux glibc / musl HostLibs 512 MiB、Linux / macOS Skia 64 MiB、AvaloniaNative 32 MiB，合计 5.44 GiB；另为产物、目标 sysroot 和工具缓存留出空间。旧输入代际由 Actions LRU 回收。
 
-CI 使用原生库产物缓存和编译缓存。Linux 热命中直接恢复压缩目标 rootfs，不拉取 cross 镜像；HostLibs 和 AppHost 链接也使用这一份 bionic rootfs。静态图形库的实际后端与绘制验收在 `test-all` 中执行。
+CI 使用原生库产物缓存和编译缓存。Linux 热命中直接恢复压缩目标 rootfs，不拉取 cross 镜像；glibc HostLibs 和 AppHost 链接也使用这一份 bionic rootfs。musl HostLibs 只在缓存未命中时拉取官方构建容器；Alpine 模板的链接每次拉取最新运行时的容器，因为 .NET 11 HostLibs 中以 PGO 构建的 GC 用 LTO 编译，含 LLVM bitcode，只有不低于编译它的 LLVM 才能链接。静态图形库的实际后端与绘制验收在 `test-all` 中执行。
 
 同一 ref 的新运行取消旧运行，main 的发布性运行使用独立并发组，避免运行中或排队中的发布被取消。原生库和 RID 包在跨 job 消费前上传 workflow artifact；全部消费 job 成功后删除 `native-skia-*`、`native-rootfs-*`、`native-angle-*`、`avalonia-host-*`、`nuget-native-skia-*` 和 `nuget-native-avalonianative-*`。完整成功的运行最终保留 `nuget-native-all`、`nuget-avalonia-apphost`、`nuget-avalonia-apphost-skia4` 和每个运行时版本 × RID 各一个 `native-hostlib-default-<运行时版本>-<rid>` 工件；日志、测试证据和缓存统计不单独上传。失败时保留中间产物供重跑。
 
