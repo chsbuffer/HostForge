@@ -1,6 +1,6 @@
 # ChsBuffer.Avalonia.AppHost.linux-musl-arm64
 
-Prelinked Avalonia 12 apphost and single-file host templates for Alpine Linux ARM64, with SkiaSharp and HarfBuzzSharp statically linked.
+Prelinked Avalonia 12 apphost and single-file host templates for .NET 10 (10.0.15) and .NET 11 (11.0.0) on Alpine Linux ARM64, with SkiaSharp and HarfBuzzSharp statically linked.
 
 Reference this RID package directly. The executable uses the system Fontconfig library (`fontconfig` on Alpine).
 
@@ -11,10 +11,12 @@ on ARM64 and place the archives from `ChsBuffer.SkiaSharp.Static.linux-musl-arm6
 version `3.119.4.1` in `artifacts/skiasharp/3.119.4/linux-musl-arm64/`.
 
 ```sh
-go-task build-hostlibs HOSTLIBS_VERSION=11.0.0 MUSL=True ARCH=arm64 JOBS=4
-go-task link-avalonia TARGET_OS=linux-musl RID=linux-musl-arm64 TEMPLATE_TFM=net11.0
+for runtime in 10.0.15 11.0.0; do
+    go-task build-hostlibs HOSTLIBS_VERSION="$runtime" MUSL=True ARCH=arm64 JOBS=4
+done
+go-task link-avalonia TARGET_OS=linux-musl RID=linux-musl-arm64
 _Preview=alpine.1 go-task pack-avalonia-build
-_Preview=alpine.1 go-task pack-avalonia-rid RID=linux-musl-arm64 TEMPLATE_TFM=net11.0
+_Preview=alpine.1 go-task pack-avalonia-rid RID=linux-musl-arm64
 ```
 
 To cross-build from x64, use Clang with an ARM64 Alpine sysroot containing the
