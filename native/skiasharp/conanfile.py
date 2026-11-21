@@ -233,7 +233,9 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
 
     def _version_args(self):
         if self._modern:
-            return ["skia_use_partition_alloc = false", "skia_enable_graphite = true"]
+            # The shared native-shared.cake of the SkiaSharp 4 tags disables RAW/DNG decoding on every platform.
+            return ["skia_use_partition_alloc = false", "skia_enable_graphite = true",
+                    "skia_use_dng_sdk = false", "skia_use_piex = false"]
         return ["skia_use_piex = true", "skia_use_sfntly = false"]
 
     @staticmethod

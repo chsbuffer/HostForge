@@ -27,14 +27,14 @@
   <!-- Increment only the affected native version line when publishing a fix. -->
   <PropertyGroup>
     <SkiaSharpPackageVersion Condition="$(SkiaSharpVersion.StartsWith('3.'))">$(SkiaSharpVersion).1</SkiaSharpPackageVersion>
-    <SkiaSharpPackageVersion Condition="$(SkiaSharpVersion.StartsWith('4.'))">$(SkiaSharpVersion).1</SkiaSharpPackageVersion>
+    <SkiaSharpPackageVersion Condition="$(SkiaSharpVersion.StartsWith('4.'))">$(SkiaSharpVersion).2</SkiaSharpPackageVersion>
     <AnglePackageVersion>$([System.Version]::Parse('$(AngleVersion)').ToString(3)).1</AnglePackageVersion>
     <AvaloniaNativePackageVersion>$(AvaloniaNativeVersion).1</AvaloniaNativePackageVersion>
   </PropertyGroup>
 
   <PropertyGroup>
     <TargetAvaloniaVersion>12.0</TargetAvaloniaVersion>
-    <_Major>3</_Major>
+    <_Major>4</_Major>
     <_Preview Condition="'$(_Preview)' == ''"></_Preview>
 
     <_AvaloniaAppHostPreview>$(_Preview)</_AvaloniaAppHostPreview>

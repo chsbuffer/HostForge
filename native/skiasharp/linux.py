@@ -64,7 +64,6 @@ class LinuxBuild:
                 "skia_use_icu = false",
                 *self._version_args(),
                 "skia_use_fontconfig = true",
-                *(["skia_use_dng_sdk = false"] if self._modern else []),
                 "skia_use_system_expat = false",
                 "skia_use_system_freetype2 = false",
                 "skia_use_system_libjpeg_turbo = false",
@@ -93,6 +92,8 @@ class LinuxBuild:
                 "is_official_build = true",
                 "is_static_skiasharp = true",
                 "skia_enable_tools = false",
+                # Kept although the SkiaSharp 4.157 build.cake dropped it: the AppHost exports the hb_* functions
+                # of this archive for its DllImport resolver, which needs them at default visibility.
                 "visibility_hidden = false",
                 *(["skia_use_partition_alloc = false"] if self._modern else []),
                 f"extra_asmflags = {self._format_gn_list(asmflags)}",

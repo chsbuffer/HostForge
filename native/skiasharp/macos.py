@@ -70,7 +70,6 @@ class MacosBuild:
             "skia_use_metal = true",
             "skia_use_gl = true",
             *self._version_args(),
-            *(["skia_use_dng_sdk = false", "skia_use_piex = false"] if self._modern else []),
             "skia_use_system_expat = false",
             "skia_use_system_libjpeg_turbo = false",
             "skia_use_system_libpng = false",
