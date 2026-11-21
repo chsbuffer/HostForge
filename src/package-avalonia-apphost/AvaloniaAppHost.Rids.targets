@@ -10,6 +10,7 @@
   <Target Name="_ResolveAvaloniaKnownRids">
     <PropertyGroup>
       <_AvaloniaHostRidsFilter>;$(AvaloniaHostRids);</_AvaloniaHostRidsFilter>
+      <_AvaloniaHostRidsFilter Condition="'$(AvaloniaAppHostTarget)' == 'linux-musl' and '$(AvaloniaHostRids)' == ''">;$(NETCoreSdkPortableRuntimeIdentifier);</_AvaloniaHostRidsFilter>
     </PropertyGroup>
     <ItemGroup>
       <_AvaloniaKnownRid Include="win-x64">
@@ -22,6 +23,14 @@
       </_AvaloniaKnownRid>
       <_AvaloniaKnownRid Include="linux-x64">
         <TargetOs>linux</TargetOs>
+        <ExecutableExtension></ExecutableExtension>
+      </_AvaloniaKnownRid>
+      <_AvaloniaKnownRid Include="linux-musl-x64">
+        <TargetOs>linux-musl</TargetOs>
+        <ExecutableExtension></ExecutableExtension>
+      </_AvaloniaKnownRid>
+      <_AvaloniaKnownRid Include="linux-musl-arm64">
+        <TargetOs>linux-musl</TargetOs>
         <ExecutableExtension></ExecutableExtension>
       </_AvaloniaKnownRid>
     </ItemGroup>
@@ -48,7 +57,7 @@
           DependsOnTargets="_ValidateAvaloniaAppHostTarget;_ResolveAvaloniaKnownRids">
     <ItemGroup>
       <_AvaloniaTargetRid Include="@(_AvaloniaKnownRid)"
-                          Condition="'$(AvaloniaAppHostTarget)' == '%(_AvaloniaKnownRid.TargetOs)' and ('$(AvaloniaHostRids)' == '' or $(_AvaloniaHostRidsFilter.Contains(';%(_AvaloniaKnownRid.Identity);')))">
+                          Condition="'$(AvaloniaAppHostTarget)' == '%(_AvaloniaKnownRid.TargetOs)' and ('$(_AvaloniaHostRidsFilter)' == ';;' or $(_AvaloniaHostRidsFilter.Contains(';%(_AvaloniaKnownRid.Identity);')))">
         <TargetOs>%(_AvaloniaKnownRid.TargetOs)</TargetOs>
         <ExecutableExtension>%(_AvaloniaKnownRid.ExecutableExtension)</ExecutableExtension>
       </_AvaloniaTargetRid>

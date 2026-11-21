@@ -28,8 +28,8 @@ class HostLibsConan(ConanFile):
     description = ".NET apphost and single-file host static link inputs"
 
     settings = "os", "arch", "compiler", "build_type"
-    options = {"pgo": [True, False]}
-    default_options = {"pgo": True}
+    options = {"pgo": [True, False], "musl": [True, False]}
+    default_options = {"pgo": True, "musl": False}
     exports = "versions.json"
 
     _arch = {
@@ -47,6 +47,9 @@ class HostLibsConan(ConanFile):
         if str(self.version) not in VERSIONS:
             raise ConanInvalidConfiguration(f"Unsupported .NET runtime version: {self.version}")
 
+        if self.options.musl and self.settings.os != "Linux":
+            raise ConanInvalidConfiguration("musl host libraries require Linux")
+
     @property
     def _source_commit(self):
         return VERSIONS[str(self.version)]["commit"]
@@ -62,10 +65,12 @@ class HostLibsConan(ConanFile):
     @property
     def _rid(self):
         prefix = "win" if self.settings.os == "Windows" else "linux"
+        if self.options.musl:
+            prefix = "linux-musl"
         return f"{prefix}-{self._target_arch}"
 
     def system_requirements(self):
-        if self.settings.os == "Linux":
+        if self.settings.os == "Linux" and not self.options.musl:
             Apt(self).install(
                 [
                     "build-essential",
@@ -120,6 +125,12 @@ class HostLibsConan(ConanFile):
         VCVars(self).generate()
 
     def build(self):
+        if self.options.musl:
+            target_root = Path(self._sysroot() or "/")
+            if not (target_root / "etc/alpine-release").is_file():
+                raise ConanInvalidConfiguration(
+                    "Build musl host libraries on Alpine or set ROOTFS_DIR to an Alpine sysroot"
+                )
         self._build_apphost()
         self._build_singlefilehost()
 
@@ -160,6 +171,25 @@ class HostLibsConan(ConanFile):
                 pre = f'cmake -S "{src}" -B "{root}" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF'
             self._msvc_configure_build("host.native", "apphost", root,
                                        extra_args="/p:ConfigureOnly=true", pre_ninja=pre)
+            return
+
+        if self.options.musl:
+            # Generate the upstream version headers without restoring managed
+            # build tasks that the native host does not use.
+            self.run(
+                'dotnet msbuild src/native/corehost/corehost.proj -t:GenerateRuntimeVersionFile '
+                f"-p:Configuration=Release {self._runtime_properties('-p:')}",
+                cwd=str(self._runtime_root),
+                env="conanbuild",
+            )
+            cross = " -cross" if self._sysroot() else ""
+            self.run(
+                f'"{self._runtime_root / "src/native/corehost/build.sh"}" '
+                f"Release {self._target_arch}{cross} -ninja -configureonly -runtimeflavor coreclr "
+                f"-commithash {self._source_commit} -targetrid {self._rid}",
+                cwd=str(self._runtime_root),
+                env="conanbuild",
+            )
         else:
             cross = " --cross" if self._sysroot() else ""
             self.run(
@@ -169,9 +199,9 @@ class HostLibsConan(ConanFile):
                 cwd=str(self._runtime_root),
                 env="conanbuild",
             )
-            self._disable_clang_pch_cache(root)
-            target = self._link_inputs_target(root, "apphost")
-            self.run(f'ninja -C "{root}" -j {build_jobs(self)} {target}', env="conanbuild")
+        self._disable_clang_pch_cache(root)
+        target = self._link_inputs_target(root, "apphost")
+        self.run(f'ninja -C "{root}" -j {build_jobs(self)} {target}', env="conanbuild")
 
     def _build_singlefilehost(self):
         root = self._singlefilehost_build_root()
@@ -181,6 +211,24 @@ class HostLibsConan(ConanFile):
                 extra += " /p:NoPgoOptimize=true"
             self._msvc_configure_build("clr.runtime", "singlefilehost", root,
                                        extra_args=extra)
+            return
+
+        if self.options.musl:
+            cross = " -cross" if self._sysroot() else ""
+            dynamic_code = " -cmakeargs -DFEATURE_DYNAMIC_CODE_COMPILED=1" if self.version >= "11.0.0" else ""
+            # The apphost build has already generated the version files. Use the
+            # runtime's native entry point to avoid restoring unrelated PGO
+            # profiles. Keep the same EventSource features as the
+            # corresponding Microsoft.NETCore.App runtime pack.
+            self.run(
+                f'"{self._runtime_root / "src/coreclr/build-runtime.sh"}" '
+                f"-release -{self._target_arch} -ninja -configureonly{cross} -component runtime "
+                f"-targetrid {self._rid} -cmakeargs -DCLR_DOTNET_RID={self._rid} "
+                f"-cmakeargs -DCLI_CMAKE_COMMIT_HASH={self._source_commit} "
+                f"-cmakeargs -DFEATURE_EVENTSOURCE_XPLAT=1{dynamic_code}",
+                cwd=str(self._runtime_root),
+                env="conanbuild",
+            )
         else:
             cross = " --cross" if self._sysroot() else ""
             self.run(
@@ -190,9 +238,9 @@ class HostLibsConan(ConanFile):
                 cwd=str(self._runtime_root),
                 env="conanbuild",
             )
-            self._disable_clang_pch_cache(root)
-            target = self._link_inputs_target(root, "singlefilehost")
-            self.run(f'ninja -C "{root}" -j {build_jobs(self)} {target}', env="conanbuild")
+        self._disable_clang_pch_cache(root)
+        target = self._link_inputs_target(root, "singlefilehost")
+        self.run(f'ninja -C "{root}" -j {build_jobs(self)} {target}', env="conanbuild")
 
     @staticmethod
     def _link_inputs_target(build_root, name):

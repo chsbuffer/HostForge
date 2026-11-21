@@ -104,6 +104,9 @@
 
       <_SingleFileHostLinkerArg Include="$(_SingleFileHostLinkFlags)" />
       <_SingleFileHostLinkerArg Include="@(_CommonLinkerArg)" />
+      <!-- Preserve the runtime and DAC exports rooted by the upstream SingleFileHost link. -->
+      <_SingleFileHostLinkerArg Include="-Wl,-u,DotNetRuntimeInfo,-u,g_dacTable,-u,MetaDataGetDispenser,-u,DotNetRuntimeContractDescriptor"
+                                Condition="'$(_linuxLibcFlavor)' == 'musl'" />
       <_SingleFileHostLinkerArg Include="@singlefilehost.rsp" />
       <_SingleFileHostLinkerArg Include="-Wl,--start-group" Condition="'$(GroupNativeLibraries)' == 'true'" />
       <_SingleFileHostLinkerArg Include="-Wl,--whole-archive" Condition="'$(_IsApplePlatform)' != 'true' and '@(_WholeArchiveNativeLib)' != ''" />
