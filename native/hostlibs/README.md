@@ -24,6 +24,23 @@ task build-hostlibs HOSTLIBS_VERSION=<runtime version from versions.json>
 The upstream workflow opens a pull request that updates `versions.json` to the latest
 runtime patch releases; `task upstream-apply -- --dotnet` does the same locally.
 
+On Linux, Task's `RID` selects the host profile: `linux-x64` (the default),
+`linux-musl-x64` or `linux-musl-arm64`. The musl profiles set `libc=musl`, and the
+recipe passes `--os linux-musl` to the Runtime's `build.sh`, which selects the musl
+RID, its CMake definitions and the PGO data as in the official builds. musl builds
+run in the official linux-musl build container of the runtime, which `versions.json`
+records per RID under `containers`; the `build` stage of
+[`linux-musl.Dockerfile`](linux-musl.Dockerfile) adds the tools that run Task:
+
+```sh
+docker build -f native/hostlibs/linux-musl.Dockerfile --target build --build-arg IMAGE=<container> -t hostforge-hostlibs-musl .
+docker run --rm -v "$PWD:/work" hostforge-hostlibs-musl task build-hostlibs RID=linux-musl-arm64 HOSTLIBS_VERSION=<runtime version> SYSROOT=/crossrootfs/arm64
+```
+
+The upstream workflow takes the containers of a new runtime from
+`src/runtime/eng/pipelines/common/templates/pipeline-with-resources.yml` at its VMR
+commit and pins a container named by tag to the digest the tag has at that time.
+
 .NET 11 rewrote apphost in C, so the recipe accepts both the C and the C++ Ninja
 link rules when it collects link inputs, and ends the explicit inputs at any Ninja
 dependency separator (`|`, `||`, `|@`). Libraries passed inside
@@ -32,6 +49,9 @@ dependency separator (`|`, `||`, `|@`). Libraries passed inside
 Each payload records the runtime's own compile and link flags in
 `<host>.linkflags`; the Windows relink reads the `/DELAYLOAD` options from
 `singlefilehost.linkflags`, because .NET 10 and .NET 11 delay-load different DLLs.
+
+A link input outside the build tree, such as the `libpthread.a` stub that CMake finds
+in the musl rootfs, is copied into the payload, and the response file names the copy.
 
 Set `CONAN_HOME` to an absolute path (e.g. `$PWD/build/conan`). The
 Runtime build has deeply nested paths and long MSVC command lines.
