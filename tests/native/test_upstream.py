@@ -93,38 +93,58 @@ class FakeClient:
         return {pattern: refs[pattern] for pattern in patterns if pattern in refs}
 
 
-# The official build containers in the runtime's pipeline resources: one pinned by digest, one by tag only.
-MUSL_TAGS = {"linux-musl-x64": "azurelinux-3.0-net99.0-cross-amd64-musl", "linux-musl-arm64": "azurelinux-3.0-net99.0-cross-arm64-musl"}
-MUSL_X64_DIGEST = "sha256:" + "1" * 64
-MUSL_ARM64_MANIFEST = b'{"schemaVersion": 2, "mediaType": "application/vnd.docker.distribution.manifest.v2+json"}'
+# The official build containers in the runtime's pipeline resources: one pinned by digest, the others by tag only.
+# Legs whose names contain linux_x64 come first, so a test fails when another leg is taken for linux_x64.
+CONTAINER_TAGS = {"linux-x64": "azurelinux-3.0-net99.0-cross-amd64",
+                  "linux-musl-x64": "azurelinux-3.0-net99.0-cross-amd64-musl",
+                  "linux-musl-arm64": "azurelinux-3.0-net99.0-cross-arm64-musl"}
+PINNED_DIGEST = "sha256:" + "1" * 64
+MANIFESTS = {rid: f'{{"schemaVersion": 2, "config": "{rid}"}}'.encode() for rid in ("linux-x64", "linux-musl-arm64")}
 PREREQS = "mcr.microsoft.com/dotnet-buildtools/prereqs"
 PIPELINE_RESOURCES = f"""    containers:
+      SourceBuild_linux_x64:
+        image: {PREREQS}:almalinux-9-source-build-amd64
+
+      linux_x64_dev_innerloop:
+        image: {PREREQS}:ubuntu-24.04
+
       linux_arm64:
         image: {PREREQS}:azurelinux-3.0-net99.0-cross-arm64
         env:
           ROOTFS_DIR: /crossrootfs/arm64
 
       linux_musl_x64:
-        image: {PREREQS}:{MUSL_TAGS["linux-musl-x64"]}@{MUSL_X64_DIGEST}
+        image: {PREREQS}:{CONTAINER_TAGS["linux-musl-x64"]}@{PINNED_DIGEST}
         env:
           ROOTFS_DIR: /crossrootfs/x64
 
       linux_musl_arm64:
-        image: {PREREQS}:{MUSL_TAGS["linux-musl-arm64"]}
+        image: {PREREQS}:{CONTAINER_TAGS["linux-musl-arm64"]}
         env:
           ROOTFS_DIR: /crossrootfs/arm64
+
+      linux_x64:
+        image: {PREREQS}:{CONTAINER_TAGS["linux-x64"]}
+        env:
+          ROOTFS_DIR: /crossrootfs/x64
 """
-MUSL_CONTAINERS = {
-    "linux-musl-x64": f"{PREREQS}:{MUSL_TAGS['linux-musl-x64']}@{MUSL_X64_DIGEST}",
-    "linux-musl-arm64": f"{PREREQS}:{MUSL_TAGS['linux-musl-arm64']}@sha256:{hashlib.sha256(MUSL_ARM64_MANIFEST).hexdigest()}",
+CONTAINERS = {
+    "linux-x64": f"{PREREQS}:{CONTAINER_TAGS['linux-x64']}@sha256:{hashlib.sha256(MANIFESTS['linux-x64']).hexdigest()}",
+    "linux-musl-x64": f"{PREREQS}:{CONTAINER_TAGS['linux-musl-x64']}@{PINNED_DIGEST}",
+    "linux-musl-arm64": f"{PREREQS}:{CONTAINER_TAGS['linux-musl-arm64']}@sha256:"
+                        f"{hashlib.sha256(MANIFESTS['linux-musl-arm64']).hexdigest()}",
 }
+
+
+def manifest_url(rid):
+    return f"{upstream.MCR}/v2/dotnet-buildtools/prereqs/manifests/{CONTAINER_TAGS[rid]}"
 
 
 def add_pipeline_resources(client, commit, text=PIPELINE_RESOURCES):
     client.add_json(f"{upstream.GITHUB_API}/repos/dotnet/dotnet/contents/{upstream.VMR_PIPELINE_RESOURCES}?ref={commit}",
                     {"type": "file", "content": base64.b64encode(text.encode()).decode()})
-    client.responses[f"{upstream.MCR}/v2/dotnet-buildtools/prereqs/manifests/{MUSL_TAGS['linux-musl-arm64']}"] = \
-        MUSL_ARM64_MANIFEST
+    for rid, manifest in MANIFESTS.items():
+        client.responses[manifest_url(rid)] = manifest
 
 
 def release(runtime, sdk, security=False, cves=()):
@@ -470,13 +490,13 @@ class ApplyTests(UpstreamTestCase):
             new = next_patch(runtime)
             sdk = next_patch(self.pinned["hostlibs-sources"][runtime]["tag"][1:])
             self.assertEqual(new, pinned["runtimes"][framework])
-            self.assertEqual({"tag": f"v{sdk}", "commit": fake_commit(sdk), "containers": MUSL_CONTAINERS},
+            self.assertEqual({"tag": f"v{sdk}", "commit": fake_commit(sdk), "containers": CONTAINERS},
                              pinned["hostlibs-sources"][new])
         self.assertEqual(major + 1, int(self.props()["_Major"]), "one increment per run")
         self.assertIn("CVE-2099-", stdout)
         self.assert_consistent()
 
-    def test_dotnet_update_needs_the_musl_build_containers(self):
+    def test_dotnet_update_needs_the_build_containers(self):
         client = fake_upstream(self.root, dotnet=True)
         for url in [url for url in client.responses if upstream.VMR_PIPELINE_RESOURCES in url]:
             del client.responses[url]
@@ -1332,30 +1352,31 @@ class FailureTests(UpstreamTestCase):
                            sum(map(len, package_inputs.history(before).values())))
 
 
-class MuslContainerTests(unittest.TestCase):
-    """The official linux-musl build containers of a VMR commit, as the HostLibs musl builds use them."""
+class BuildContainerTests(unittest.TestCase):
+    """The official Linux build containers of a VMR commit, as the HostLibs Linux builds use them."""
 
     def test_pins_every_container_by_digest(self):
         client = FakeClient()
         add_pipeline_resources(client, "c1")
-        self.assertEqual(MUSL_CONTAINERS, upstream.musl_containers(client, "c1"))
-        manifest = f"{upstream.MCR}/v2/dotnet-buildtools/prereqs/manifests/{MUSL_TAGS['linux-musl-arm64']}"
-        self.assertEqual(upstream.REGISTRY_MANIFESTS, client.accepts[manifest])
-        self.assertNotIn(f"{upstream.MCR}/v2/dotnet-buildtools/prereqs/manifests/{MUSL_TAGS['linux-musl-x64']}",
-                         client.requests, "a digest in the pipeline is used as is")
+        self.assertEqual(CONTAINERS, upstream.build_containers(client, "c1"))
+        for rid in MANIFESTS:
+            self.assertEqual(upstream.REGISTRY_MANIFESTS, client.accepts[manifest_url(rid)])
+        self.assertNotIn(manifest_url("linux-musl-x64"), client.requests, "a digest in the pipeline is used as is")
 
     def test_missing_container_is_an_error(self):
-        client = FakeClient()
-        add_pipeline_resources(client, "c1", PIPELINE_RESOURCES.replace("linux_musl_arm64:", "linux_musl_arm:"))
-        with self.assertRaisesRegex(upstream.UpstreamError, "linux_musl_arm64"):
-            upstream.musl_containers(client, "c1")
+        for leg in upstream.BUILD_CONTAINERS.values():
+            with self.subTest(leg=leg):
+                client = FakeClient()
+                add_pipeline_resources(client, "c1", PIPELINE_RESOURCES.replace(f"      {leg}:\n", f"      {leg}_old:\n"))
+                with self.assertRaisesRegex(upstream.UpstreamError, rf"\b{leg}\b"):
+                    upstream.build_containers(client, "c1")
 
     def test_other_registries_are_an_error(self):
         client = FakeClient()
-        add_pipeline_resources(client, "c1", PIPELINE_RESOURCES.replace(f"{PREREQS}:{MUSL_TAGS['linux-musl-x64']}",
-                                                                        f"example.invalid/prereqs:{MUSL_TAGS['linux-musl-x64']}"))
-        with self.assertRaisesRegex(upstream.UpstreamError, "linux_musl_x64"):
-            upstream.musl_containers(client, "c1")
+        add_pipeline_resources(client, "c1", PIPELINE_RESOURCES.replace(f"{PREREQS}:{CONTAINER_TAGS['linux-x64']}\n",
+                                                                        f"example.invalid/prereqs:{CONTAINER_TAGS['linux-x64']}\n"))
+        with self.assertRaisesRegex(upstream.UpstreamError, r"\blinux_x64\b"):
+            upstream.build_containers(client, "c1")
 
 
 class VmrSourceTests(unittest.TestCase):

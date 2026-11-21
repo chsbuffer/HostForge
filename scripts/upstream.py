@@ -17,7 +17,7 @@
   apply   [--group NAME] [--dotnet] [--avalonia] [--skiasharp] [--angle] [--keep-going] [--metadata FILE]
           [--dry-run]
           Update the files of one group, computed from the repository as it is (one pull request per group):
-            inputs          (default) .NET runtime patch releases with the official linux-musl build
+            inputs          (default) .NET runtime patch releases with the official Linux build
                             containers of their VMR commit, the Avalonia patch release of the pinned
                             minor, SkiaSharp patch releases of the pinned milestones and the head of the pinned
                             ANGLE branch with the depot_tools revision of its DEPS. --dotnet, --avalonia,
@@ -82,9 +82,10 @@ TIMEOUT = 60
 DOTNET_INDEX = "https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json"
 VMR = "https://github.com/dotnet/dotnet"
 MCR = "https://mcr.microsoft.com"
-# The runtime's pipeline resources name the container of each official build leg.
+# The runtime's pipeline resources name the container of each official build leg; HostLibs builds each Linux RID
+# in the container of its leg.
 VMR_PIPELINE_RESOURCES = "src/runtime/eng/pipelines/common/templates/pipeline-with-resources.yml"
-MUSL_CONTAINERS = {"linux-musl-x64": "linux_musl_x64", "linux-musl-arm64": "linux_musl_arm64"}
+BUILD_CONTAINERS = {"linux-x64": "linux_x64", "linux-musl-x64": "linux_musl_x64", "linux-musl-arm64": "linux_musl_arm64"}
 # The media types docker pull accepts, so that a tag resolves to the digest docker would pull.
 REGISTRY_MANIFESTS = ("application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, "
                       "application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json")
@@ -414,8 +415,8 @@ def vmr_source(client, runtime, release, channel):
     return result
 
 
-def musl_containers(client, commit):
-    """{RID: image} of the official linux-musl build containers at a VMR commit, each pinned by digest.
+def build_containers(client, commit):
+    """{RID: image} of the official Linux build containers at a VMR commit, each pinned by digest.
 
     The runtime's pipeline resources name them; a tag without a digest is pinned to the digest it has now."""
     where = f"dotnet/dotnet {VMR_PIPELINE_RESOURCES} at {commit}"
@@ -425,7 +426,7 @@ def musl_containers(client, commit):
     except (KeyError, TypeError, ValueError) as error:
         raise UpstreamError(f"{where}: {_reason(error)}") from None
     containers = {}
-    for rid, name in MUSL_CONTAINERS.items():
+    for rid, name in BUILD_CONTAINERS.items():
         match = re.search(rf"^ +{name}:\n +image: *(\S+) *$", text, re.M)
         image = _IMAGE.fullmatch(match.group(1)) if match else None
         if image is None:
@@ -1493,7 +1494,7 @@ def plan_dotnet(run):
         number = item["framework"][3:].split(".")[0]
         old_source = pinned["hostlibs-sources"][old]
         entry = {"tag": source["tag"], "commit": source["commit"],
-                 "containers": musl_containers(run.client, source["commit"])}
+                 "containers": build_containers(run.client, source["commit"])}
 
         def edit(root, old=old, new=new, entry=entry, number=number):
             _edit(root, package_inputs.PROPS, lambda text: _set_property(text, f"HostLibsNet{number}Version", old, new))
