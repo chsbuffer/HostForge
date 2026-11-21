@@ -16,3 +16,12 @@ Use the package without a suffix for all supported targets, or reference only th
 The templates activate when the project targets .NET 10 or .NET 11 (including OS-specific TFMs such as `net11.0-windows`) and publishes for an installed RID. Other target combinations keep the standard .NET SDK host behavior.
 
 The single-file host embeds the native .NET runtime it was built from (10.0.15 or 11.0.0), while the managed framework comes from the runtime pack chosen at publish time. The .NET SDK 11.0.100 selects exactly these runtime packs; with another SDK, set `RuntimeFrameworkVersion` to the template's version for the closest match.
+
+## MSBuild properties
+
+| Property | Default | Effect |
+|---|---|---|
+| `DisableSkiaHarfBuzzRuntimeCopy` | `true` | Keeps the SkiaSharp and HarfBuzzSharp dynamic libraries and their symbol files out of the publish directory and the single-file bundle. |
+| `DisableAngleRuntimeCopy` | `true` | Keeps the ANGLE library (`av_libglesv2.dll`) out of the publish directory and the single-file bundle. |
+
+The package registers a `DllImport` resolver for SkiaSharp, HarfBuzzSharp and Avalonia.Win32 that loads these libraries from the executable. When the application has already registered its own resolver for one of these assemblies, that resolver stays in effect; set the matching property to `false` so the libraries it loads are published.
