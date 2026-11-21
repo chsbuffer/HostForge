@@ -38,16 +38,18 @@ flowchart LR
 
 ## Avalonia 快速开始
 
-在 Avalonia 项目中引用宿主包，并启用单文件发布：
+在 Avalonia 项目中引用宿主包：
+
+```bash
+dotnet add package ChsBuffer.Avalonia.AppHost
+```
+
+并在项目文件中启用单文件发布：
 
 ```xml
 <PropertyGroup>
   <PublishSingleFile>true</PublishSingleFile>
 </PropertyGroup>
-
-<ItemGroup>
-  <PackageReference Include="ChsBuffer.Avalonia.AppHost" Version="12.0.2" />
-</ItemGroup>
 ```
 
 然后正常发布：
