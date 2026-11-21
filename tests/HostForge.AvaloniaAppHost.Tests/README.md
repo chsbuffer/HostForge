@@ -15,12 +15,16 @@ Current coverage:
   as the package README requires; the bundle runs on the prelinked singlefilehost (exact runtime version checked)
   and resolves ANGLE / Skia / HarfBuzz from the executable, with none of their dynamic libraries (or, on Windows, their
   symbol files) in the publish directory or extracted from the bundle (`DOTNET_BUNDLE_EXTRACT_BASE_DIR` points extraction into the test project)
-- Linux `linux-x64` publish-and-run output validation for `ChsBuffer.Avalonia.AppHost.Linux` for every template TFM
-- Linux `linux-x64` Skia/HarfBuzz native runtime copy suppression switch behavior
+- Linux publish-and-run output validation for every template TFM, on the RID of the test system (`linux-x64` on
+  glibc, `linux-musl-x64` / `linux-musl-arm64` on Alpine; `HOSTFORGE_NATIVE_RID` overrides it)
+- Linux ELF audit of the linked templates: architecture, the glibc or musl program interpreter, and no glibc
+  dependency in the musl templates
+- Linux Skia/HarfBuzz native runtime copy suppression switch behavior
 - Skia 3 / 4 package versions, optional preview labels, managed dependencies and unchanged template paths
 
 Link the templates for every template TFM first (`task link-avalonia`). Running the published executables
-needs the matching shared runtimes: .NET 9, 10 and 11 on Windows; .NET 10 and 11 on Linux.
+needs the matching shared runtimes: .NET 9, 10 and 11 on Windows; .NET 10 and 11 on Linux. The Linux ELF audit
+needs `readelf` (binutils).
 
 Run:
 

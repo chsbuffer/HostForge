@@ -246,16 +246,17 @@ tasks:
       - task: matrix-nativeaot
 
   link-avalonia:
-    desc: Link Avalonia apphost templates for one target OS
+    desc: Link Avalonia apphost templates for one target OS (RID=<one RID of TARGET_OS>, SYSROOT=…)
     requires:
       vars:
         - name: TARGET_OS
-          enum: [windows, linux]
+          enum: [windows, linux, linux-musl]
     cmds:
       - >-
         dotnet msbuild src/package-avalonia-apphost/AvaloniaAppHost.Link.proj
         /t:LinkAvaloniaHosts
         -p:AvaloniaAppHostTarget={{.TARGET_OS}}
+        {{if .RID}}-p:AvaloniaHostRids={{.RID}}{{end}}
         {{if .SKIASHARP_VERSION}}-p:SkiaSharpVersion={{.SKIASHARP_VERSION}}{{end}}
         -p:HostLibsFlavor=default
         {{if .SYSROOT}}-p:Sysroot="{{.SYSROOT}}"{{end}}
@@ -280,7 +281,7 @@ tasks:
     requires:
       vars:
         - name: RID
-          enum: [win-x64, win-arm64, linux-x64]
+          enum: [win-x64, win-arm64, linux-x64, linux-musl-x64, linux-musl-arm64]
     cmds:
       - >-
         dotnet pack src/package-avalonia-apphost/AvaloniaAppHost.Rid.csproj
@@ -316,6 +317,10 @@ tasks:
         vars: {RID: win-arm64, SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
       - task: pack-avalonia-rid
         vars: {RID: linux-x64, SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
+      - task: pack-avalonia-rid
+        vars: {RID: linux-musl-x64, SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
+      - task: pack-avalonia-rid
+        vars: {RID: linux-musl-arm64, SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
       - task: pack-avalonia-build
         vars: {SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
       - task: pack-avalonia-meta
