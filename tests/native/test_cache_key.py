@@ -20,6 +20,8 @@ SKIA = VERSIONS["skiasharp"]
 OTHER_SKIA = next((v for v in VERSIONS["skiasharp-versions"] if v != SKIA), None)
 HOSTLIBS = VERSIONS["hostlibs"]
 OTHER_HOSTLIBS = next((v for v in VERSIONS["hostlibs-versions"] if v != HOSTLIBS), None)
+# The RIDs whose HostLibs build in an upstream container.
+HOSTLIBS_LINUX_RIDS = ("linux-x64", "linux-musl-x64", "linux-musl-arm64")
 
 
 class NativeCacheKeyTests(unittest.TestCase):
@@ -80,29 +82,39 @@ class NativeCacheKeyTests(unittest.TestCase):
         self.assertNotEqual(other, self.key(OTHER_HOSTLIBS, component="hostlibs"))
 
     def test_hostlibs_container_is_scoped_to_selected_rid(self):
-        keys = {rid: self.key(HOSTLIBS, rid, "hostlibs") for rid in ("linux-musl-x64", "linux-musl-arm64", "linux-x64", "win-x64")}
-        file = self.root / "native/hostlibs/versions.json"
-        versions = json.loads(file.read_text())
-        versions[HOSTLIBS]["containers"]["linux-musl-arm64"] += "-different"
-        file.write_text(json.dumps(versions))
-        self.assertNotEqual(keys.pop("linux-musl-arm64"), self.key(HOSTLIBS, "linux-musl-arm64", "hostlibs"))
-        self.assertEqual(keys, {rid: self.key(HOSTLIBS, rid, "hostlibs") for rid in keys})
+        for changed in HOSTLIBS_LINUX_RIDS:
+            with self.subTest(rid=changed):
+                keys = {rid: self.key(HOSTLIBS, rid, "hostlibs") for rid in (*HOSTLIBS_LINUX_RIDS, "win-x64")}
+                file = self.root / "native/hostlibs/versions.json"
+                versions = json.loads(file.read_text())
+                versions[HOSTLIBS]["containers"][changed] += "-different"
+                file.write_text(json.dumps(versions))
+                self.assertNotEqual(keys.pop(changed), self.key(HOSTLIBS, changed, "hostlibs"))
+                self.assertEqual(keys, {rid: self.key(HOSTLIBS, rid, "hostlibs") for rid in keys})
 
-    def test_hostlibs_image_is_libc_specific(self):
-        glibc, musl = self.key(HOSTLIBS, "linux-x64", "hostlibs"), self.key(HOSTLIBS, "linux-musl-x64", "hostlibs")
-        self.change("native/hostlibs/linux-musl.Dockerfile")
-        self.assertEqual(glibc, self.key(HOSTLIBS, "linux-x64", "hostlibs"))
-        self.assertNotEqual(musl, self.key(HOSTLIBS, "linux-musl-x64", "hostlibs"))
-        musl = self.key(HOSTLIBS, "linux-musl-x64", "hostlibs")
+    def test_hostlibs_linux_image_is_shared_by_the_linux_rids(self):
+        keys = {rid: self.key(HOSTLIBS, rid, "hostlibs") for rid in (*HOSTLIBS_LINUX_RIDS, "win-x64")}
         self.change("native/skiasharp/linux-x64.Dockerfile")
-        self.assertEqual(musl, self.key(HOSTLIBS, "linux-musl-x64", "hostlibs"))
-        self.assertNotEqual(glibc, self.key(HOSTLIBS, "linux-x64", "hostlibs"))
+        self.assertEqual(keys, {rid: self.key(HOSTLIBS, rid, "hostlibs") for rid in keys})
+        self.change("native/hostlibs/linux.Dockerfile")
+        self.assertEqual(keys.pop("win-x64"), self.key(HOSTLIBS, "win-x64", "hostlibs"))
+        for rid, key in keys.items():
+            self.assertNotEqual(key, self.key(HOSTLIBS, rid, "hostlibs"), rid)
 
     def test_sysroot_and_checksums_are_rid_specific(self):
-        glibc, musl = self.key(rid="linux-x64"), self.key(rid="linux-musl-arm64")
-        self.change("native/skiasharp/fontconfig-alpine3.17-aarch64.sha256")
-        self.assertEqual(glibc, self.key(rid="linux-x64"))
-        self.assertNotEqual(musl, self.key(rid="linux-musl-arm64"))
+        checksums = {"linux-x64": "fontconfig-ubuntu18.04-amd64", "linux-arm64": "fontconfig-ubuntu18.04-arm64",
+                     "linux-musl-x64": "fontconfig-alpine3.17-x86_64", "linux-musl-arm64": "fontconfig-alpine3.17-aarch64"}
+
+        def keys():
+            return {rid: (self.key(rid=rid), cache_key.rootfs_key(self.root, rid)) for rid in checksums}
+
+        for changed, name in checksums.items():
+            with self.subTest(rid=changed):
+                before = keys()
+                self.change(f"native/skiasharp/{name}.sha256")
+                after = keys()
+                self.assertNotEqual(before.pop(changed), after.pop(changed))
+                self.assertEqual(before, after)
 
     def test_toolchain_and_relevant_task_invalidate(self):
         original = self.key()

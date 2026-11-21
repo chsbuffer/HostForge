@@ -27,15 +27,20 @@ runtime patch releases; `task upstream-apply -- --dotnet` does the same locally.
 On Linux, Task's `RID` selects the host profile: `linux-x64` (the default),
 `linux-musl-x64` or `linux-musl-arm64`. The musl profiles set `libc=musl`, and the
 recipe passes `--os linux-musl` to the Runtime's `build.sh`, which selects the musl
-RID, its CMake definitions and the PGO data as in the official builds. musl builds
-run in the official linux-musl build container of the runtime, which `versions.json`
-records per RID under `containers`; the `build` stage of
-[`linux-musl.Dockerfile`](linux-musl.Dockerfile) adds the tools that run Task:
+RID, its CMake definitions and the PGO data as in the official builds. Every Linux RID
+builds in the official build container of the runtime and RID, which `versions.json`
+records under `containers`, against the rootfs of that container (`SYSROOT`, passed to
+`build.sh --cross` as `ROOTFS_DIR`); the `build` stage of [`linux.Dockerfile`](linux.Dockerfile)
+adds the tools that run Task:
 
 ```sh
-docker build -f native/hostlibs/linux-musl.Dockerfile --target build --build-arg IMAGE=<container> -t hostforge-hostlibs-musl .
-docker run --rm -v "$PWD:/work" hostforge-hostlibs-musl task build-hostlibs RID=linux-musl-arm64 HOSTLIBS_VERSION=<runtime version> SYSROOT=/crossrootfs/arm64
+docker build -f native/hostlibs/linux.Dockerfile --target build --build-arg IMAGE=<container> -t hostforge-hostlibs .
+docker run --rm -v "$PWD:/work" hostforge-hostlibs task build-hostlibs RID=linux-x64 HOSTLIBS_VERSION=<runtime version> SYSROOT=/crossrootfs/x64
 ```
+
+The upstream LLVM of the container applies the profile data that the Runtime restores. The
+.NET 11 PGO build compiles the GC with LTO, so `libcoreclr_static.a` contains LLVM bitcode,
+and linking it needs an LLVM at least as new as the container's.
 
 The upstream workflow takes the containers of a new runtime from
 `src/runtime/eng/pipelines/common/templates/pipeline-with-resources.yml` at its VMR

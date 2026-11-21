@@ -86,28 +86,30 @@ CI uses separate jobs and `avalonia-host-skia4-windows` / `avalonia-host-skia4-l
 `avalonia-host-skia4-linux-musl-<arch>` artifacts, then uploads the seven Skia 4 packages
 as `nuget-avalonia-apphost-skia4`.
 
-## Alpine (linux-musl) templates
+## Linux templates
 
-The musl templates link in the `link` stage of
-[`native/hostlibs/linux-musl.Dockerfile`](../../native/hostlibs/linux-musl.Dockerfile), built
-from the official linux-musl build container of the newest runtime in
-`native/hostlibs/versions.json`. The PGO build of the .NET 11 GC is compiled with LTO, so its
-HostLibs contain LLVM bitcode that only an LLVM at least as new as the compiling one can link;
-the container of the newest runtime has that LLVM. The stage adds fontconfig to the Alpine rootfs
-of the container, from the package checksums of the SkiaSharp musl images, because the templates
-link `-lfontconfig`.
+The Linux templates link in the `link` stage of
+[`native/hostlibs/linux.Dockerfile`](../../native/hostlibs/linux.Dockerfile), built
+from the official build container of the newest runtime in `native/hostlibs/versions.json` for
+the RID. The PGO build of the .NET 11 GC is compiled with LTO, so its HostLibs contain LLVM
+bitcode that only an LLVM at least as new as the compiling one can link; the container of the
+newest runtime has that LLVM. The stage adds fontconfig to the rootfs of the container, from the
+package checksums of the SkiaSharp image of the RID, because the templates link `-lfontconfig`.
 
 ```sh
-docker build -f native/hostlibs/linux-musl.Dockerfile --target link --build-arg IMAGE=<container> --build-arg ARCH=arm64 -t hostforge-musl-link .
-docker run --rm -v "$PWD:/work" -v "$DOTNET_ROOT:$DOTNET_ROOT:ro" -e DOTNET_ROOT hostforge-musl-link \
+docker build -f native/hostlibs/linux.Dockerfile --target link --build-arg IMAGE=<container> --build-arg RID=linux-x64 -t hostforge-link .
+docker run --rm -v "$PWD:/work" -v "$DOTNET_ROOT:$DOTNET_ROOT:ro" -e DOTNET_ROOT hostforge-link \
+    bash -c 'PATH="$DOTNET_ROOT:$PATH" task link-avalonia TARGET_OS=linux SYSROOT=/crossrootfs/x64'
+docker build -f native/hostlibs/linux.Dockerfile --target link --build-arg IMAGE=<container> --build-arg RID=linux-musl-arm64 -t hostforge-link .
+docker run --rm -v "$PWD:/work" -v "$DOTNET_ROOT:$DOTNET_ROOT:ro" -e DOTNET_ROOT hostforge-link \
     bash -c 'PATH="$DOTNET_ROOT:$PATH" task link-avalonia TARGET_OS=linux-musl RID=linux-musl-arm64 SYSROOT=/crossrootfs/arm64'
 ```
 
-`<container>` is the `linux-musl-arm64` (or `linux-musl-x64`) entry of the newest runtime.
-Each musl RID needs its own sysroot, so `TARGET_OS=linux-musl` links one `RID` at a time.
-Run `task avalonia-test` in an Alpine container of the same architecture with `fontconfig`,
-`binutils` and the .NET 10 runtime installed; CI uses the Alpine .NET SDK image of
-`test-skia-linux-cross`.
+`<container>` is the entry of the newest runtime for `RID`. Each musl RID needs its own sysroot,
+so `TARGET_OS=linux-musl` links one `RID` at a time. Run `task avalonia-test` for `linux-x64` on a
+glibc system with `binutils` and the .NET 10 and 11 runtimes, and for a musl RID in an Alpine
+container of the same architecture with `fontconfig`, `binutils` and the .NET 10 runtime installed;
+CI uses the Alpine .NET SDK image of `test-skia-linux-cross`.
 
 ## Local commands
 
@@ -115,8 +117,9 @@ Link one OS:
 
 ```powershell
 task link-avalonia TARGET_OS=windows
-task link-avalonia TARGET_OS=linux SYSROOT=build/rootfs/x64
 ```
+
+Link Linux in the containers of [Linux templates](#linux-templates).
 
 Select Skia 4 with the same option for every step (`<skia4>` is the Skia 4 version in
 `native/skiasharp/versions.json`):
@@ -127,8 +130,8 @@ task avalonia-test SKIASHARP_VERSION=<skia4>
 task pack-avalonia SKIASHARP_VERSION=<skia4>
 ```
 
-Before packing all RIDs, link Linux in its native environment with
-`task link-avalonia TARGET_OS=linux SKIASHARP_VERSION=<skia4> SYSROOT=build/rootfs/x64`.
+Before packing all RIDs, link the Linux RIDs with `SKIASHARP_VERSION=<skia4>` in the containers of
+[Linux templates](#linux-templates).
 
 Pack one RID (requires linked templates for that RID):
 

@@ -11,7 +11,6 @@ from conan.tools.env import Environment
 from conan.tools.files import rmdir, save
 from conan.tools.microsoft import VCVars
 from conan.tools.scm import Git
-from conan.tools.system.package_manager import Apt
 
 # Shipped runtimes are built from the VMR, which can carry fixes (including
 # security fixes) that dotnet/runtime tags do not contain yet. Each entry is the
@@ -71,31 +70,6 @@ class HostLibsConan(ConanFile):
     def _rid(self):
         prefix = "win" if self.settings.os == "Windows" else "linux-musl" if self._musl else "linux"
         return f"{prefix}-{self._target_arch}"
-
-    def system_requirements(self):
-        # musl builds run in the upstream cross image, which already has the Runtime's build dependencies.
-        if self.settings.os == "Linux" and not self._musl:
-            Apt(self).install(
-                [
-                    "build-essential",
-                    "gettext",
-                    "locales",
-                    "cmake",
-                    "llvm",
-                    "clang",
-                    "lld",
-                    "lldb",
-                    "liblldb-dev",
-                    "libunwind8-dev",
-                    "libicu-dev",
-                    "liblttng-ust-dev",
-                    "libssl-dev",
-                    "libkrb5-dev",
-                    "pigz",
-                    "cpio",
-                ],
-                update=True,
-            )
 
     def source(self):
         source = VERSIONS[str(self.version)]

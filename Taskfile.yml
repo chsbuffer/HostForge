@@ -64,8 +64,6 @@ tasks:
         -pr:b=native/hostlibs/profiles/linux-x64
         -pr:h=native/hostlibs/profiles/{{.TARGET_RID}}
         -c tools.build:jobs={{.JOBS}}
-        -c tools.system.package_manager:mode=install
-        -c tools.system.package_manager:sudo=True
         --deployer=native/hostlibs/deploy.py
         --deployer-folder=artifacts/hostlibs
 
@@ -264,11 +262,8 @@ tasks:
 
   avalonia-test:
     desc: Run the Avalonia AppHost integration tests
-    vars:
-      SYSROOT: '{{.SYSROOT | default .ROOTFS_DIR | default ""}}'
     env:
       SkiaSharpVersion: '{{.SKIASHARP_VERSION}}'
-      ROOTFS_DIR: "{{.SYSROOT}}"
     cmds:
       - >-
         dotnet test

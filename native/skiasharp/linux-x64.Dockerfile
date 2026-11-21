@@ -8,15 +8,13 @@ RUN test "$(readlink /crossrootfs/x64/lib)" = /crossrootfs/x64/usr/lib && \
 RUN curl -fLsS https://github.com/go-task/task/releases/download/v3.52.0/task_linux_amd64.tar.gz \
     | tar xz -C /usr/local/bin task
 # Match fontconfig to the rootfs, using the upstream v4.153.1 checksums.
-RUN mkdir /fontconfig && cd /fontconfig && \
-    for pair in \
-      'libfontconfig1-dev ce4d63624128b06eef6ea0f2d04f0baa1cba22d7325fcbcce48ce5cbe2533b1a' \
-      'libfontconfig1 647bb8f09e751a39d488b0260db6015ce1118c56114cc771dd5bf907180f0c80'; do \
-      read -r package checksum <<< "$pair"; \
-      curl -fLsS "https://archive.ubuntu.com/ubuntu/pool/main/f/fontconfig/${package}_2.12.6-0ubuntu2_amd64.deb" -o package.deb; \
-      echo "$checksum  package.deb" | sha256sum -c -; \
-      ar x package.deb; tar xf data.tar.* -C /crossrootfs/x64; \
-      rm -f package.deb data.tar.* control.tar.* debian-binary; \
-    done && rmdir /fontconfig
+COPY native/skiasharp/fontconfig-ubuntu18.04-amd64.sha256 /fontconfig/packages.sha256
+RUN cd /fontconfig; \
+    while read -r checksum package; do \
+      curl -fLsS "https://archive.ubuntu.com/ubuntu/pool/main/f/fontconfig/$package" -o "$package"; \
+      echo "$checksum  $package" | sha256sum -c -; \
+      ar x "$package"; tar xf data.tar.* -C /crossrootfs/x64; \
+      rm -f "$package" data.tar.* control.tar.* debian-binary; \
+    done < packages.sha256; rm packages.sha256; cd /; rmdir /fontconfig
 ENV UV_PYTHON=3.11 CONAN_HOME=/work/build/conan
 WORKDIR /work

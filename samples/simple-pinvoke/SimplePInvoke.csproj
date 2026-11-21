@@ -31,8 +31,13 @@
     </NativeLibrary>
   </ItemGroup>
 
+  <!-- Unix systems may install Python only as python3 (PEP 394). -->
   <Target Name="BuildNativeLib" BeforeTargets="CoreCompile">
     <Exec Command="python build.py"
+          Condition="$([MSBuild]::IsOSPlatform('Windows'))"
+          WorkingDirectory="$(ProjectDir)NativeLib" />
+    <Exec Command="python3 build.py"
+          Condition="!$([MSBuild]::IsOSPlatform('Windows'))"
           WorkingDirectory="$(ProjectDir)NativeLib" />
   </Target>
 
