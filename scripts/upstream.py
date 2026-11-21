@@ -27,7 +27,7 @@
                             report only, like newer majors.
             skiasharp-<N>   one per pinned SkiaSharp line: the newest release of a newer milestone of N.x; newer
                             majors are report only.
-            tools           Task, conan and ninja (the == pins in pyproject.toml), TUnit and
+            tools           Task, uv, conan and ninja (the == pins in pyproject.toml), TUnit and
                             Microsoft.Build.Locator. Microsoft.Build is not tracked: it is referenced without its
                             runtime assets, which come from the SDK, so it follows the SDK.
             llvm            the LLVM release installed by .github/actions/install-llvm; this changes the compiled
@@ -41,6 +41,10 @@
           code 2; with --dry-run it describes the files that would change. Exit code 2: the group could not
           be computed (also when a .NET lookup or the security verdict fails); nothing was written.
   groups  Print the apply groups, one per line.
+  build-args
+          Print the docker build arguments of the Linux build images: the pinned versions of the tools they
+          install (TASK_VERSION, UV_VERSION). The Dockerfiles take them as arguments, so a tool update
+          changes no Dockerfile and no native cache key.
 
 Taskfile: task upstream-lock|upstream-check|upstream-apply -- <arguments>. GITHUB_TOKEN, when set, is sent to
 api.github.com only.
@@ -866,10 +870,11 @@ def llvm_release(client):
 
 
 class Tool:
-    """A pinned tool version: `pattern` captures (prefix, version, suffix) exactly once in `path`."""
+    """A pinned tool version: `pattern` captures (prefix, version, suffix) exactly once in `path`. The Linux build
+    images install the tools that have a `build_arg`, the docker build argument of their version."""
 
-    def __init__(self, name, path, pattern, latest):
-        self.name, self.path, self.pattern, self.latest = name, path, pattern, latest
+    def __init__(self, name, path, pattern, latest, build_arg=None):
+        self.name, self.path, self.pattern, self.latest, self.build_arg = name, path, pattern, latest, build_arg
 
     def pin(self, root, required=True):
         file = Path(root) / self.path
@@ -884,9 +889,12 @@ class Tool:
         return _substitute(text, self.pattern, rf"\g<1>{version}\g<3>", self.path)
 
 
+ACTION_VERSION = r"^([ \t]*version:[ \t]*v?)([\w.]+)([ \t]*)$"
 TOOLS = (
-    Tool("Task", ".github/actions/install-task/action.yml", r"^([ \t]*version:[ \t]*v?)([\w.]+)([ \t]*)$",
-         lambda client: _latest_github_release(client, "go-task/task", "v")),
+    Tool("Task", ".github/actions/install-task/action.yml", ACTION_VERSION,
+         lambda client: _latest_github_release(client, "go-task/task", "v"), build_arg="TASK_VERSION"),
+    Tool("uv", ".github/actions/install-uv/action.yml", ACTION_VERSION,
+         lambda client: _latest_github_release(client, "astral-sh/uv", ""), build_arg="UV_VERSION"),
     Tool("conan", PYPROJECT, r'("conan==)([^"]+)(")', lambda client: pypi_latest(client, "conan")),
     Tool("ninja", PYPROJECT, r'("ninja==)([^"]+)(")', lambda client: pypi_latest(client, "ninja")),
     Tool("TUnit", "tests/Directory.Build.targets", r"(<TUnitVersion>)([^<]+)(</TUnitVersion>)",
@@ -2143,6 +2151,17 @@ def command_groups(args, client=None):
     return 0
 
 
+def build_args(root=ROOT):
+    """The docker build arguments of the tools that the Linux build images install."""
+    return [f"--build-arg {tool.build_arg}={_checked(tool.pin(root), _VERSION, f'{tool.name} pin')}"
+            for tool in TOOLS if tool.build_arg]
+
+
+def command_build_args(args, client=None):
+    print(" ".join(build_args(args.root)))
+    return 0
+
+
 def main(argv=None, client=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--root", default=str(ROOT), help=argparse.SUPPRESS)
@@ -2174,6 +2193,7 @@ def main(argv=None, client=None):
                        help="write a JSON summary (changed files, title, body, security) for a pull request")
     apply.add_argument("--dry-run", action="store_true", help="print the planned changes without writing files")
     commands.add_parser("groups", help="print the apply groups, one per line")
+    commands.add_parser("build-args", help="print the docker build arguments of the Linux build images (offline)")
     args = parser.parse_args(argv)
     if args.command == "lock" and args.base and not args.check:
         parser.error("lock --base requires --check")
@@ -2181,7 +2201,7 @@ def main(argv=None, client=None):
         parser.error("--dotnet, --avalonia, --skiasharp and --angle select parts of the inputs group only")
     client = client or Client(token=os.environ.get("GITHUB_TOKEN") or None)
     handlers = {"lock": command_lock, "check": command_check, "groups": command_groups,
-                "apply": command_apply}
+                "apply": command_apply, "build-args": command_build_args}
     # Exit codes: 0 success, 1 a finding (the lock rules, or the security verdict of check --fail-on-security),
     # 2 the command could not complete. Unexpected exceptions are failures to complete, never findings.
     try:

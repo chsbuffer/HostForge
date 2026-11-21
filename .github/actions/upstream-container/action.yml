@@ -26,6 +26,7 @@ runs:
         container=$(python3 scripts/repo_versions.py --get hostlibs-sources | jq -er --arg version "$VERSION" --arg rid "$RID" '
           if $version == "" then to_entries | max_by(.key | split(".") | map(tonumber)) | .value else .[$version] end
           | .containers[$rid]')
-        args=(--target "$STAGE" --build-arg IMAGE="$container")
+        read -ra args <<< "$(python3 scripts/upstream.py build-args)"
+        args+=(--target "$STAGE" --build-arg IMAGE="$container")
         if [ "$STAGE" = link ]; then args+=(--build-arg RID="$RID"); fi
         docker build -f native/hostlibs/linux.Dockerfile "${args[@]}" -t "$TAG" .

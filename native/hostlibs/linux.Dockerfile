@@ -1,14 +1,21 @@
 # IMAGE is the official Linux build container of a runtime and RID (native/hostlibs/versions.json): an Azure Linux
 # amd64 host with the upstream LLVM and the rootfs of the target in /crossrootfs/<arch>, Ubuntu for glibc and
 # Alpine for musl.
+# Task and uv drive the build without changing its output. Their versions are build arguments from their
+# pins (python scripts/upstream.py build-args), so a tool update changes neither this file nor the native
+# cache keys.
 ARG IMAGE
+ARG UV_VERSION
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
 # HostLibs build: the upstream container with the tools that run Taskfile.yml.
 FROM ${IMAGE} AS build
-COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /uvx /usr/local/bin/
+ARG TASK_VERSION
+COPY --from=uv /uv /uvx /usr/local/bin/
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
-RUN curl -fLsS --retry 3 --retry-all-errors --connect-timeout 30 --max-time 180 \
-      https://github.com/go-task/task/releases/download/v3.52.0/task_linux_amd64.tar.gz \
+RUN : "${TASK_VERSION:?pass the arguments of python scripts/upstream.py build-args}"; \
+    curl -fLsS --retry 3 --retry-all-errors --connect-timeout 30 --max-time 180 \
+      "https://github.com/go-task/task/releases/download/v$TASK_VERSION/task_linux_amd64.tar.gz" \
     | tar xz -C /usr/local/bin task
 ENV UV_PYTHON=3.11 CONAN_HOME=/work/build/conan
 WORKDIR /work

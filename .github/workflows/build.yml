@@ -37,7 +37,7 @@ jobs:
           dotnet-version: |
             10.0.x
             11.0.x
-      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: ./.github/actions/install-uv
       - uses: ./.github/actions/install-task
       - name: Read pinned versions
         id: versions
@@ -222,7 +222,7 @@ jobs:
 
       - name: Install uv
         if: steps.cache_angle.outputs.cache-hit != 'true'
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: ./.github/actions/install-uv
 
       - name: Install Task
         if: steps.cache_angle.outputs.cache-hit != 'true'
@@ -263,7 +263,7 @@ jobs:
           path: artifacts/skiasharp/${{ matrix.version }}/${{ matrix.rid }}
           compiler-cache-size: 128M
           compiler: sccache
-      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: ./.github/actions/install-uv
         if: steps.native-cache.outputs.cache-hit != 'true'
       - uses: ./.github/actions/install-task
         if: steps.native-cache.outputs.cache-hit != 'true'
@@ -348,7 +348,7 @@ jobs:
           key: ${{ steps.native-cache.outputs.rootfs-key }}
       - name: Prepare pinned LLVM and target sysroot
         if: steps.native-cache.outputs.cache-hit != 'true' || steps.rootfs-cache.outputs.cache-hit != 'true'
-        run: docker build -f native/skiasharp/linux-x64.Dockerfile -t hostforge-skia .
+        run: docker build $(python3 scripts/upstream.py build-args) -f native/skiasharp/linux-x64.Dockerfile -t hostforge-skia .
       - name: Build static SkiaSharp and HarfBuzzSharp
         if: steps.native-cache.outputs.cache-hit != 'true'
         env:
@@ -432,7 +432,7 @@ jobs:
           key: ${{ steps.native-cache.outputs.rootfs-key }}
       - name: Prepare pinned amd64 cross compiler and target sysroot
         if: steps.native-cache.outputs.cache-hit != 'true' || steps.rootfs-cache.outputs.cache-hit != 'true'
-        run: docker build -f "native/skiasharp/$TARGET_RID.Dockerfile" -t hostforge-skia-cross .
+        run: docker build $(python3 scripts/upstream.py build-args) -f "native/skiasharp/$TARGET_RID.Dockerfile" -t hostforge-skia-cross .
       - name: Cross compile static SkiaSharp and HarfBuzzSharp
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: >-
@@ -547,7 +547,7 @@ jobs:
           path: artifacts/skiasharp/${{ matrix.version }}/${{ matrix.target.rid }}
           compiler-cache-size: 64M
           compiler: sccache
-      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: ./.github/actions/install-uv
         if: steps.native-cache.outputs.cache-hit != 'true'
       - uses: ./.github/actions/install-task
         if: steps.native-cache.outputs.cache-hit != 'true'
@@ -772,7 +772,7 @@ jobs:
 
       - name: Install uv
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: ./.github/actions/install-uv
 
       - name: Install Task
         if: steps.cache_hostlibs.outputs.cache-hit != 'true'

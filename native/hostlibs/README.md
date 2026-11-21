@@ -31,10 +31,10 @@ RID, its CMake definitions and the PGO data as in the official builds. Every Lin
 builds in the official build container of the runtime and RID, which `versions.json`
 records under `containers`, against the rootfs of that container (`SYSROOT`, passed to
 `build.sh --cross` as `ROOTFS_DIR`); the `build` stage of [`linux.Dockerfile`](linux.Dockerfile)
-adds the tools that run Task:
+adds the tools that run Task, at the versions of their pins (`python scripts/upstream.py build-args`):
 
 ```sh
-docker build -f native/hostlibs/linux.Dockerfile --target build --build-arg IMAGE=<container> -t hostforge-hostlibs .
+docker build $(python scripts/upstream.py build-args) -f native/hostlibs/linux.Dockerfile --target build --build-arg IMAGE=<container> -t hostforge-hostlibs .
 docker run --rm -v "$PWD:/work" hostforge-hostlibs task build-hostlibs RID=linux-x64 HOSTLIBS_VERSION=<runtime version> SYSROOT=/crossrootfs/x64
 ```
 

@@ -341,6 +341,7 @@ def fake_upstream(root, dotnet=False, security=True, mismatched_vmr=False, avalo
     pins = tool_pins(root)
     latest = {name: next_patch(version) if tools else version for name, version in pins.items()}
     client.add_json(f"{upstream.GITHUB_API}/repos/go-task/task/releases/latest", {"tag_name": "v" + latest["Task"]})
+    client.add_json(f"{upstream.GITHUB_API}/repos/astral-sh/uv/releases/latest", {"tag_name": latest["uv"]})
     for name in ("conan", "ninja"):
         # A newer release candidate and a newer yanked release are not candidates.
         client.add_json(f"{upstream.PYPI}/{name}/json", {"info": {"version": latest[name]}, "releases": {
@@ -1107,13 +1108,14 @@ class ToolsTests(UpstreamTestCase):
             self.assertEqual(next_patch(pins[tool.name]), after[tool.name], tool.name)
         self.assertEqual(pins["LLVM"], after["LLVM"])
         self.assertEqual("version = 1\n", lock.read_text(encoding="utf-8"))
-        self.assertEqual([".github/actions/install-task/action.yml", "pyproject.toml", "tests/Directory.Build.targets",
+        self.assertEqual([".github/actions/install-task/action.yml", ".github/actions/install-uv/action.yml",
+                          "pyproject.toml", "tests/Directory.Build.targets",
                           "tests/HostForge.TestInfra/HostForge.TestInfra.csproj"], metadata["changed"])
         self.assertIn(msbuild.group(0), (self.root / "tests/HostForge.TestInfra/HostForge.TestInfra.csproj")
                       .read_text(encoding="utf-8"), "Microsoft.Build follows the SDK")
         self.assertEqual(before, package_inputs.compute(self.root))
-        self.assertEqual("build(deps): update 5 tools", metadata["title"], "too long with all names")
-        self.assertEqual(5, len(metadata["updates"]))
+        self.assertEqual("build(deps): update 6 tools", metadata["title"], "too long with all names")
+        self.assertEqual(6, len(metadata["updates"]))
         self.assertIsNone(metadata["security"])
 
     def test_failed_lookup_skips_only_that_tool(self):
@@ -1138,6 +1140,31 @@ class ToolsTests(UpstreamTestCase):
         code, _, stderr, metadata = self.apply(fake_upstream(self.root), "--group", "tools")
         self.assertEqual(0, code, stderr)
         self.assertEqual(([], ""), (metadata["changed"], metadata["target"]))
+
+    def test_build_args_are_the_pins_of_the_image_tools(self):
+        pins = tool_pins(self.root)
+        expected = f"--build-arg TASK_VERSION={pins['Task']} --build-arg UV_VERSION={pins['uv']}\n"
+        self.assertEqual((0, expected, ""), self.run_main(None, "build-args"))
+        code, _, _, _ = self.apply(fake_upstream(self.root, tools=True), "--group", "tools")
+        self.assertEqual(0, code)
+        self.assertIn(f"TASK_VERSION={next_patch(pins['Task'])} ", self.run_main(None, "build-args")[1])
+
+
+class ImageToolTests(unittest.TestCase):
+    """The Linux build images install Task and uv at the versions of the build arguments, never at a literal one."""
+
+    def test_dockerfiles_take_the_tool_versions_as_build_arguments(self):
+        build_args = {tool.build_arg for tool in upstream.TOOLS if tool.build_arg}
+        dockerfiles = sorted(ROOT.glob("native/*/*.Dockerfile"))
+        self.assertTrue(dockerfiles)
+        for dockerfile in dockerfiles:
+            with self.subTest(dockerfile=dockerfile.relative_to(ROOT).as_posix()):
+                text = dockerfile.read_text(encoding="utf-8")
+                self.assertEqual([], re.findall(r"go-task/task/releases/download/v\d[^/]*|astral-sh/uv:\d\S*", text))
+                declared = set(re.findall(r"^ARG (\w+_VERSION)\b", text, re.M))
+                self.assertEqual(build_args, declared)
+                self.assertIn("releases/download/v$TASK_VERSION/", text)
+                self.assertIn("FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv", text)
 
 
 class RepositoryRecordTests(unittest.TestCase):

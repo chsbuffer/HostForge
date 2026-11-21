@@ -101,6 +101,7 @@ GROUP_FILES = {
     "avalonia-minor": PACKAGE_INPUT_FILES,
     "tools": frozenset({
         ".github/actions/install-task/action.yml",
+        ".github/actions/install-uv/action.yml",
         "pyproject.toml",
         "tests/Directory.Build.targets",
         "tests/HostForge.TestInfra/HostForge.TestInfra.csproj",

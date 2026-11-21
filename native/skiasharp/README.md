@@ -24,10 +24,12 @@ task pack-skia-static RID=win-x64
 On macOS, use `RID=osx-x64` or `RID=osx-arm64` with the same tasks.
 
 For Linux, build the matching cross image on an amd64 host. The sysroot directory
-is `x64` or `arm64`; the image supplies LLVM, target C++ runtimes and fontconfig.
+is `x64` or `arm64`; the image supplies LLVM, target C++ runtimes and fontconfig. The
+versions of Task and uv in the image are build arguments from their pins, which
+`python scripts/upstream.py build-args` prints.
 
 ```sh
-docker build -f native/skiasharp/linux-musl-arm64.Dockerfile -t hostforge-skia .
+docker build $(python scripts/upstream.py build-args) -f native/skiasharp/linux-musl-arm64.Dockerfile -t hostforge-skia .
 docker run --rm -v "$PWD:/work" hostforge-skia task build-skiasharp RID=linux-musl-arm64 SKIASHARP_VERSION=<version> SYSROOT=/crossrootfs/arm64 JOBS=4
 task pack-skia-static RID=linux-musl-arm64 SKIASHARP_VERSION=<version>
 ```

@@ -17,7 +17,7 @@
 | [`native/angle/conandata.yml`](native/angle/conandata.yml) | ANGLE 的分支（仅记录）、固定 commit，以及 depot_tools commit |
 | [`native/angle/conanfile.py`](native/angle/conanfile.py) | recipe 的 `version`，必须等于 `AngleVersion` |
 
-包版本另见 [Native NuGet 修复版本](#native-nuget-修复版本) 与 [`AppHostStatic.csproj`](src/package-apphost-static/AppHostStatic.csproj) 的 `<Version>`。工具链版本分别固定在 [`install-llvm`](.github/actions/install-llvm/action.yml)、[`install-task`](.github/actions/install-task/action.yml)、[`pyproject.toml`](pyproject.toml)（conan、ninja）和 [`tests/Directory.Build.targets`](tests/Directory.Build.targets)（`TUnitVersion`，所有测试工程共用）。
+包版本另见 [Native NuGet 修复版本](#native-nuget-修复版本) 与 [`AppHostStatic.csproj`](src/package-apphost-static/AppHostStatic.csproj) 的 `<Version>`。工具链版本分别固定在 [`install-llvm`](.github/actions/install-llvm/action.yml)、[`install-task`](.github/actions/install-task/action.yml)、[`install-uv`](.github/actions/install-uv/action.yml)、[`pyproject.toml`](pyproject.toml)（conan、ninja）和 [`tests/Directory.Build.targets`](tests/Directory.Build.targets)（`TUnitVersion`，所有测试工程共用）。Linux 构建镜像安装的 Task 与 uv 取前两个固定版本，以 docker 构建参数传入（`python scripts/upstream.py build-args` 输出这些参数），所以工具更新不改变 Dockerfile，也不改变原生库缓存键。
 
 其他位置不重复版本号，而是读取规范文件：
 
@@ -174,7 +174,7 @@ HostLibs / AppHost 模板支持 `linux-x64`、`linux-musl-x64`、`linux-musl-arm
 每个 RID 在该运行时与 RID 的官方构建容器（`versions.json` 的 `containers`）中交叉编译，工具链、目标 rootfs 与 PGO 数据均与官方 .NET 构建相同。[`linux.Dockerfile`](native/hostlibs/linux.Dockerfile) 的 `build` 阶段只在容器上加入运行 Task 的工具：
 
 ```bash
-docker build -f native/hostlibs/linux.Dockerfile --target build --build-arg IMAGE=<containers 中的镜像> -t hostforge-hostlibs .
+docker build $(python scripts/upstream.py build-args) -f native/hostlibs/linux.Dockerfile --target build --build-arg IMAGE=<containers 中的镜像> -t hostforge-hostlibs .
 docker run --rm -v "$PWD:/work" hostforge-hostlibs task build-hostlibs RID=linux-x64 HOSTLIBS_VERSION=<运行时版本> SYSROOT=/crossrootfs/x64
 ```
 
@@ -195,7 +195,7 @@ task matrix-nativeaot
 其它 Linux RID 使用对应的 amd64 cross 镜像；`SYSROOT` 的末级目录为 `x64` 或 `arm64`，所有 Skia 编译均在 amd64 宿主执行。例如：
 
 ```bash
-docker build -f native/skiasharp/linux-musl-arm64.Dockerfile -t hostforge-skia .
+docker build $(python scripts/upstream.py build-args) -f native/skiasharp/linux-musl-arm64.Dockerfile -t hostforge-skia .
 docker run --rm -v "$PWD:/work" hostforge-skia task build-skiasharp RID=linux-musl-arm64 SKIASHARP_VERSION=<版本> SYSROOT=/crossrootfs/arm64 JOBS=4
 task pack-skia-static RID=linux-musl-arm64 SKIASHARP_VERSION=<版本>
 ```
@@ -207,7 +207,7 @@ task pack-skia-static RID=linux-musl-arm64 SKIASHARP_VERSION=<版本>
 Linux 模板在最新运行时的官方构建容器中链接（`linux.Dockerfile` 的 `link` 阶段，rootfs 中加入 fontconfig），该容器的 LLVM 能链接每个运行时的 HostLibs：
 
 ```bash
-docker build -f native/hostlibs/linux.Dockerfile --target link --build-arg IMAGE=<最新运行时的 linux-x64 容器> --build-arg RID=linux-x64 -t hostforge-link .
+docker build $(python scripts/upstream.py build-args) -f native/hostlibs/linux.Dockerfile --target link --build-arg IMAGE=<最新运行时的 linux-x64 容器> --build-arg RID=linux-x64 -t hostforge-link .
 docker run --rm -v "$PWD:/work" -v "$DOTNET_ROOT:$DOTNET_ROOT:ro" -e DOTNET_ROOT hostforge-link \
     bash -c 'PATH="$DOTNET_ROOT:$PATH" task link-avalonia TARGET_OS=linux SYSROOT=/crossrootfs/x64'
 task avalonia-test
@@ -505,7 +505,7 @@ native RID 包及聚合包统一使用上游版本的前三段加第四段修复
 | `inputs` | .NET 运行时补丁版、Avalonia 补丁版、SkiaSharp 同里程碑补丁版、固定 ANGLE 分支上的新提交 |
 | `avalonia-minor` | 同主版本的新 Avalonia minor（它声明的 SkiaSharp、HarfBuzzSharp、ANGLE 版本不变时） |
 | `skiasharp-<major>` | 同主版本的新 SkiaSharp 里程碑，每条版本线一组 |
-| `tools` | Task、conan、ninja、TUnit、Microsoft.Build.Locator |
+| `tools` | Task、uv、conan、ninja、TUnit、Microsoft.Build.Locator |
 | `llvm` | [`install-llvm`](.github/actions/install-llvm/action.yml) 的 LLVM 版本（新版本仍提供该 action 使用的安装包时） |
 
 只报告、手动处理：新主版本、依赖有变化的新 Avalonia、ANGLE 换分支。不跟踪：Microsoft.Build（版本随 SDK）、runner 镜像。

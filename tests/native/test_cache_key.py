@@ -14,6 +14,9 @@ spec.loader.exec_module(cache_key)
 spec = importlib.util.spec_from_file_location("repo_versions", ROOT / "scripts/repo_versions.py")
 repo_versions = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(repo_versions)
+spec = importlib.util.spec_from_file_location("upstream", ROOT / "scripts/upstream.py")
+upstream = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(upstream)
 VERSIONS = repo_versions.load()
 # A second supported version of each multi-version component, so tests can change one without the other.
 SKIA = VERSIONS["skiasharp"]
@@ -30,7 +33,8 @@ class NativeCacheKeyTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         shutil.copytree(ROOT / "native", self.root / "native", ignore=shutil.ignore_patterns("__pycache__"))
-        for name in ("Taskfile.yml", "pyproject.toml", "scripts/libHarfBuzzSharp.vcxproj.in"):
+        image_tools = [tool.path for tool in upstream.TOOLS if tool.build_arg]
+        for name in ("Taskfile.yml", "pyproject.toml", "scripts/libHarfBuzzSharp.vcxproj.in", *image_tools):
             destination = self.root / name
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, destination)
@@ -115,6 +119,23 @@ class NativeCacheKeyTests(unittest.TestCase):
                 after = keys()
                 self.assertNotEqual(before.pop(changed), after.pop(changed))
                 self.assertEqual(before, after)
+
+    def test_image_tool_update_does_not_invalidate(self):
+        linux = [("skiasharp", version, rid) for version in VERSIONS["skiasharp-versions"]
+                 for rid in ("linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64")]
+        linux += [("hostlibs", HOSTLIBS, rid) for rid in HOSTLIBS_LINUX_RIDS]
+
+        def keys():
+            return {target: cache_key.fingerprint(self.root, target[0], target[1], target[2], "compiler-1")
+                    for target in linux}
+
+        before = keys()
+        for tool in upstream.TOOLS:
+            if tool.build_arg:
+                file = self.root / tool.path
+                file.write_text(tool.set(file.read_text(encoding="utf-8"), "99.0.0"), encoding="utf-8")
+                self.assertEqual("99.0.0", tool.pin(self.root))
+        self.assertEqual(before, keys())
 
     def test_toolchain_and_relevant_task_invalidate(self):
         original = self.key()
