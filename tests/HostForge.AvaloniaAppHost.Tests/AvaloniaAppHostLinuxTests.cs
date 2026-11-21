@@ -152,6 +152,26 @@ public class AvaloniaAppHostLinuxTests
         }
     }
 
+    [Test]
+    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
+    public async Task LinkedSingleFileHost_ExportsTheDiagnosticsSymbols(string targetFramework)
+    {
+        string path = Path.Combine(
+            RepoContext.RepoRoot, "artifacts", "avalonia-host", RepoContext.TargetAvaloniaVersion, targetFramework, Rid,
+            "singlefilehost");
+        AssertEx.FileExists(path);
+        CommandResult readelf = await CommandRunner.RunAsync("readelf", $"--dyn-syms -W \"{path}\"", Path.GetDirectoryName(path)!);
+        AssertEx.Success(readelf, $"dynamic symbols of {Rid} singlefilehost ({targetFramework})");
+
+        // The exports of the upstream singlefilehost, defined (not UND) in the dynamic symbol table.
+        foreach (string export in new[] { "DotNetRuntimeInfo", "g_dacTable", "MetaDataGetDispenser", "DotNetRuntimeContractDescriptor" })
+        {
+            if (!Regex.IsMatch(readelf.StandardOutput, $@"\sDEFAULT\s+\d+\s+{export}(@|\s|$)", RegexOptions.Multiline))
+                throw new InvalidOperationException(
+                    $"{Rid} singlefilehost ({targetFramework}) does not export {export}.{Environment.NewLine}{readelf.StandardOutput}");
+        }
+    }
+
     private static void AuditElf(string readelf, string template)
     {
         if (!Regex.IsMatch(readelf, IsArm64 ? @"Machine:\s+AArch64" : @"Machine:\s+Advanced Micro Devices X86-64"))

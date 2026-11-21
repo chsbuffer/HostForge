@@ -256,7 +256,7 @@ dotnet test --project .\tests\HostForge.StaticAppHost.Tests\HostForge.StaticAppH
 dotnet test --project .\tests\HostForge.AvaloniaAppHost.Tests\HostForge.AvaloniaAppHost.Tests.csproj -c Release -v:minimal
 ```
 
-Avalonia 测试包含平台特定用例：Windows 用例在非 Windows 系统跳过，Linux 用例在非 Linux 系统跳过。Linux 用例使用当前系统的 RID（可用 `HOSTFORGE_NATIVE_RID` 覆盖）：glibc 上为 `linux-x64`，Alpine 上为 `linux-musl-x64` / `linux-musl-arm64`；它们同时审计模板的 ELF 架构、解释器与 libc 依赖。
+Avalonia 测试包含平台特定用例：Windows 用例在非 Windows 系统跳过，Linux 用例在非 Linux 系统跳过。Linux 用例使用当前系统的 RID（可用 `HOSTFORGE_NATIVE_RID` 覆盖）：glibc 上为 `linux-x64`，Alpine 上为 `linux-musl-x64` / `linux-musl-arm64`；它们同时审计模板的 ELF 架构、解释器、libc 依赖，以及单文件宿主是否导出上游 singlefilehost 的诊断符号。
 
 ## 产物布局
 
