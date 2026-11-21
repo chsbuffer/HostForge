@@ -14,7 +14,7 @@ package alongside Avalonia; managed graphics dependencies are selected automatic
 ```
 
 Publish with an explicit RID, for example `dotnet publish -c Release -r linux-x64`.
-Use version `4.156.1` for SkiaSharp 4. A single architecture can instead reference
+Use version `4.157.0` for SkiaSharp 4. A single architecture can instead reference
 `ChsBuffer.SkiaSharp.Static.<RID>`.
 
 Both versions support `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`,
@@ -23,7 +23,7 @@ Both versions support `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`,
 | Static package | Minimum managed SkiaSharp | Minimum managed HarfBuzzSharp |
 | --- | --- | --- |
 | 3.119.4 | 3.119.4 | 8.3.1.5 |
-| 4.156.1 | 4.156.1 | 14.4.0.101 |
+| 4.157.0 | 4.157.0 | 14.4.0.200 |
 
 Only NativeAOT with a matching RID activates the integration. The targets add
 `NativeLibrary`, `DirectPInvoke` and system link inputs, and remove corresponding
@@ -46,5 +46,5 @@ request Vulkan API 1.3 when using SkiaSharp 4.
 
 macOS links system libc++, AppKit and the required Apple graphics frameworks.
 Metal and OpenGL are enabled. SkiaSharp 3.119.4 archives target macOS 10.13 on x64
-and 11.0 on arm64; SkiaSharp 4.156.1 archives target macOS 12.0, as upstream does.
+and 11.0 on arm64; SkiaSharp 4.157.0 archives target macOS 12.0, as upstream does.
 The final application must also satisfy .NET and Avalonia's OS requirements. ANGLE on Windows and AvaloniaNative on macOS are separate packages.

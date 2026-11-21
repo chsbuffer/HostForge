@@ -18,14 +18,14 @@ Reference `ChsBuffer.SkiaSharp.Static`, `ChsBuffer.Angle.Static` and
 ```
 
 Run `dotnet publish -c Release -r <RID>`. Change only the SkiaSharp static package
-version to `4.156.1` to use SkiaSharp 4.
+version to `4.157.0` to use SkiaSharp 4.
 
 The SkiaSharp meta package selects compatible managed SkiaSharp and HarfBuzzSharp
 versions through its RID package dependencies. No additional managed graphics
 package references are required. Only the matching RID contributes native inputs.
 ANGLE applies to Windows; Avalonia.Native applies to macOS.
 
-SkiaSharp 3.119.4 and 4.156.1 each include eight RIDs: `win-x64`, `win-arm64`,
+SkiaSharp 3.119.4 and 4.157.0 each include eight RIDs: `win-x64`, `win-arm64`,
 `linux-x64`, `linux-arm64`, `linux-musl-x64`, `linux-musl-arm64`, `osx-x64` and
 `osx-arm64`. ANGLE includes both Windows RIDs; Avalonia.Native 12.1.6 includes
 both macOS RIDs. Meta packages require the exact matching RID package versions.
