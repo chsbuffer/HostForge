@@ -451,7 +451,7 @@ job 通过 `scripts/repo_versions.py` 读取上游版本，workflow 中不写这
 
 `build.yml` 在推送到 `main` 和向 `main` 发起的 PR 上运行。PR 运行除 `publish-nuget` 外的全部 job，把包输入锁与 PR 的基准提交比对，并清理中间工件（fork 的 PR 只有只读 token，工件保留到过期）。PR 运行写入的缓存不能在 `main` 上恢复，所以 PR 改动的原生组件在合并后会重新构建。
 
-[`upstream.yml`](.github/workflows/upstream.yml) 是独立的 workflow，不在上图中，见 [上游跟踪与版本守卫](#上游跟踪与版本守卫)。
+[`upstream.yml`](.github/workflows/upstream.yml) 是独立的 workflow，不在上图中，见 [上游跟踪与版本守卫](#上游跟踪与版本守卫)。[`cleanup-pr-caches.yml`](.github/workflows/cleanup-pr-caches.yml) 在 PR 关闭时删除它写入的缓存，仓库的缓存配额留给 `main`。
 
 ## 缓存约定
 

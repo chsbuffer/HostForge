@@ -1,0 +1,23 @@
+name: cleanup-pr-caches
+
+# Caches saved by a pull request belong to refs/pull/<number>/merge, which only that pull request can restore.
+# Deleting them when it closes leaves the repository cache quota to the caches of main.
+# pull_request_target runs the workflow of the base branch with a token that can delete caches, also for pull
+# requests from forks; it checks out nothing from the pull request.
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  actions: write
+
+jobs:
+  delete-caches:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Delete the caches of the closed pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        run: gh cache delete --all --ref "$REF" --succeed-on-no-caches
