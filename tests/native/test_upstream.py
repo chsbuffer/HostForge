@@ -61,7 +61,7 @@ def nuspec_xml(package, version, dependencies=(), commit=None):
 
 class FakeClient:
     def __init__(self):
-        self.responses, self.refs, self.streams, self.requests = {}, {}, {}, []
+        self.responses, self.refs, self.streams, self.requests, self.accepts = {}, {}, {}, [], {}
 
     def add_json(self, url, value):
         self.responses[url] = json.dumps(value).encode()
@@ -73,8 +73,10 @@ class FakeClient:
     def add_ref(self, repository, ref, commit):
         self.refs.setdefault(repository, {})[ref] = commit
 
-    def get(self, url):
+    def get(self, url, accept=None):
         self.requests.append(url)
+        if accept:
+            self.accepts[url] = accept
         if url not in self.responses:
             raise upstream.NotFound(f"GET {url}: HTTP 404 Not Found")
         return self.responses[url]
@@ -89,6 +91,60 @@ class FakeClient:
     def ls_remote(self, repository, *patterns):
         refs = self.refs.get(repository, {})
         return {pattern: refs[pattern] for pattern in patterns if pattern in refs}
+
+
+# The official build containers in the runtime's pipeline resources: one pinned by digest, the others by tag only.
+# Legs whose names contain linux_x64 come first, so a test fails when another leg is taken for linux_x64.
+CONTAINER_TAGS = {"linux-x64": "azurelinux-3.0-net99.0-cross-amd64",
+                  "linux-musl-x64": "azurelinux-3.0-net99.0-cross-amd64-musl",
+                  "linux-musl-arm64": "azurelinux-3.0-net99.0-cross-arm64-musl"}
+PINNED_DIGEST = "sha256:" + "1" * 64
+MANIFESTS = {rid: f'{{"schemaVersion": 2, "config": "{rid}"}}'.encode() for rid in ("linux-x64", "linux-musl-arm64")}
+PREREQS = "mcr.microsoft.com/dotnet-buildtools/prereqs"
+PIPELINE_RESOURCES = f"""    containers:
+      SourceBuild_linux_x64:
+        image: {PREREQS}:almalinux-9-source-build-amd64
+
+      linux_x64_dev_innerloop:
+        image: {PREREQS}:ubuntu-24.04
+
+      linux_arm64:
+        image: {PREREQS}:azurelinux-3.0-net99.0-cross-arm64
+        env:
+          ROOTFS_DIR: /crossrootfs/arm64
+
+      linux_musl_x64:
+        image: {PREREQS}:{CONTAINER_TAGS["linux-musl-x64"]}@{PINNED_DIGEST}
+        env:
+          ROOTFS_DIR: /crossrootfs/x64
+
+      linux_musl_arm64:
+        image: {PREREQS}:{CONTAINER_TAGS["linux-musl-arm64"]}
+        env:
+          ROOTFS_DIR: /crossrootfs/arm64
+
+      linux_x64:
+        image: {PREREQS}:{CONTAINER_TAGS["linux-x64"]}
+        env:
+          ROOTFS_DIR: /crossrootfs/x64
+"""
+CONTAINERS = {
+    "linux-x64": f"{PREREQS}:{CONTAINER_TAGS['linux-x64']}@sha256:{hashlib.sha256(MANIFESTS['linux-x64']).hexdigest()}",
+    "linux-musl-x64": f"{PREREQS}:{CONTAINER_TAGS['linux-musl-x64']}@{PINNED_DIGEST}",
+    "linux-musl-arm64": f"{PREREQS}:{CONTAINER_TAGS['linux-musl-arm64']}@sha256:"
+                        f"{hashlib.sha256(MANIFESTS['linux-musl-arm64']).hexdigest()}",
+}
+
+
+def manifest_url(rid):
+    return f"{upstream.MCR}/v2/dotnet-buildtools/prereqs/manifests/{CONTAINER_TAGS[rid]}"
+
+
+def add_pipeline_resources(client, commit, text=PIPELINE_RESOURCES):
+    client.add_json(f"{upstream.GITHUB_API}/repos/dotnet/dotnet/contents/{upstream.VMR_PIPELINE_RESOURCES}?ref={commit}",
+                    {"type": "file", "content": base64.b64encode(text.encode()).decode()})
+    for rid, manifest in MANIFESTS.items():
+        client.responses[manifest_url(rid)] = manifest
 
 
 def release(runtime, sdk, security=False, cves=()):
@@ -195,6 +251,7 @@ def fake_upstream(root, dotnet=False, security=True, mismatched_vmr=False, avalo
             client.add_ref(upstream.VMR, f"refs/tags/v{sdk}^{{}}", fake_commit(sdk))
             client.add_nuspec("Microsoft.NETCore.App.Ref", new,
                               commit=fake_commit("other") if mismatched_vmr else fake_commit(sdk))
+            add_pipeline_resources(client, fake_commit(sdk))
         url = f"https://example.invalid/release-metadata/{channel}/releases.json"
         index.append({"channel-version": channel, "releases.json": url, "eol-date": "2099-01-01",
                       "support-phase": "eol" if channel in eol else "active"})
@@ -284,6 +341,7 @@ def fake_upstream(root, dotnet=False, security=True, mismatched_vmr=False, avalo
     pins = tool_pins(root)
     latest = {name: next_patch(version) if tools else version for name, version in pins.items()}
     client.add_json(f"{upstream.GITHUB_API}/repos/go-task/task/releases/latest", {"tag_name": "v" + latest["Task"]})
+    client.add_json(f"{upstream.GITHUB_API}/repos/astral-sh/uv/releases/latest", {"tag_name": latest["uv"]})
     for name in ("conan", "ninja"):
         # A newer release candidate and a newer yanked release are not candidates.
         client.add_json(f"{upstream.PYPI}/{name}/json", {"info": {"version": latest[name]}, "releases": {
@@ -433,10 +491,21 @@ class ApplyTests(UpstreamTestCase):
             new = next_patch(runtime)
             sdk = next_patch(self.pinned["hostlibs-sources"][runtime]["tag"][1:])
             self.assertEqual(new, pinned["runtimes"][framework])
-            self.assertEqual({"tag": f"v{sdk}", "commit": fake_commit(sdk)}, pinned["hostlibs-sources"][new])
+            self.assertEqual({"tag": f"v{sdk}", "commit": fake_commit(sdk), "containers": CONTAINERS},
+                             pinned["hostlibs-sources"][new])
         self.assertEqual(major + 1, int(self.props()["_Major"]), "one increment per run")
         self.assertIn("CVE-2099-", stdout)
         self.assert_consistent()
+
+    def test_dotnet_update_needs_the_build_containers(self):
+        client = fake_upstream(self.root, dotnet=True)
+        for url in [url for url in client.responses if upstream.VMR_PIPELINE_RESOURCES in url]:
+            del client.responses[url]
+        before = self.snapshot()
+        code, _, stderr = self.run_main(client, "apply", "--dotnet")
+        self.assertEqual(2, code)
+        self.assertIn(upstream.VMR_PIPELINE_RESOURCES, stderr)
+        self.assertEqual(before, self.snapshot())
 
     def test_dry_run_writes_nothing(self):
         before = self.snapshot()
@@ -1039,13 +1108,14 @@ class ToolsTests(UpstreamTestCase):
             self.assertEqual(next_patch(pins[tool.name]), after[tool.name], tool.name)
         self.assertEqual(pins["LLVM"], after["LLVM"])
         self.assertEqual("version = 1\n", lock.read_text(encoding="utf-8"))
-        self.assertEqual([".github/actions/install-task/action.yml", "pyproject.toml", "tests/Directory.Build.targets",
+        self.assertEqual([".github/actions/install-task/action.yml", ".github/actions/install-uv/action.yml",
+                          "pyproject.toml", "tests/Directory.Build.targets",
                           "tests/HostForge.TestInfra/HostForge.TestInfra.csproj"], metadata["changed"])
         self.assertIn(msbuild.group(0), (self.root / "tests/HostForge.TestInfra/HostForge.TestInfra.csproj")
                       .read_text(encoding="utf-8"), "Microsoft.Build follows the SDK")
         self.assertEqual(before, package_inputs.compute(self.root))
-        self.assertEqual("build(deps): update 5 tools", metadata["title"], "too long with all names")
-        self.assertEqual(5, len(metadata["updates"]))
+        self.assertEqual("build(deps): update 6 tools", metadata["title"], "too long with all names")
+        self.assertEqual(6, len(metadata["updates"]))
         self.assertIsNone(metadata["security"])
 
     def test_failed_lookup_skips_only_that_tool(self):
@@ -1070,6 +1140,31 @@ class ToolsTests(UpstreamTestCase):
         code, _, stderr, metadata = self.apply(fake_upstream(self.root), "--group", "tools")
         self.assertEqual(0, code, stderr)
         self.assertEqual(([], ""), (metadata["changed"], metadata["target"]))
+
+    def test_build_args_are_the_pins_of_the_image_tools(self):
+        pins = tool_pins(self.root)
+        expected = f"--build-arg TASK_VERSION={pins['Task']} --build-arg UV_VERSION={pins['uv']}\n"
+        self.assertEqual((0, expected, ""), self.run_main(None, "build-args"))
+        code, _, _, _ = self.apply(fake_upstream(self.root, tools=True), "--group", "tools")
+        self.assertEqual(0, code)
+        self.assertIn(f"TASK_VERSION={next_patch(pins['Task'])} ", self.run_main(None, "build-args")[1])
+
+
+class ImageToolTests(unittest.TestCase):
+    """The Linux build images install Task and uv at the versions of the build arguments, never at a literal one."""
+
+    def test_dockerfiles_take_the_tool_versions_as_build_arguments(self):
+        build_args = {tool.build_arg for tool in upstream.TOOLS if tool.build_arg}
+        dockerfiles = sorted(ROOT.glob("native/*/*.Dockerfile"))
+        self.assertTrue(dockerfiles)
+        for dockerfile in dockerfiles:
+            with self.subTest(dockerfile=dockerfile.relative_to(ROOT).as_posix()):
+                text = dockerfile.read_text(encoding="utf-8")
+                self.assertEqual([], re.findall(r"go-task/task/releases/download/v\d[^/]*|astral-sh/uv:\d\S*", text))
+                declared = set(re.findall(r"^ARG (\w+_VERSION)\b", text, re.M))
+                self.assertEqual(build_args, declared)
+                self.assertIn("releases/download/v$TASK_VERSION/", text)
+                self.assertIn("FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv", text)
 
 
 class RepositoryRecordTests(unittest.TestCase):
@@ -1282,6 +1377,33 @@ class FailureTests(UpstreamTestCase):
         self.assertEqual([], package_inputs.changed_entries(before, after))
         self.assertGreater(sum(map(len, package_inputs.history(after).values())),
                            sum(map(len, package_inputs.history(before).values())))
+
+
+class BuildContainerTests(unittest.TestCase):
+    """The official Linux build containers of a VMR commit, as the HostLibs Linux builds use them."""
+
+    def test_pins_every_container_by_digest(self):
+        client = FakeClient()
+        add_pipeline_resources(client, "c1")
+        self.assertEqual(CONTAINERS, upstream.build_containers(client, "c1"))
+        for rid in MANIFESTS:
+            self.assertEqual(upstream.REGISTRY_MANIFESTS, client.accepts[manifest_url(rid)])
+        self.assertNotIn(manifest_url("linux-musl-x64"), client.requests, "a digest in the pipeline is used as is")
+
+    def test_missing_container_is_an_error(self):
+        for leg in upstream.BUILD_CONTAINERS.values():
+            with self.subTest(leg=leg):
+                client = FakeClient()
+                add_pipeline_resources(client, "c1", PIPELINE_RESOURCES.replace(f"      {leg}:\n", f"      {leg}_old:\n"))
+                with self.assertRaisesRegex(upstream.UpstreamError, rf"\b{leg}\b"):
+                    upstream.build_containers(client, "c1")
+
+    def test_other_registries_are_an_error(self):
+        client = FakeClient()
+        add_pipeline_resources(client, "c1", PIPELINE_RESOURCES.replace(f"{PREREQS}:{CONTAINER_TAGS['linux-x64']}\n",
+                                                                        f"example.invalid/prereqs:{CONTAINER_TAGS['linux-x64']}\n"))
+        with self.assertRaisesRegex(upstream.UpstreamError, r"\blinux_x64\b"):
+            upstream.build_containers(client, "c1")
 
 
 class VmrSourceTests(unittest.TestCase):

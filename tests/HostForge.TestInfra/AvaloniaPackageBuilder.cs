@@ -4,7 +4,6 @@ public static class AvaloniaPackageBuilder
 {
     private static readonly SemaphoreSlim Lock = new(1, 1);
     private static bool _packed;
-    private const string RootfsDirEnvironmentVariableName = "ROOTFS_DIR";
 
     public static async Task EnsurePackedAsync(CancellationToken cancellationToken = default)
     {
@@ -39,7 +38,7 @@ public static class AvaloniaPackageBuilder
             string artifactRoot = Path.Combine(
                 RepoContext.RepoRoot,
                 "artifacts", "avalonia-host", RepoContext.TargetAvaloniaVersion);
-            string[] knownRids = ["win-x64", "win-arm64", "linux-x64"];
+            string[] knownRids = ["win-x64", "win-arm64", "linux-x64", "linux-musl-x64", "linux-musl-arm64"];
             var availableRids = new List<string>();
 
             foreach (string rid in knownRids)
@@ -96,7 +95,7 @@ public static class AvaloniaPackageBuilder
 
                 CommandResult result = await CommandRunner.RunAsync(
                     "dotnet",
-                    $"pack \"{buildProject}\" -c Release -v:minimal{BuildSysrootPropertyArgument()}",
+                    $"pack \"{buildProject}\" -c Release -v:minimal",
                     RepoContext.RepoRoot,
                     cancellationToken);
 
@@ -113,16 +112,5 @@ public static class AvaloniaPackageBuilder
         {
             Lock.Release();
         }
-    }
-
-    private static string BuildSysrootPropertyArgument()
-    {
-        string? rootfsDir = Environment.GetEnvironmentVariable(RootfsDirEnvironmentVariableName);
-        if (string.IsNullOrWhiteSpace(rootfsDir))
-        {
-            return string.Empty;
-        }
-
-        return $" -p:Sysroot=\"{rootfsDir.Trim()}\"";
     }
 }

@@ -1,0 +1,32 @@
+name: upstream-container
+description: Build a stage of native/hostlibs/linux.Dockerfile on the official .NET build container of a runtime and RID
+inputs:
+  stage:
+    description: build (HostLibs) or link (Avalonia AppHost templates of the RID)
+    required: true
+  rid:
+    description: Linux RID whose container native/hostlibs/versions.json records
+    required: true
+  version:
+    description: .NET runtime of native/hostlibs/versions.json; empty selects the newest
+    default: ""
+  tag:
+    description: Tag of the built image
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        STAGE: ${{ inputs.stage }}
+        RID: ${{ inputs.rid }}
+        VERSION: ${{ inputs.version }}
+        TAG: ${{ inputs.tag }}
+      run: |
+        container=$(python3 scripts/repo_versions.py --get hostlibs-sources | jq -er --arg version "$VERSION" --arg rid "$RID" '
+          if $version == "" then to_entries | max_by(.key | split(".") | map(tonumber)) | .value else .[$version] end
+          | .containers[$rid]')
+        read -ra args <<< "$(python3 scripts/upstream.py build-args)"
+        args+=(--target "$STAGE" --build-arg IMAGE="$container")
+        if [ "$STAGE" = link ]; then args+=(--build-arg RID="$RID"); fi
+        docker build -f native/hostlibs/linux.Dockerfile "${args[@]}" -t "$TAG" .

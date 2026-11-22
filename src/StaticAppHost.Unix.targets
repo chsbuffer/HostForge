@@ -104,6 +104,10 @@
 
       <_SingleFileHostLinkerArg Include="$(_SingleFileHostLinkFlags)" />
       <_SingleFileHostLinkerArg Include="@(_CommonLinkerArg)" />
+      <!-- The upstream singlefilehost link keeps these exports of singlefilehost.exports for the debugger and
+           diagnostics tools: nothing in the host references the archive members that define them. -->
+      <_SingleFileHostLinkerArg Include="-Wl,-u,DotNetRuntimeInfo,-u,g_dacTable,-u,MetaDataGetDispenser,-u,DotNetRuntimeContractDescriptor"
+                                Condition="'$(_IsApplePlatform)' != 'true'" />
       <_SingleFileHostLinkerArg Include="@singlefilehost.rsp" />
       <_SingleFileHostLinkerArg Include="-Wl,--start-group" Condition="'$(GroupNativeLibraries)' == 'true'" />
       <_SingleFileHostLinkerArg Include="-Wl,--whole-archive" Condition="'$(_IsApplePlatform)' != 'true' and '@(_WholeArchiveNativeLib)' != ''" />

@@ -1,0 +1,9 @@
+name: Install uv
+description: Install the repository's pinned uv version
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v10.3.3
+      with:
+        version: 0.13.9

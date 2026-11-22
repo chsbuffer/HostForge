@@ -17,7 +17,8 @@
   apply   [--group NAME] [--dotnet] [--avalonia] [--skiasharp] [--angle] [--keep-going] [--metadata FILE]
           [--dry-run]
           Update the files of one group, computed from the repository as it is (one pull request per group):
-            inputs          (default) .NET runtime patch releases, the Avalonia patch release of the pinned
+            inputs          (default) .NET runtime patch releases with the official Linux build
+                            containers of their VMR commit, the Avalonia patch release of the pinned
                             minor, SkiaSharp patch releases of the pinned milestones and the head of the pinned
                             ANGLE branch with the depot_tools revision of its DEPS. --dotnet, --avalonia,
                             --skiasharp and --angle select a subset.
@@ -26,7 +27,7 @@
                             report only, like newer majors.
             skiasharp-<N>   one per pinned SkiaSharp line: the newest release of a newer milestone of N.x; newer
                             majors are report only.
-            tools           Task, conan and ninja (the == pins in pyproject.toml), TUnit and
+            tools           Task, uv, conan and ninja (the == pins in pyproject.toml), TUnit and
                             Microsoft.Build.Locator. Microsoft.Build is not tracked: it is referenced without its
                             runtime assets, which come from the SDK, so it follows the SDK.
             llvm            the LLVM release installed by .github/actions/install-llvm; this changes the compiled
@@ -40,6 +41,10 @@
           code 2; with --dry-run it describes the files that would change. Exit code 2: the group could not
           be computed (also when a .NET lookup or the security verdict fails); nothing was written.
   groups  Print the apply groups, one per line.
+  build-args
+          Print the docker build arguments of the Linux build images: the pinned versions of the tools they
+          install (TASK_VERSION, UV_VERSION). The Dockerfiles take them as arguments, so a tool update
+          changes no Dockerfile and no native cache key.
 
 Taskfile: task upstream-lock|upstream-check|upstream-apply -- <arguments>. GITHUB_TOKEN, when set, is sent to
 api.github.com only.
@@ -80,6 +85,14 @@ USER_AGENT = "HostForge-upstream-check"
 TIMEOUT = 60
 DOTNET_INDEX = "https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json"
 VMR = "https://github.com/dotnet/dotnet"
+MCR = "https://mcr.microsoft.com"
+# The runtime's pipeline resources name the container of each official build leg; HostLibs builds each Linux RID
+# in the container of its leg.
+VMR_PIPELINE_RESOURCES = "src/runtime/eng/pipelines/common/templates/pipeline-with-resources.yml"
+BUILD_CONTAINERS = {"linux-x64": "linux_x64", "linux-musl-x64": "linux_musl_x64", "linux-musl-arm64": "linux_musl_arm64"}
+# The media types docker pull accepts, so that a tag resolves to the digest docker would pull.
+REGISTRY_MANIFESTS = ("application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, "
+                      "application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json")
 NUGET = "https://api.nuget.org/v3-flatcontainer"
 NUGET_VULNERABILITIES = "https://api.nuget.org/v3/vulnerabilities/index.json"
 GITHUB_API = "https://api.github.com"
@@ -110,6 +123,7 @@ TITLE_LENGTH = 72
 _VERSION = re.compile(r"\d+(?:\.\d+){1,3}")
 _COMMIT = re.compile(r"[0-9a-f]{40}")
 _TAG = re.compile(r"v\d+(?:\.\d+){1,3}")
+_IMAGE = re.compile(r"mcr\.microsoft\.com/([a-z0-9][a-z0-9._/-]*):([\w][\w.-]*)(?:@(sha256:[0-9a-f]{64}))?")
 
 
 class UpstreamError(Exception):
@@ -151,7 +165,7 @@ class Client:
         self.token = token
         self.attempts = attempts
 
-    def _request(self, url, compressed):
+    def _request(self, url, compressed, accept=None):
         github = urlsplit(url).hostname == "api.github.com"
         headers = {"User-Agent": USER_AGENT}
         if compressed:
@@ -159,18 +173,20 @@ class Client:
         if github:
             headers["Accept"] = "application/vnd.github+json"
             headers["X-GitHub-Api-Version"] = "2022-11-28"
+        if accept:
+            headers["Accept"] = accept
         request = urllib.request.Request(url, headers=headers)
         if github and self.token:
             # Unredirected: urllib copies ordinary headers to the target of a redirect, which may be another host.
             request.add_unredirected_header("Authorization", f"Bearer {self.token}")
         return request
 
-    def _retry(self, url, compressed, action=None):
+    def _retry(self, url, compressed, action=None, accept=None):
         """action(response) for a fresh response, retrying transient failures, including those while reading;
         the open response itself when `action` is None."""
         for attempt in range(1, self.attempts + 1):
             try:
-                response = urllib.request.urlopen(self._request(url, compressed), timeout=self.timeout)
+                response = urllib.request.urlopen(self._request(url, compressed, accept), timeout=self.timeout)
                 if action is None:
                     return response
                 with response:
@@ -201,8 +217,9 @@ class Client:
             data = gzip.decompress(data)
         return data
 
-    def get(self, url):
-        return self._retry(url, True, self._body)
+    def get(self, url, accept=None):
+        """The response body. `accept` asks for one representation, served as is, e.g. a manifest to hash."""
+        return self._retry(url, accept is None, self._body, accept)
 
     def json(self, url):
         data = self.get(url)
@@ -258,8 +275,8 @@ class CachingClient:
             self._cache[key] = read()
         return copy.deepcopy(self._cache[key])
 
-    def get(self, url):
-        return self._cached(("get", url), lambda: self._client.get(url))
+    def get(self, url, accept=None):
+        return self._cached(("get", url, accept), lambda: self._client.get(url, accept))
 
     def json(self, url):
         return self._cached(("json", url), lambda: self._client.json(url))
@@ -400,6 +417,30 @@ def vmr_source(client, runtime, release, channel):
         result["problems"].append(f"none of the 1xx SDK tags ({found}) is the commit Microsoft.NETCore.App.Ref "
                                   f"{runtime} was built from ({result['nuget-commit'] or 'unknown'})")
     return result
+
+
+def build_containers(client, commit):
+    """{RID: image} of the official Linux build containers at a VMR commit, each pinned by digest.
+
+    The runtime's pipeline resources name them; a tag without a digest is pinned to the digest it has now."""
+    where = f"dotnet/dotnet {VMR_PIPELINE_RESOURCES} at {commit}"
+    item = client.json(f"{GITHUB_API}/repos/dotnet/dotnet/contents/{VMR_PIPELINE_RESOURCES}?ref={commit}")
+    try:
+        text = base64.b64decode(item["content"]).decode("utf-8")
+    except (KeyError, TypeError, ValueError) as error:
+        raise UpstreamError(f"{where}: {_reason(error)}") from None
+    containers = {}
+    for rid, name in BUILD_CONTAINERS.items():
+        match = re.search(rf"^ +{name}:\n +image: *(\S+) *$", text, re.M)
+        image = _IMAGE.fullmatch(match.group(1)) if match else None
+        if image is None:
+            raise UpstreamError(f"{where}: no mcr.microsoft.com image for {name}")
+        repository, tag, digest = image.groups()
+        if digest is None:
+            manifest = client.get(f"{MCR}/v2/{repository}/manifests/{tag}", accept=REGISTRY_MANIFESTS)
+            digest = f"sha256:{hashlib.sha256(manifest).hexdigest()}"
+        containers[rid] = f"mcr.microsoft.com/{repository}:{tag}@{digest}"
+    return containers
 
 
 def dotnet_report(client, pinned):
@@ -829,10 +870,11 @@ def llvm_release(client):
 
 
 class Tool:
-    """A pinned tool version: `pattern` captures (prefix, version, suffix) exactly once in `path`."""
+    """A pinned tool version: `pattern` captures (prefix, version, suffix) exactly once in `path`. The Linux build
+    images install the tools that have a `build_arg`, the docker build argument of their version."""
 
-    def __init__(self, name, path, pattern, latest):
-        self.name, self.path, self.pattern, self.latest = name, path, pattern, latest
+    def __init__(self, name, path, pattern, latest, build_arg=None):
+        self.name, self.path, self.pattern, self.latest, self.build_arg = name, path, pattern, latest, build_arg
 
     def pin(self, root, required=True):
         file = Path(root) / self.path
@@ -847,9 +889,12 @@ class Tool:
         return _substitute(text, self.pattern, rf"\g<1>{version}\g<3>", self.path)
 
 
+ACTION_VERSION = r"^([ \t]*version:[ \t]*v?)([\w.]+)([ \t]*)$"
 TOOLS = (
-    Tool("Task", ".github/actions/install-task/action.yml", r"^([ \t]*version:[ \t]*v?)([\w.]+)([ \t]*)$",
-         lambda client: _latest_github_release(client, "go-task/task", "v")),
+    Tool("Task", ".github/actions/install-task/action.yml", ACTION_VERSION,
+         lambda client: _latest_github_release(client, "go-task/task", "v"), build_arg="TASK_VERSION"),
+    Tool("uv", ".github/actions/install-uv/action.yml", ACTION_VERSION,
+         lambda client: _latest_github_release(client, "astral-sh/uv", ""), build_arg="UV_VERSION"),
     Tool("conan", PYPROJECT, r'("conan==)([^"]+)(")', lambda client: pypi_latest(client, "conan")),
     Tool("ninja", PYPROJECT, r'("ninja==)([^"]+)(")', lambda client: pypi_latest(client, "ninja")),
     Tool("TUnit", "tests/Directory.Build.targets", r"(<TUnitVersion>)([^<]+)(</TUnitVersion>)",
@@ -1456,11 +1501,12 @@ def plan_dotnet(run):
         _checked(source["commit"], _COMMIT, f".NET {new} VMR commit")
         number = item["framework"][3:].split(".")[0]
         old_source = pinned["hostlibs-sources"][old]
+        entry = {"tag": source["tag"], "commit": source["commit"],
+                 "containers": build_containers(run.client, source["commit"])}
 
-        def edit(root, old=old, new=new, source=source, number=number):
+        def edit(root, old=old, new=new, entry=entry, number=number):
             _edit(root, package_inputs.PROPS, lambda text: _set_property(text, f"HostLibsNet{number}Version", old, new))
-            _edit(root, "native/hostlibs/versions.json",
-                  lambda text: _replace_entry(text, old, new, {"tag": source["tag"], "commit": source["commit"]}))
+            _edit(root, "native/hostlibs/versions.json", lambda text: _replace_entry(text, old, new, entry))
 
         cves = sorted({cve for release in item["security"] for cve in release["cves"]})
         description = (f".NET {item['framework']}: {old} -> {new} ({source['tag']} {source['commit']})"
@@ -2105,6 +2151,17 @@ def command_groups(args, client=None):
     return 0
 
 
+def build_args(root=ROOT):
+    """The docker build arguments of the tools that the Linux build images install."""
+    return [f"--build-arg {tool.build_arg}={_checked(tool.pin(root), _VERSION, f'{tool.name} pin')}"
+            for tool in TOOLS if tool.build_arg]
+
+
+def command_build_args(args, client=None):
+    print(" ".join(build_args(args.root)))
+    return 0
+
+
 def main(argv=None, client=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--root", default=str(ROOT), help=argparse.SUPPRESS)
@@ -2136,6 +2193,7 @@ def main(argv=None, client=None):
                        help="write a JSON summary (changed files, title, body, security) for a pull request")
     apply.add_argument("--dry-run", action="store_true", help="print the planned changes without writing files")
     commands.add_parser("groups", help="print the apply groups, one per line")
+    commands.add_parser("build-args", help="print the docker build arguments of the Linux build images (offline)")
     args = parser.parse_args(argv)
     if args.command == "lock" and args.base and not args.check:
         parser.error("lock --base requires --check")
@@ -2143,7 +2201,7 @@ def main(argv=None, client=None):
         parser.error("--dotnet, --avalonia, --skiasharp and --angle select parts of the inputs group only")
     client = client or Client(token=os.environ.get("GITHUB_TOKEN") or None)
     handlers = {"lock": command_lock, "check": command_check, "groups": command_groups,
-                "apply": command_apply}
+                "apply": command_apply, "build-args": command_build_args}
     # Exit codes: 0 success, 1 a finding (the lock rules, or the security verdict of check --fail-on-security),
     # 2 the command could not complete. Unexpected exceptions are failures to complete, never findings.
     try:

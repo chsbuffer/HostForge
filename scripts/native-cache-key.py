@@ -10,11 +10,16 @@ import tomllib
 from pathlib import Path
 
 
-def rootfs_key(root, rid):
-    files = [root / f"native/skiasharp/{rid}.Dockerfile"]
+def fontconfig_checksums(rid):
+    """The fontconfig packages that the SkiaSharp image of a Linux RID adds to its rootfs."""
+    x64 = rid.endswith("-x64")
     if rid.startswith("linux-musl-"):
-        arch = "x86_64" if rid.endswith("-x64") else "aarch64"
-        files += [root / f"native/skiasharp/fontconfig-alpine3.17-{arch}.sha256"]
+        return f"native/skiasharp/fontconfig-alpine3.17-{'x86_64' if x64 else 'aarch64'}.sha256"
+    return f"native/skiasharp/fontconfig-ubuntu18.04-{'amd64' if x64 else 'arm64'}.sha256"
+
+
+def rootfs_key(root, rid):
+    files = [root / f"native/skiasharp/{rid}.Dockerfile", root / fontconfig_checksums(rid)]
     digest = hashlib.sha256("\n".join(p.read_text(encoding="utf-8") for p in files).encode()).hexdigest()[:24]
     return f"target-rootfs-v2-{rid}-{digest}"
 
@@ -34,18 +39,18 @@ def fingerprint(root, component, version, rid, toolchain, generator=""):
         if platform == "win":
             files += [f"{directory}/profiles/windows-x64", "scripts/libHarfBuzzSharp.vcxproj.in"]
         if platform.startswith("linux"):
-            files += [f"{directory}/profiles/linux-x64", f"{directory}/{rid}.Dockerfile"]
-            if platform == "linux-musl":
-                apk_arch = "x86_64" if arch == "x64" else "aarch64"
-                files += [f"{directory}/fontconfig-alpine3.17-{apk_arch}.sha256"]
+            files += [f"{directory}/profiles/linux-x64", f"{directory}/{rid}.Dockerfile", fontconfig_checksums(rid)]
     elif component == "angle":
         files += [f"{directory}/conandata.yml", *[p.relative_to(root).as_posix() for p in (root / directory / "patches").glob("*")]]
         tasks = ["build-angle"]
     elif component == "hostlibs":
-        values["source"] = json.loads((root / directory / "versions.json").read_text())[version]
-        tasks = [f"_hostlibs-{profile_os}"]
-        if platform == "linux":
-            files += ["native/skiasharp/linux-x64.Dockerfile"]
+        source = json.loads((root / directory / "versions.json").read_text())[version]
+        values["source"] = {key: value for key, value in source.items() if key != "containers"}
+        tasks = [f"_hostlibs-{profile_os.split('-')[0]}"]
+        if platform.startswith("linux"):
+            # Built in the upstream container of this runtime and RID, with the linux-x64 build profile.
+            values["source"]["container"] = source["containers"][rid]
+            files += [f"{directory}/linux.Dockerfile", f"{directory}/profiles/linux-x64"]
         values["pgo"] = True
         values["generator"] = generator
     elif component == "avalonianative":
@@ -73,7 +78,7 @@ def fingerprint(root, component, version, rid, toolchain, generator=""):
             "rootfs-key": rootfs_key(root, rid) if rid.startswith("linux") else ""}
 
 
-def detect_toolchain(component, rid):
+def detect_toolchain(component, rid, version):
     if rid.startswith("win-"):
         installer = Path(os.environ["ProgramFiles(x86)"]) / "Microsoft Visual Studio/Installer/vswhere.exe"
         vs = subprocess.check_output([str(installer), "-latest", "-prerelease", "-products", "*",
@@ -96,7 +101,11 @@ def detect_toolchain(component, rid):
         return subprocess.check_output(["xcodebuild", "-version"], text=True).strip() + " / " + subprocess.check_output(["xcrun", "--show-sdk-version"], text=True).strip()
     if component == "skiasharp":
         return "llvm-20.1.8-cross"  # The per-RID Dockerfile pins the complete image digest.
-    return subprocess.check_output(["clang", "--version"], text=True).splitlines()[0]
+    if component == "hostlibs" and rid.startswith("linux-"):
+        # The pinned upstream container supplies the compiler and CMake.
+        versions = Path(__file__).resolve().parent.parent / "native/hostlibs/versions.json"
+        return json.loads(versions.read_text(encoding="utf-8"))[version]["containers"][rid]
+    raise ValueError(f"No toolchain for {component} on {rid}")
 
 
 if __name__ == "__main__":
@@ -107,9 +116,9 @@ if __name__ == "__main__":
     parser.add_argument("--toolchain")
     args = parser.parse_args()
     generator = (subprocess.check_output(["cmake", "--version"], text=True).splitlines()[0]
-                 if args.component == "hostlibs" else "")
+                 if args.component == "hostlibs" and not args.rid.startswith("linux-") else "")
     result = fingerprint(Path(__file__).resolve().parent.parent, args.component, args.version, args.rid,
-                         args.toolchain or detect_toolchain(args.component, args.rid), generator)
+                         args.toolchain or detect_toolchain(args.component, args.rid, args.version), generator)
     print(json.dumps(result, indent=2))
     if "GITHUB_OUTPUT" in os.environ:
         with open(os.environ["GITHUB_OUTPUT"], "a") as output:

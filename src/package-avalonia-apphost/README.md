@@ -10,6 +10,8 @@ Prelinked Avalonia 12 apphost and single-file host templates for .NET 10 (10.0.1
 | `ChsBuffer.Avalonia.AppHost.win-x64` | `win-x64` only |
 | `ChsBuffer.Avalonia.AppHost.win-arm64` | `win-arm64` only |
 | `ChsBuffer.Avalonia.AppHost.linux-x64` | `linux-x64` only |
+| `ChsBuffer.Avalonia.AppHost.linux-musl-x64` | `linux-musl-x64` (Alpine Linux) only |
+| `ChsBuffer.Avalonia.AppHost.linux-musl-arm64` | `linux-musl-arm64` (Alpine Linux) only |
 
 Use the package without a suffix for all supported targets, or reference only the RID packages the project publishes. RID packages bring in the shared `ChsBuffer.Avalonia.AppHost.Build` integration automatically.
 

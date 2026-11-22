@@ -14,12 +14,17 @@ spec.loader.exec_module(cache_key)
 spec = importlib.util.spec_from_file_location("repo_versions", ROOT / "scripts/repo_versions.py")
 repo_versions = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(repo_versions)
+spec = importlib.util.spec_from_file_location("upstream", ROOT / "scripts/upstream.py")
+upstream = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(upstream)
 VERSIONS = repo_versions.load()
 # A second supported version of each multi-version component, so tests can change one without the other.
 SKIA = VERSIONS["skiasharp"]
 OTHER_SKIA = next((v for v in VERSIONS["skiasharp-versions"] if v != SKIA), None)
 HOSTLIBS = VERSIONS["hostlibs"]
 OTHER_HOSTLIBS = next((v for v in VERSIONS["hostlibs-versions"] if v != HOSTLIBS), None)
+# The RIDs whose HostLibs build in an upstream container.
+HOSTLIBS_LINUX_RIDS = ("linux-x64", "linux-musl-x64", "linux-musl-arm64")
 
 
 class NativeCacheKeyTests(unittest.TestCase):
@@ -28,7 +33,8 @@ class NativeCacheKeyTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         shutil.copytree(ROOT / "native", self.root / "native", ignore=shutil.ignore_patterns("__pycache__"))
-        for name in ("Taskfile.yml", "pyproject.toml", "scripts/libHarfBuzzSharp.vcxproj.in"):
+        image_tools = [tool.path for tool in upstream.TOOLS if tool.build_arg]
+        for name in ("Taskfile.yml", "pyproject.toml", "scripts/libHarfBuzzSharp.vcxproj.in", *image_tools):
             destination = self.root / name
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, destination)
@@ -79,11 +85,57 @@ class NativeCacheKeyTests(unittest.TestCase):
         self.assertEqual(selected, self.key(HOSTLIBS, component="hostlibs"))
         self.assertNotEqual(other, self.key(OTHER_HOSTLIBS, component="hostlibs"))
 
+    def test_hostlibs_container_is_scoped_to_selected_rid(self):
+        for changed in HOSTLIBS_LINUX_RIDS:
+            with self.subTest(rid=changed):
+                keys = {rid: self.key(HOSTLIBS, rid, "hostlibs") for rid in (*HOSTLIBS_LINUX_RIDS, "win-x64")}
+                file = self.root / "native/hostlibs/versions.json"
+                versions = json.loads(file.read_text())
+                versions[HOSTLIBS]["containers"][changed] += "-different"
+                file.write_text(json.dumps(versions))
+                self.assertNotEqual(keys.pop(changed), self.key(HOSTLIBS, changed, "hostlibs"))
+                self.assertEqual(keys, {rid: self.key(HOSTLIBS, rid, "hostlibs") for rid in keys})
+
+    def test_hostlibs_linux_image_is_shared_by_the_linux_rids(self):
+        keys = {rid: self.key(HOSTLIBS, rid, "hostlibs") for rid in (*HOSTLIBS_LINUX_RIDS, "win-x64")}
+        self.change("native/skiasharp/linux-x64.Dockerfile")
+        self.assertEqual(keys, {rid: self.key(HOSTLIBS, rid, "hostlibs") for rid in keys})
+        self.change("native/hostlibs/linux.Dockerfile")
+        self.assertEqual(keys.pop("win-x64"), self.key(HOSTLIBS, "win-x64", "hostlibs"))
+        for rid, key in keys.items():
+            self.assertNotEqual(key, self.key(HOSTLIBS, rid, "hostlibs"), rid)
+
     def test_sysroot_and_checksums_are_rid_specific(self):
-        glibc, musl = self.key(rid="linux-x64"), self.key(rid="linux-musl-arm64")
-        self.change("native/skiasharp/fontconfig-alpine3.17-aarch64.sha256")
-        self.assertEqual(glibc, self.key(rid="linux-x64"))
-        self.assertNotEqual(musl, self.key(rid="linux-musl-arm64"))
+        checksums = {"linux-x64": "fontconfig-ubuntu18.04-amd64", "linux-arm64": "fontconfig-ubuntu18.04-arm64",
+                     "linux-musl-x64": "fontconfig-alpine3.17-x86_64", "linux-musl-arm64": "fontconfig-alpine3.17-aarch64"}
+
+        def keys():
+            return {rid: (self.key(rid=rid), cache_key.rootfs_key(self.root, rid)) for rid in checksums}
+
+        for changed, name in checksums.items():
+            with self.subTest(rid=changed):
+                before = keys()
+                self.change(f"native/skiasharp/{name}.sha256")
+                after = keys()
+                self.assertNotEqual(before.pop(changed), after.pop(changed))
+                self.assertEqual(before, after)
+
+    def test_image_tool_update_does_not_invalidate(self):
+        linux = [("skiasharp", version, rid) for version in VERSIONS["skiasharp-versions"]
+                 for rid in ("linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64")]
+        linux += [("hostlibs", HOSTLIBS, rid) for rid in HOSTLIBS_LINUX_RIDS]
+
+        def keys():
+            return {target: cache_key.fingerprint(self.root, target[0], target[1], target[2], "compiler-1")
+                    for target in linux}
+
+        before = keys()
+        for tool in upstream.TOOLS:
+            if tool.build_arg:
+                file = self.root / tool.path
+                file.write_text(tool.set(file.read_text(encoding="utf-8"), "99.0.0"), encoding="utf-8")
+                self.assertEqual("99.0.0", tool.pin(self.root))
+        self.assertEqual(before, keys())
 
     def test_toolchain_and_relevant_task_invalidate(self):
         original = self.key()
