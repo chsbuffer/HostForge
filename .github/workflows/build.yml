@@ -692,7 +692,6 @@ jobs:
         run: xvfb-run -a dotnet test --project tests/HostForge.NativeAot.Tests -c Release --treenode-filter '/*/*/AvaloniaSmokeTests/*'
       - name: Prove static Skia and ANGLE rendering with WARP
         if: runner.os == 'Windows'
-        continue-on-error: ${{ matrix.target.rid == 'win-arm64' }}
         env:
           HOSTFORGE_SMOKE_REQUIRED: '1'
           HOSTFORGE_SMOKE_SKIA_VERSION: ${{ matrix.version }}
