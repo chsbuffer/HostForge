@@ -1,5 +1,8 @@
 version: "3"
 
+# Commands receive environment values as assignments on the command line: a task's env: entry does not replace
+# a variable that the caller's environment already sets.
+
 vars:
   VERBOSITY: '{{.VERBOSITY | default "minimal"}}'
   JOBS: '{{.JOBS | default "12"}}'
@@ -148,12 +151,10 @@ tasks:
         - name: TARGET_RID
           enum: [linux-x64, linux-arm64, linux-musl-x64, linux-musl-arm64]
         - SKIASHARP_VERSION
-    env:
-      ROOTFS_DIR: '{{.SYSROOT}}'
     cmds:
       - uv run conan export native/skiasharp --version={{.SKIASHARP_VERSION}}
       - >-
-        CC=clang CXX=clang++ AR=llvm-ar uv run conan install --requires="skiasharp/{{.SKIASHARP_VERSION}}" --build=missing --no-remote --envs-generation=false
+        ROOTFS_DIR="{{.SYSROOT}}" CC=clang CXX=clang++ AR=llvm-ar uv run conan install --requires="skiasharp/{{.SKIASHARP_VERSION}}" --build=missing --no-remote --envs-generation=false
         -pr:b=native/skiasharp/profiles/linux-x64
         -pr:h=native/skiasharp/profiles/{{.TARGET_RID}}
         -s:h compiler.version={{first (splitList "." .CLANG_VERSION)}}
@@ -235,11 +236,9 @@ tasks:
     vars:
       SKIP_EXE_RUN: '{{.SKIP_EXE_RUN | default .HOSTFORGE_MATRIX_SKIP_EXE_RUN | default "false"}}'
       NO_CLEAN: '{{.NO_CLEAN | default .HOSTFORGE_MATRIX_NO_CLEAN | default "false"}}'
-    env:
-      HOSTFORGE_MATRIX_SKIP_EXE_RUN: "{{.SKIP_EXE_RUN}}"
-      HOSTFORGE_MATRIX_NO_CLEAN: "{{.NO_CLEAN}}"
     cmds:
       - >-
+        HOSTFORGE_MATRIX_SKIP_EXE_RUN={{.SKIP_EXE_RUN}} HOSTFORGE_MATRIX_NO_CLEAN={{.NO_CLEAN}}
         dotnet test
         --project tests/HostForge.StaticAppHost.Tests/HostForge.StaticAppHost.Tests.csproj
         -c Release
@@ -265,10 +264,9 @@ tasks:
 
   avalonia-test:
     desc: Run the Avalonia AppHost integration tests
-    env:
-      SkiaSharpVersion: '{{.SKIASHARP_VERSION}}'
     cmds:
       - >-
+        {{if .SKIASHARP_VERSION}}SkiaSharpVersion={{.SKIASHARP_VERSION}}{{end}}
         dotnet test
         --project tests/HostForge.AvaloniaAppHost.Tests/HostForge.AvaloniaAppHost.Tests.csproj
         -c Release
