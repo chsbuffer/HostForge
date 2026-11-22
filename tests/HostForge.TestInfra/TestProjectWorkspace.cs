@@ -198,6 +198,11 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
                     Console.WriteLine($"AngleError=0x{AngleNative.GetError():X}");
                 }
                 Console.WriteLine($"SkiaSharpVersion.Native={SkiaSharp.SkiaSharpVersion.Native}");
+                using (var harfBuzzBuffer = new HarfBuzzSharp.Buffer())
+                {
+                    harfBuzzBuffer.AddUtf8("HostForge");
+                    Console.WriteLine($"HarfBuzzLength={harfBuzzBuffer.Length}");
+                }
                 using (var resources = new SkiaSharp.Resources.FileResourceProvider(AppContext.BaseDirectory))
                 using (var invalidation = new SkiaSharp.SceneGraph.InvalidationController())
                 {

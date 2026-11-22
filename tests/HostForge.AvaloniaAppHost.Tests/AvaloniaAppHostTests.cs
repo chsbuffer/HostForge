@@ -143,6 +143,7 @@ public class AvaloniaAppHostTests
             outputDirectory);
         AssertEx.Success(runResult, "windows-angle-pinvoke:run");
         AssertEx.Contains(runResult.CombinedOutput, "AngleError=0x");
+        AssertSkottieAndLoadedLibraries(runResult.CombinedOutput, expectPrelinked: true);
     }
 
     [Test]
@@ -540,6 +541,7 @@ public class AvaloniaAppHostTests
     {
         // SkiaSharp.Skottie, SceneGraph and Resources import libSkiaSharp themselves.
         AssertEx.Contains(output, "Skottie=True");
+        AssertEx.Contains(output, "HarfBuzzLength=9");
         if (!expectPrelinked)
             return;
 

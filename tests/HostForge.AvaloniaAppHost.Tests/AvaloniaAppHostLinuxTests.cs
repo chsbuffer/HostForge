@@ -293,6 +293,7 @@ public class AvaloniaAppHostLinuxTests
     {
         // SkiaSharp.Skottie, SceneGraph and Resources import libSkiaSharp themselves.
         AssertEx.Contains(output, "Skottie=True");
+        AssertEx.Contains(output, "HarfBuzzLength=9");
         if (!expectPrelinked)
             return;
 
