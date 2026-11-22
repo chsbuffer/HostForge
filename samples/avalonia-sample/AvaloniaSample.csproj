@@ -6,7 +6,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishSingleFile>true</PublishSingleFile>
-    <RestoreAdditionalProjectSources>$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)</RestoreAdditionalProjectSources>
   </PropertyGroup>
 
   <ItemGroup>

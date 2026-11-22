@@ -8,7 +8,6 @@
     <UseAvaloniaNativeStatic Condition="'$(UseAvaloniaNativeStatic)' == ''">true</UseAvaloniaNativeStatic>
     <StripSymbols>false</StripSymbols>
     <SmokeAvaloniaVersion Condition="'$(SmokeAvaloniaVersion)' == ''">$(AvaloniaNativeVersion)</SmokeAvaloniaVersion>
-    <RestoreAdditionalProjectSources Condition="'$(UseAvaloniaNativeStatic)' == 'true' or '$(SmokeUseStaticSkia)' == 'true'">$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)</RestoreAdditionalProjectSources>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia.Desktop" Version="$(SmokeAvaloniaVersion)" />

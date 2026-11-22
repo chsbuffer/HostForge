@@ -249,7 +249,7 @@ public class AvaloniaNativeTests
         };
         string project = Path.Combine(RepoContext.RepoRoot, "tests/HostForge.AvaloniaNative.Tests/Smoke/AvaloniaNativeSmoke.csproj");
         string output = Path.Combine(RepoContext.RepoRoot, "artifacts/avalonianative-smoke", rid);
-        // Without the local package, restore takes the published package of the same version from nuget.org.
+        // Restore takes ChsBuffer packages only from the local package directory; name a missing pack directly.
         AssertEx.FileExists(Path.Combine(RepoContext.AvaloniaPackageOutputDir,
             $"ChsBuffer.Avalonia.Native.Static.{rid}.{RepoContext.AvaloniaNativePackageVersion}.nupkg"));
         CommandResult publish = await CommandRunner.RunAsync("dotnet",

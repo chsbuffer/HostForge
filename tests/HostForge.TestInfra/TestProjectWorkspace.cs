@@ -110,9 +110,6 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
             propertyGroup.AddProperty("RuntimeIdentifier", runtimeIdentifier);
         propertyGroup.AddProperty("ImplicitUsings", "enable");
         propertyGroup.AddProperty("Nullable", "enable");
-        propertyGroup.AddProperty(
-            "RestoreAdditionalProjectSources",
-            "$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)");
         propertyGroup.AddProperty("RestorePackagesPath", RepoContext.TestPackagesRoot);
 
         if (publishSingleFile)

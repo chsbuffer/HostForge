@@ -14,7 +14,8 @@ task pack-avalonia-rid RID=win-x64
 task pack-avalonia-build
 ```
 
-The packages are written to `artifacts/packages/Release`, which the sample adds as a restore source.
+The packages are written to `artifacts/packages/Release`, the only source from which the repository's
+`NuGet.Config` restores `ChsBuffer.*` packages.
 
 NuGet does not extract a package version again once it is in the package folder (`artifacts/tmp/nuget/packages`,
 or `NUGET_PACKAGES` when set). After repacking under the same version, delete the `chsbuffer.avalonia.apphost*`

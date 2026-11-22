@@ -22,7 +22,6 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsPackable>true</IsPackable>
     <PackageOutputPath>$(AvaloniaAppHostPackageOutputDir)</PackageOutputPath>
-    <RestoreAdditionalProjectSources>$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)</RestoreAdditionalProjectSources>
   </PropertyGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
   <ItemGroup>
