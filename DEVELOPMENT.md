@@ -264,6 +264,8 @@ dotnet test --project .\tests\HostForge.AvaloniaAppHost.Tests\HostForge.Avalonia
 
 Avalonia 测试包含平台特定用例：Windows 用例在非 Windows 系统跳过，Linux 用例在非 Linux 系统跳过。Linux 用例使用当前系统的 RID（可用 `HOSTFORGE_NATIVE_RID` 覆盖）：glibc 上为 `linux-x64`，Alpine 上为 `linux-musl-x64` / `linux-musl-arm64`；它们同时审计模板的 ELF 架构、解释器、libc 依赖，以及单文件宿主是否导出上游 singlefilehost 的诊断符号。
 
+测试、示例和元包从仓库打出的包还原：根目录的 [`NuGet.Config`](NuGet.Config) 只从 `artifacts/packages/Release` 还原 `ChsBuffer.*` 包，其余包取自 nuget.org。缺少本地包时还原失败，不会改用 nuget.org 上同版本的已发布包。[`samples/avalonia-nativeaot-smoke`](samples/avalonia-nativeaot-smoke/README.md) 也能发布已发布的版本，它的 `NuGet.Config` 取消了这一限制，由 `SmokePackageSource` 和已配置的源提供包。
+
 ## 产物布局
 
 ```text

@@ -16,7 +16,8 @@ of the .NET SDK, then runs the tests with that RID and version as
 another version from `native/skiasharp/versions.json`; the default is
 `SkiaSharpVersion` in `Directory.Build.props`.
 
-For prepacked artifacts, select the RID and version with `HOSTFORGE_NATIVE_RID`
+For packages already in `artifacts/packages/Release`, the only source of the
+matrix's `ChsBuffer.*` packages, select the RID and version with `HOSTFORGE_NATIVE_RID`
 and `HOSTFORGE_SKIA_VERSION`, then run:
 
 ```sh

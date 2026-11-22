@@ -201,11 +201,27 @@ public class AvaloniaNativeTests
         string project = Path.Combine(RepoContext.RepoRoot, rid is null
             ? "src/package-static-graphics/StaticGraphics.csproj"
             : "src/package-avalonia-native-static/Avalonia.Native.Static.Rid.csproj");
+        // The fixture packages have the ids of the real packages, which the repository's NuGet.Config takes only
+        // from artifacts/packages; the meta package and the consumers below the root restore them with this one.
+        string config = Path.Combine(root, "NuGet.Config");
+        File.WriteAllText(config, """
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+                <add key="fixture" value="packages" />
+              </packageSources>
+              <packageSourceMapping>
+                <clear />
+              </packageSourceMapping>
+            </configuration>
+            """);
         // Isolate generated registration files and NuGet assets across parallel tests.
         string parameters = $"-c Release -p:AvaloniaNativeArtifactsRoot=\"{root}/payloads\" -p:PackageOutputPath=\"{root}/packages\""
             + $" -p:BaseIntermediateOutputPath=\"{root}/obj/{rid ?? "meta"}/\" -p:RestorePackagesPath=\"{root}/nuget\" -v:minimal";
         parameters += rid is null
-            ? $" -p:StaticGraphicsComponent=Avalonia.Native -p:RestoreAdditionalProjectSources=\"{root}/packages\""
+            ? $" -p:StaticGraphicsComponent=Avalonia.Native -p:RestoreConfigFile=\"{config}\" -p:RestoreAdditionalProjectSources=\"{root}/packages\""
             : $" -p:AvaloniaNativeRid={rid}";
         return CommandRunner.RunAsync("dotnet", $"pack \"{project}\" {parameters}", RepoContext.RepoRoot);
     }
