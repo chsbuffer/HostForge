@@ -4,8 +4,9 @@ TUnit-based integration tests for HostForge MSBuild behavior.
 
 Current coverage:
 
-- Windows-only package contract validation for `ChsBuffer.Avalonia.AppHost.Windows`: templates for every
-  `AvaloniaTemplateTfms` entry and generated `AvaloniaAppHostRids` registrations evaluated by MSBuild
+- Windows package contract validation: the RID packages `ChsBuffer.Avalonia.AppHost.win-x64` / `win-arm64` contain
+  templates for every `AvaloniaTemplateTfms` entry and generated `AvaloniaAppHostRids` registrations evaluated by
+  MSBuild; the `ChsBuffer.Avalonia.AppHost.Build` package contains the targets and module initializer and no templates
 - Windows RID package dependencies: the Build package and the SkiaSharp, HarfBuzzSharp and ANGLE versions that
   the templates link
 - Consumer projects reference only a RID package, as applications do. Windows activation across `net10.0`,
@@ -26,9 +27,10 @@ Current coverage:
 - Linux Skia/HarfBuzz native runtime copy suppression switch behavior
 - Skia 3 / 4 package versions, optional preview labels, managed dependencies and unchanged template paths
 
-Link the templates for every template TFM first (`task link-avalonia`). Running the published executables
-needs the matching shared runtimes: .NET 9, 10 and 11 on Windows; .NET 10 and 11 on Linux. The Linux ELF audit
-needs `readelf` (binutils).
+Link the templates for every template TFM first: `task link-avalonia TARGET_OS=windows` on Windows, the container
+commands in [Linux templates](../../src/package-avalonia-apphost/DEVELOPMENT.md#linux-templates) on Linux.
+Running the published executables needs the matching shared runtimes: .NET 9, 10 and 11 on Windows; .NET 10 and 11
+on Linux. The Linux ELF audit needs `readelf` (binutils).
 
 Run:
 
