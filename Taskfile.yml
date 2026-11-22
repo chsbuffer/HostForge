@@ -57,7 +57,7 @@ tasks:
         - HOSTLIBS_VERSION
     preconditions:
       - sh: '[ "{{.PGO}}" = True ]'
-        msg: "PGO={{.PGO}} is not supported on Linux: Linux HostLibs are built with PGO, like the official Linux runtime"
+        msg: "Linux HostLibs take only PGO=True (case-sensitive), not PGO={{.PGO}}: like the official Linux runtime, they are always built with PGO"
     env:
       ROOTFS_DIR: '{{.SYSROOT}}'
     cmds:

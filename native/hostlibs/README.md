@@ -3,8 +3,8 @@
 This Conan 2 recipe builds and packages the .NET Runtime apphost and single-file
 host static link inputs. On Windows, `pgo=True` is the default package and
 `pgo=False` selects the no-PGO flavor. Linux packages have no `pgo` option: like
-the official Linux runtime, they are always built with PGO, and Task rejects
-`PGO=False` on Linux.
+the official Linux runtime, they are always built with PGO, and Task rejects any
+`PGO` other than `True` on Linux.
 
 Sources come from `src/runtime` of the .NET VMR (`dotnet/dotnet`) at the 1xx SDK
 band tag that built each shipped runtime, as listed in [`versions.json`](versions.json).
