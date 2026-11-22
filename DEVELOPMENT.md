@@ -510,7 +510,7 @@ native RID 包及聚合包统一使用上游版本的前三段加第四段修复
 
 只报告、手动处理：新主版本、依赖有变化的新 Avalonia、ANGLE 换分支、固定为预览版的 .NET 运行时的新版本（含正式版）。不跟踪：Microsoft.Build（版本随 SDK）、runner 镜像。
 
-最新的 .NET 补丁版在 nuget.org 上还没有 `Microsoft.NETCore.App.Ref`、或 VMR 还没有它的标签时，`inputs` 组改用此前最新的就绪补丁版；PR 正文的 “Not applied” 列出跳过的版本。
+`inputs` 组从最新版往下逐个核对比固定版本新的 .NET 补丁版，应用第一个 VMR 来源已确定的版本：nuget.org 上它的 `Microsoft.NETCore.App.Ref` 声明了 commit，且 releases.json 为它列出的某个 1xx SDK 的 VMR 标签指向该 commit。PR 正文的 “Not applied” 列出跳过的版本及原因。
 
 SkiaSharp 的 recipe 按 mono/SkiaSharp 对应标签的构建文件（各平台 `build.cake`、共享 cake 脚本、Xcode 与 vcxproj 工程）编写。[`native/skiasharp/upstream-build.json`](native/skiasharp/upstream-build.json) 按版本记录核对过的这些文件的 git blob SHA：新版本中它们不变时，bot 沿用记录；有变化时，PR 正文列出 diff 和新记录，原生测试失败，直到把变化同步到 recipe 并补上记录。
 
@@ -529,7 +529,7 @@ SkiaSharp 的 recipe 按 mono/SkiaSharp 对应标签的构建文件（各平台 
 
 以下情况 workflow 失败，原因见 job summary：
 
-- 读不到 .NET 数据（发布信息，或要应用的补丁版的 VMR 标签与 `Microsoft.NETCore.App.Ref`）或漏洞公告数据；
+- 读不到 .NET 数据（发布信息、逐个核对的补丁版的 `Microsoft.NETCore.App.Ref` 与 VMR 标签、要应用的补丁版的官方构建容器）或漏洞公告数据；
 - 自动更新后仍有安全问题（渠道停止支持、漏洞没有修复版本、.NET 安全版本暂时无法应用）；
 - 安全修复没有对应的打开 PR（例如 PR 被关闭或已过时）；
 - git 或 gh 操作失败（创建 PR 被拒时检查上面的设置）。
