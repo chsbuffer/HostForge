@@ -1,11 +1,15 @@
 """The package documentation names the current native package versions; run with python -m unittest discover -s
 tests/native.
 
-The README files are packed into the packages. A fix revision is bumped by hand in Directory.Build.props, not by
-the upstream workflow that updates the documentation, and NuGet resolves a version that does not exist (an
-upstream version such as 1.2.3) to the lowest version above it, the oldest revision. So the documentation that
-gives a package version of a native package family gives the current version of each of its lines, and no other
-revision of them.
+The documentation is upstream.DOC_FILES: the README files packed into the packages and the README.md of the
+repository. A fix revision is bumped by hand in Directory.Build.props, not by the upstream workflow that updates
+the documentation, and NuGet resolves a version that does not exist (an upstream version such as 1.2.3) to the
+lowest version above it, the oldest revision. So the documentation that gives a package version of a native
+package family gives the current version of each of its lines, and no other revision of them.
+
+A family is found in a document by a four-part version of one of its lines, so the check does not see a document
+that names only the three-part upstream version, nor a version that follows a dotted name, as in
+Name.win-x64.1.2.3.4.nupkg: FOUR_PARTS skips what follows a dot, so as not to match the end of a longer version.
 """
 
 import importlib.util

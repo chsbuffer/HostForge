@@ -484,7 +484,7 @@ native RID 包及聚合包统一使用上游版本的前三段加第四段修复
 
 在 `Directory.Build.props` 的四行 native 包版本配置中维护第四段修复号：Skia 3 / 4 分别配置 `SkiaSharpPackageVersion`，ANGLE 和 AvaloniaNative 分别配置 `AnglePackageVersion`、`AvaloniaNativePackageVersion`。发布修复前，只修改受影响版本线末尾的 `.1` 为 `.2` 等；同一版本线的全部 RID 包和聚合包一起发布。CI 重跑不会自动递增版本。
 
-包文档（`src/*/README.md`，打进包中）让使用者引用的版本是完整的包版本，递增修复号时一并修改：NuGet 把不存在的版本（例如只写上游的前三段）解析为大于它的最低版本，也就是最早的修复号。`tests/native/test_package_docs.py` 检查给出某个 native 包族版本的文档写出了该包族每条版本线的当前包版本，且没有其他修复号。
+包文档（`src/*/README.md`，打进包中）和根目录的 `README.md` 让使用者引用的版本是完整的包版本，递增修复号时一并修改：NuGet 把不存在的版本（例如只写上游的前三段）解析为大于它的最低版本，也就是最早的修复号。`tests/native/test_package_docs.py` 检查这些文档（`scripts/upstream.py` 的 `DOC_FILES`）：写出某个 native 包族四段版本的文档，要写出该包族每条版本线的当前包版本，且没有其他修复号。
 
 升级到新的上游前三段版本时，将对应修复号重置为 `1`。若上游前三段没有变化（例如仅 ANGLE 日期段变化），继续递增第四段，避免复用已发布的包版本。漏改时包输入锁守卫会失败，见 [上游跟踪与版本守卫](#上游跟踪与版本守卫)。
 
