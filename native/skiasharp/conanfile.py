@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -228,9 +229,15 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
                     for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                         digest.update(chunk)
                 hashes[file.relative_to(output).as_posix()] = digest.hexdigest()
+        # The major version of the clang that build() ran: the Windows profiles do not follow the LLVM
+        # that install-llvm provides (Linux and macOS Task pass the same major as compiler.version).
+        toolchain = (Path(self.build_folder) / "toolchain.txt").read_text()
+        clang = re.search(r"clang version (\d+)\.", toolchain)
+        if clang is None:
+            raise ConanException(f"toolchain.txt names no clang version:\n{toolchain}")
         manifest = {"skiaSharp": str(self.version), "harfBuzzSharp": VERSIONS[str(self.version)][1],
                     "sourceCommit": VERSIONS[str(self.version)][0], "arch": self._target_arch,
-                    "compiler": str(self.settings.compiler), "compilerVersion": str(self.settings.compiler.version), "sha256": hashes}
+                    "compiler": str(self.settings.compiler), "compilerVersion": clang.group(1), "sha256": hashes}
         if self.settings.os == "Linux":
             manifest["libc"] = str(self.options.libc)
         save(self, str(output / "manifest.json"), json.dumps(manifest, indent=2) + "\n")
