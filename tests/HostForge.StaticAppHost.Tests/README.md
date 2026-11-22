@@ -14,5 +14,7 @@ dotnet test --project .\tests\HostForge.StaticAppHost.Tests\HostForge.StaticAppH
 
 Optional env flags:
 
-- `HOSTFORGE_MATRIX_SKIP_EXE_RUN=true`
-- `HOSTFORGE_MATRIX_NO_CLEAN=true`
+- `HOSTFORGE_MATRIX_SKIP_EXE_RUN=true`: build and publish without running the executable.
+- `HOSTFORGE_MATRIX_NO_CLEAN=true`: keep the `bin` / `obj` of `samples/simple-pinvoke` from the previous run, to
+  check incremental relinking after changing an input. The first build of each kind then relinks only if its
+  inputs changed, so only the repeated builds are checked: they must not relink.

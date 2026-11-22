@@ -36,13 +36,16 @@ public class StaticAppHostMatrixTests
             DeleteDirectory(Path.Combine(consumerDir, "obj"));
         }
 
+        // Kept bin/obj can already hold the links of the first build of each kind, which then relinks only
+        // if its inputs changed since the previous run.
+        bool? firstBuildLinks = noClean ? null : true;
         var steps = new (string Name, string Arguments, bool? ExpectUpToDate)[]
         {
-            ("01-build-no-rid-first", $"build \"{consumerProject}\" {properties}", true),
+            ("01-build-no-rid-first", $"build \"{consumerProject}\" {properties}", firstBuildLinks),
             ("02-build-no-rid-second", $"build \"{consumerProject}\" {properties}", false),
-            ("03-build-rid-first", $"build \"{consumerProject}\" {properties} -r {rid}", true),
+            ("03-build-rid-first", $"build \"{consumerProject}\" {properties} -r {rid}", firstBuildLinks),
             ("04-build-rid-second", $"build \"{consumerProject}\" {properties} -r {rid}", false),
-            ("05-publish-first", $"publish \"{consumerProject}\" {properties} -r {rid} /p:PublishSingleFile=true", true),
+            ("05-publish-first", $"publish \"{consumerProject}\" {properties} -r {rid} /p:PublishSingleFile=true", firstBuildLinks),
             ("06-publish-second", $"publish \"{consumerProject}\" {properties} -r {rid} /p:PublishSingleFile=true", false)
         };
 
