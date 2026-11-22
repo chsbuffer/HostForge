@@ -97,7 +97,7 @@ recipe 只稀疏检出 VMR 的 `src/runtime`，并关闭构建期依赖的 NuGet
 | `pack-angle-static` | 打包 Windows ANGLE 静态库输入（win-x64 或 win-arm64） |
 | `upstream-check` | 只读检查上游新版本与安全修复 |
 | `upstream-apply` | 按组更新上游版本及包输入锁（默认 `inputs` 组） |
-| `upstream-lock` | 向 `package-inputs.lock.json` 追加当前包版本 |
+| `upstream-lock` | 把当前包版本写入 `package-inputs.lock.json` |
 
 运行 `task --list` 可查看任务；通过 `NAME=value` 传入目标平台、RID 或打包模式。构建任务接受 `ARCH=x64|arm64`（Linux 的 `build-hostlibs` 由 `RID` 选择目标）；Windows 的 `build-hostlibs` 另接受 `PGO=True|False`（区分大小写），Linux 的 HostLibs 与官方 Linux 运行时一样只以 PGO 构建，传入 `True` 以外的 `PGO` 会报错；Linux 构建还需通过 `SYSROOT` 或环境变量 `ROOTFS_DIR` 指定目标 rootfs。
 
@@ -533,7 +533,7 @@ native RID 包及聚合包统一使用上游版本的前三段加第四段修复
 
 SkiaSharp 的 recipe 按 mono/SkiaSharp 对应标签的构建文件（各平台 `build.cake`、共享 cake 脚本、Xcode 与 vcxproj 工程，以及 Windows HarfBuzzSharp 工程编译的 `harfbuzz-subset-msvc.cc`）编写。[`native/skiasharp/upstream-build.json`](native/skiasharp/upstream-build.json) 按版本记录核对过的这些文件的 git blob SHA：新版本中它们不变时，bot 沿用记录；有变化时，PR 正文列出 diff 和新记录，原生测试失败，直到把变化同步到 recipe 并补上记录。SkiaSharp 4 的 Windows 构建直接使用其中两个文件，下载后按这份记录校验；bot 同时把新标签的 commit 写入 `versions.json`，作为下载这两个文件的固定版本。
 
-包输入变化而版本不变时，自动按 [包输入锁](#包输入锁) 的规则递增版本并追加锁。`tools`、`llvm` 和 Dependabot 的 PR 不改包版本，合并后不发布新包。
+包输入变化而版本不变时，自动按 [包输入锁](#包输入锁) 的规则递增版本并更新锁。`tools`、`llvm` 和 Dependabot 的 PR 不改包版本，合并后不发布新包。
 
 ### 维护者操作
 
@@ -561,16 +561,16 @@ SkiaSharp 的 recipe 按 mono/SkiaSharp 对应标签的构建文件（各平台 
 | --- | --- |
 | `task upstream-check` | 只读报告上游新版本与安全问题；加 `-- --fail-on-security` 时有安全问题退出码为 1 |
 | `task upstream-apply -- --group <g> [--dry-run]` | 生成与 workflow 相同的改动，默认 `inputs` 组 |
-| `task upstream-lock` | 追加包输入锁 |
+| `task upstream-lock` | 更新包输入锁 |
 
 ### 包输入锁
 
-根目录的 [`package-inputs.lock.json`](package-inputs.lock.json) 由 `scripts/package_inputs.py` 计算，按包族记录每个版本的变体与上游输入。它只增不减，也是每个已发布版本的源码清单，不要手动编辑。`tests/native/test_package_inputs.py` 检查五条规则，失败时给出要修改的属性：
+根目录的 [`package-inputs.lock.json`](package-inputs.lock.json) 由 `scripts/package_inputs.py` 计算，按包族记录每个变体的当前版本与上游输入，不要手动编辑。更早的版本留在 `main` 历史上提交过的锁里，这些锁就是每个已发布版本的源码清单。`tests/native/test_package_inputs.py` 检查五条规则，失败时给出要修改的属性：
 
 1. 同一包族内，各变体的当前版本互不相同。
-2. 已记录的版本，其变体与输入不能改变；输入变了就递增版本。
-3. 当前版本必须已记录；未记录表示锁过期，运行 `task upstream-lock` 追加。
-4. 同一变体的版本不能倒退。
+2. 锁中的版本，其变体与输入不能改变；输入变了就递增版本。
+3. 锁恰好记录当前版本；不一致表示锁过期，运行 `task upstream-lock` 重写。
+4. 同一变体的版本不能低于锁中的版本。
 5. 版本是 NuGet 接受的版本，并按规范形式书写：采用 nuget.org 规范化后的形式（数字段没有前导零，第四段不为 0，不带构建元数据），预发布标签小写。锁按版本字符串记录，而 `1.2.3.01` 在 nuget.org 上就是 `1.2.3.1`，会被 `--skip-duplicate` 当作已发布的版本跳过；nuget.org 保留预发布标签的大小写，但比较时不区分大小写，标签统一小写后，字符串相同才是 nuget.org 上的同一版本。
 
 各包族的输入与要递增的属性：
@@ -587,14 +587,13 @@ Avalonia 版本不是 AppHost 的输入。版本公式本身已随输入变化�
 
 | 命令 | 作用 |
 | --- | --- |
-| `task upstream-lock` | 追加当前版本；不修改已提交的条目，违反规则时拒绝写入 |
-| `task upstream-lock -- --check` | 只检查；同时与 `HEAD` 的首父历史比对，每个版本的条目必须与历史中第一个含有它的锁相同，不能改动或删除 |
+| `task upstream-lock` | 写入当前版本；与 `HEAD` 首父历史上的锁比对，提交过的版本换了输入或版本低于提交过的版本时拒绝写入。没有提交过的条目可以直接替换或删除 |
+| `task upstream-lock -- --check` | 只检查；除上述五条规则外，同时与 `HEAD` 的首父历史比对：锁中每个版本的条目必须与历史中第一个含有它的锁相同，版本不能低于历史中同一变体的版本 |
 | `task upstream-lock -- --check --base <ref>` | 改为与指定提交的首父历史比对；该历史中没有锁时跳过 |
-| `task upstream-lock -- --force` | 允许替换或删除 `HEAD` 首父历史中没有提交过的条目；已提交的条目仍不能改 |
 
 每次推送到 `main` 都可能发布，所以 `main` 首父历史上提交过的条目都视为已发布，包括检查失败、没有发布的推送和同一次推送中的中间提交。`ChsBuffer.AppHost.Static` 例外：CI 不打包也不发布它，它的条目只记录各版本从源码打包时的输入，规则与守卫相同。`plan-all` 检出完整历史，在推送和 PR 中都运行 `lock --check`（PR 的测试合并提交以基准分支为第一个父提交），即使 `tests/native` 失败也运行。这样输入和锁条目不能在同一提交中一起改掉，检查失败的推送之后的推送也不会以改写后的条目为准。这些命令需要完整历史，在浅克隆中报错。推送后 `main` 原来的 head 不在新 head 的首父历史上时（例如 force push），这一步失败，本次推送不会发布：在本地用 `task upstream-lock -- --check --base <上次已发布的提交>` 确认后，推送一个新提交（重跑无效）。
 
-比对历史时跳过锁不是 JSON 的提交（例如留下了冲突标记），每个都打印一行：这样的提交读不出自己的锁，`tests/native` 和 `lock --check` 都会失败，没有发布任何包。历史锁是 JSON 却读不出时报错，所以修改锁格式时，`package_inputs.history()` 必须继续能读出旧格式。
+比对历史时跳过锁不是 JSON 的提交（例如留下了冲突标记），每个都打印一行：这样的提交读不出自己的锁，`tests/native` 和 `lock --check` 都会失败，没有发布任何包。历史锁是 JSON 却读不出时报错，所以修改锁格式时，`package_inputs.lock_entries()` 必须继续能读出旧格式。
 
 锁只覆盖上述上游输入，不覆盖仓库内的构建改动（patch、recipe、链接 targets）和工具链；这些改动需要发布时，手动递增受影响包的版本。
 
@@ -602,6 +601,6 @@ Avalonia 版本不是 AppHost 的输入。版本公式本身已随输入变化�
 | --- | --- |
 | 手动修改了规范文件或包版本 | 运行 `task upstream-lock`，与改动一起提交 |
 | `plan-all` 的包输入锁测试失败 | 按失败信息递增对应版本属性，再运行 `task upstream-lock` |
-| `plan-all` 的 “Check the package lock against the history of main” 失败 | 已提交的锁条目被改动或删除：按失败信息给出的提交恢复这些条目（`git show <提交>:package-inputs.lock.json`），改为递增版本，再运行 `task upstream-lock`；force push 时见上文 |
+| `plan-all` 的 “Check the package lock against the history of main” 失败 | 提交过的版本换了输入，或版本倒退：按失败信息递增版本，再运行 `task upstream-lock`；force push 时见上文 |
 | 包输入锁不是 JSON（例如合并冲突后） | 取回一个完好的锁（`git checkout <提交> -- package-inputs.lock.json`），再运行 `task upstream-lock` |
 | 修改了 patch、recipe、链接 targets 或工具链，且需要发布 | 手动递增受影响包的版本，再运行 `task upstream-lock` |

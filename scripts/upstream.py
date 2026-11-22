@@ -1,14 +1,14 @@
 """Track the upstream releases HostForge packages are built from, and keep the package lock current.
 
-  lock    [--check [--base GIT_REF]] [--force]
-          Append the package versions computed from the repository to package-inputs.lock.json (offline), an
-          append-only history. Refuses (exit 1) when a version is not written as nuget.org identifies it, when
-          variants of a family share a version, when a locked version would get other inputs, when a version
-          moves backwards, or when a committed entry was changed: every version keeps the entry of the first
-          commit on the first-parent history of HEAD whose lock holds it. --force replaces or removes only
-          entries that no lock on that history holds. --check changes nothing and compares with the
-          first-parent history of GIT_REF (default HEAD) instead; a history without a lock skips that
-          comparison. Both read that history, so a shallow clone is an error.
+  lock    [--check [--base GIT_REF]]
+          Write the package versions computed from the repository, with their inputs, to
+          package-inputs.lock.json (offline). Refuses (exit 1) when a version is not written as nuget.org
+          identifies it, when variants of a family share a version, when a version committed on the
+          first-parent history of HEAD would get other inputs than the first commit whose lock holds it, or when
+          a version moves below a version of its variant in those locks. --check changes nothing; it also
+          compares with the lock as it is and with the first-parent history of GIT_REF (default HEAD); a
+          history without a lock skips that comparison. Both read that history, so a shallow clone is an
+          error.
   check   [--json] [--fail-on-security]
           Read-only report: newer .NET runtimes (with CVEs and their VMR tag/commit), end-of-life .NET channels,
           Avalonia patch, minor and major releases with the SkiaSharp/HarfBuzzSharp/ANGLE versions they declare,
@@ -35,8 +35,8 @@
             llvm            the LLVM release installed by .github/actions/install-llvm; this changes the compiled
                             binaries but no package version.
           Groups that change package inputs give every package family whose locked version would get other
-          inputs a new version (<_Major> + 1 once, otherwise its revision or prerelease number + 1) and append
-          to the lock. Writes every file or none, and lists tracked files that still mention the old versions.
+          inputs a new version (<_Major> + 1 once, otherwise its revision or prerelease number + 1) and write
+          the lock. Writes every file or none, and lists tracked files that still mention the old versions.
           --keep-going records a failed lookup other than .NET and skips that item. --metadata FILE writes a
           JSON summary for the pull request (group, changed files, target, title, body, updates, notes, errors
           and, for inputs, the security verdict before and after), also when nothing changed, never on exit
@@ -1171,7 +1171,7 @@ def lock_history(root, ref):
 
     Commits that deleted the lock are left out, and so are commits whose lock is not JSON (conflict markers, say),
     each with a line naming it: such a commit fails its own check, so nothing was published from it. A lock that
-    is JSON but that history() cannot read is an error, so that a change of the lock format cannot drop the
+    is JSON but that lock_entries() cannot read is an error, so that a change of the lock format cannot drop the
     entries of older locks unnoticed."""
     resolved = _git(root, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
     if resolved is None or resolved.returncode != 0:
@@ -1217,14 +1217,25 @@ def _print_all(messages, stream=None):
         print(message, file=stream or sys.stderr)
 
 
+def _history_problems(locks, lock, records):
+    """Messages for a `lock` and the computed `records` against the history `locks`: a version whose entry differs
+    from its first committed entry, or that moved below a committed version of its variant."""
+    changed = [package_inputs.describe_changed_entry(item, item["origin"])
+               for item in package_inputs.rewritten_entries(locks, lock)]
+    if changed:
+        changed.append("Entries of a committed lock never change: restore each from the lock of the commit named "
+                       "above. To publish other inputs, change the version instead.")
+    committed = package_inputs.committed_entries(locks)
+    return changed + [package_inputs.describe_regression(item)
+                      for item in package_inputs.regressions(committed, records)]
+
+
 def _lock_check(root, records, lock, base):
-    """lock --check: rules 1-5, and every version keeps the entry of the first commit on the first-parent history of
-    `base` (HEAD by default) whose lock holds it."""
+    """lock --check: the rules against the lock, and against the locks on the first-parent history of `base`
+    (HEAD by default)."""
     problems = package_inputs.guard(lock, records)
-    _print_all(problems)
     ref = base or "HEAD"
     locks = lock_history(root, ref)
-    changed = []
     if locks is None:
         if base:
             raise UpstreamError(f"cannot resolve the git revision {base}")
@@ -1233,77 +1244,49 @@ def _lock_check(root, records, lock, base):
             print(f"No commit on the first-parent history of {base} has {package_inputs.LOCK}; skipped the "
                   "comparison with it.")
     else:
-        changed = package_inputs.rewritten_entries(locks, lock)
-        _print_all(package_inputs.describe_changed_entry(item, item["origin"]) for item in changed)
-        if changed:
-            print("Entries of a committed lock never change: restore each from the lock of the commit named above. "
-                  "To publish other inputs, change the version instead.", file=sys.stderr)
-        else:
+        found = [message for message in _history_problems(locks, lock, records) if message not in problems]
+        if not found:
             count = sum(len(versions) for versions in package_inputs.first_entries(locks).values())
-            print(f"All {count} versions on the first-parent history of {ref} keep their first committed entries.")
+            print(f"All {count} versions on the first-parent history of {ref} keep their first committed entries, "
+                  "and no version moved back.")
+        problems += found
+    _print_all(problems)
     differences = package_inputs.stale(lock, records)
     if differences:
         print(f"{package_inputs.LOCK} is out of date:\n  " + "\n  ".join(differences)
               + "\nRun `python scripts/upstream.py lock` (task upstream-lock) and commit the result.", file=sys.stderr)
-    if problems or changed or differences:
+    if problems or differences:
         return 1
     print(f"{package_inputs.LOCK} is up to date.")
     return 0
 
 
-def _lock_write(root, records, lock, force):
-    """lock [--force]: append the computed versions; --force may replace or remove entries never committed on the
-    first-parent history of HEAD."""
+def _lock_write(root, records, lock):
+    """lock: write the computed versions, unless the history of HEAD refuses them. Entries that no lock on that
+    history holds were never published, so they are replaced or removed freely."""
     refused = ([package_inputs.describe_unnormalized(item) for item in package_inputs.unnormalized(records)]
                + [package_inputs.describe_conflict(item) for item in package_inputs.conflicts(records)])
+    result = package_inputs.entries(records)
+    locks = lock_history(root, "HEAD") or []
+    if not refused:
+        committed = package_inputs.committed_entries(locks)
+        refused = ([package_inputs.describe_violation(item) for item in package_inputs.violations(committed, records)]
+                   + [package_inputs.describe_regression(item)
+                      for item in package_inputs.regressions(committed, records)])
     if refused:
         _print_all(refused)
         print(f"Not written: {package_inputs.LOCK}.", file=sys.stderr)
         return 1
-    locks = lock_history(root, "HEAD") or []
-    changed = package_inputs.rewritten_entries(locks, lock)
-    if changed:
-        _print_all(package_inputs.describe_changed_entry(item, item["origin"]) for item in changed)
-        print(f"Not written: {package_inputs.LOCK}. Committed entries never change; restore each from the lock of "
-              f"the commit named above (git show <commit>:{package_inputs.LOCK}) and run lock again.",
-              file=sys.stderr)
-        return 1
-    committed_versions = {(family, version) for family, versions in package_inputs.first_entries(locks).items()
-                          for version in versions}
-
-    packages = {family: dict(versions) for family, versions in package_inputs.history(lock).items()}
-    violations = package_inputs.violations(lock, records)
-    regressions = package_inputs.regressions(lock, records)
-    replaced = sorted({(item["family"], item["version"]) for item in violations})
-    removed = sorted({(item["family"], version) for item in regressions for version in item["newer"]})
-    if violations or regressions:
-        _print_all(package_inputs.describe_violation(item) for item in violations)
-        _print_all(package_inputs.describe_regression(item) for item in regressions)
-        if not force:
-            print(f"Not written: {package_inputs.LOCK}. Change the versions above. --force replaces or removes only "
-                  "entries that are not committed yet (in no lock on the history of HEAD).", file=sys.stderr)
-            return 1
-        blocked = sorted(set(replaced + removed) & committed_versions)
-        if blocked:
-            print(f"Not written: {package_inputs.LOCK}. --force cannot change committed entries: "
-                  + ", ".join(f"{family} {version}" for family, version in blocked)
-                  + ". Change the versions instead.", file=sys.stderr)
-            return 1
-        if not locks:
-            print(f"No commit on the history of HEAD has {package_inputs.LOCK} (or git is unavailable): every entry "
-                  "counts as uncommitted.")
-        for family, version in replaced + removed:
-            del packages[family][version]
-
-    result = package_inputs.append(packages, records)
     if lock is not None and package_inputs.document(result) == lock:
         print(f"{package_inputs.LOCK} is up to date.")
         return 0
-    locked = package_inputs.history(lock)
-    lines = [f"replaced {family} {version}" for family, version in replaced]
-    lines += [f"removed {family} {version}" for family, version in removed]
-    lines += [f"added {family} {version}" for family, versions in result.items() for version in versions
-              if version not in locked.get(family, {})]
+    locked = package_inputs.lock_entries(lock)
+    lines = []
+    for family in dict.fromkeys([*locked, *result]):
+        old, new = locked.get(family, {}), result.get(family, {})
+        lines += [f"removed {family} {version}" for version in old if version not in new]
+        lines += [f"replaced {family} {version}" for version in old if version in new and old[version] != new[version]]
+        lines += [f"added {family} {version}" for version in new if version not in old]
     if lock is not None and lock.get("comment") != package_inputs.COMMENT:
         lines.append("updated the comment")
     _write_files(root, {package_inputs.LOCK: package_inputs.render(result).encode("utf-8")})
@@ -1317,7 +1300,7 @@ def command_lock(args, client=None):
     lock = package_inputs.read_lock(root)
     if args.check:
         return _lock_check(root, records, lock, args.base)
-    return _lock_write(root, records, lock, args.force)
+    return _lock_write(root, records, lock)
 
 
 # --- apply: files --------------------------------------------------------------------------------
@@ -1479,7 +1462,7 @@ def bump_package_versions(stage, lock):
     stage = Path(stage)
     before = package_inputs.compute(stage)
     families = {}
-    for item in package_inputs.violations(lock, before):
+    for item in package_inputs.violations(package_inputs.lock_entries(lock), before):
         families.setdefault(item["family"], []).append(item["variant"])
     if not families:
         return []
@@ -2035,8 +2018,7 @@ def apply_group(client, root, group="inputs", selection=INPUT_KINDS, dry_run=Fal
             if problems:
                 raise UpstreamError("the planned changes leave the repository inconsistent; nothing was written:\n"
                                     + "\n".join(problems))
-            history = package_inputs.append(package_inputs.history(lock), after)
-            (stage / package_inputs.LOCK).write_bytes(package_inputs.render(history).encode("utf-8"))
+            (stage / package_inputs.LOCK).write_bytes(package_inputs.render(package_inputs.entries(after)).encode("utf-8"))
             versions = version_changes(before, after)
             update_docs(stage, [pair for update in updates for pair in zip(update.old_strings, update.new_strings)]
                         + version_pairs(before, after))
@@ -2275,14 +2257,11 @@ def main(argv=None, client=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--root", default=str(ROOT), help=argparse.SUPPRESS)
     commands = parser.add_subparsers(dest="command", required=True)
-    lock = commands.add_parser("lock", help="append the computed package versions to the lock (offline)")
+    lock = commands.add_parser("lock", help="write the computed package versions to the lock (offline)")
     lock.add_argument("--check", action="store_true", help="only report whether the lock is current")
-    lock.add_argument("--force", action="store_true",
-                      help="replace or remove entries that kept their version with other inputs or lie ahead of a "
-                           "version that moved back; only entries no lock on the history of HEAD holds")
     lock.add_argument("--base", metavar="GIT_REF",
-                      help="with --check: require every version to keep the entry it was first committed with on "
-                           "the first-parent history of GIT_REF (default: HEAD, skipped silently without git)")
+                      help="with --check: compare with the locks on the first-parent history of GIT_REF instead of "
+                           "HEAD (without git, HEAD is skipped silently)")
     check = commands.add_parser("check", help="report newer upstream releases (read-only)")
     check.add_argument("--json", action="store_true", help="print the report as JSON")
     check.add_argument("--fail-on-security", action="store_true",

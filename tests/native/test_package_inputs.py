@@ -1,9 +1,9 @@
 """Package versions change whenever their inputs change; run with python -m unittest discover -s tests/native.
 
 nuget.org keeps the first upload of a version and CI pushes with --skip-duplicate, so a package rebuilt from new
-inputs under an old version would be skipped while CI stays green. package-inputs.lock.json is the append-only
-history of the inputs of every package version; these tests fail until the version is changed and the new
-version is appended with `python scripts/upstream.py lock`.
+inputs under an old version would be skipped while CI stays green. package-inputs.lock.json holds the inputs of
+the current package versions; these tests fail until the version is changed and the lock is written again with
+`python scripts/upstream.py lock`.
 """
 
 import contextlib
@@ -117,8 +117,8 @@ class LockMechanicsTests(unittest.TestCase):
 
     def violated(self):
         records = package_inputs.compute(self.root)
-        return sorted((item["family"], item["variant"]) for item in
-                      package_inputs.violations(package_inputs.read_lock(self.root), records))
+        locked = package_inputs.lock_entries(package_inputs.read_lock(self.root))
+        return sorted((item["family"], item["variant"]) for item in package_inputs.violations(locked, records))
 
     def lock_command(self, *arguments):
         stdout, stderr = io.StringIO(), io.StringIO()
@@ -141,28 +141,24 @@ class LockMechanicsTests(unittest.TestCase):
             self.assertTrue(item["version"].startswith(item["inputs"]["version"] + "-"), framework)
 
     def test_vmr_commit_change_requires_new_versions(self):
-        before = package_inputs.read_lock(self.root)
         framework = change_vmr_commit(self.root, "0" * 40)
         expected = [("ChsBuffer.AppHost.Static", framework)] + \
                    [("ChsBuffer.Avalonia.AppHost", variant) for variant in
                     package_inputs.compute(self.root)["ChsBuffer.Avalonia.AppHost"]]
         self.assertEqual(sorted(expected), self.violated())
 
-        code, output = self.lock_command()
+        code, output = self.lock_command("--check")
         self.assertEqual(1, code)
         self.assertIn(f"runtimes/{framework}/vmr-commit", output)
         self.assertIn("<_Major>", output)
         self.assertIn("AppHostStatic.csproj", output)
-        self.assertEqual(1, self.lock_command("--check")[0])
 
         increment(self.props, MAJOR)
         self.assertEqual([("ChsBuffer.AppHost.Static", framework)], self.violated())
         increment(self.root / package_inputs.APPHOST_STATIC, r"(<Version>\$\(HostLibsVersion\)-alpha\.)(\d+)(</Version>)")
         self.assertEqual([], self.violated())
         self.assertEqual(0, self.lock_command()[0])
-        after = package_inputs.read_lock(self.root)
-        self.assertEqual([], package_inputs.stale(after, package_inputs.compute(self.root)))
-        self.assertEqual([], package_inputs.changed_entries(before, after), "lock only appends")
+        self.assertEqual([], package_inputs.stale(package_inputs.read_lock(self.root), package_inputs.compute(self.root)))
         self.assertEqual(0, self.lock_command("--check")[0])
 
     def test_angle_commit_change_requires_new_versions(self):
@@ -188,7 +184,7 @@ class LockMechanicsTests(unittest.TestCase):
         self.assertEqual([("ChsBuffer.Avalonia.AppHost", ["skia3", "skia4"])],
                          [(item["family"], item["variants"]) for item in conflicts])
         before = self.lock_text()
-        for arguments in ((), ("--force",), ("--check",)):
+        for arguments in ((), ("--check",)):
             code, output = self.lock_command(*arguments)
             self.assertEqual(1, code, arguments)
             self.assertIn("skia3, skia4", output)
@@ -207,27 +203,11 @@ class LockMechanicsTests(unittest.TestCase):
         self.assertEqual([], package_inputs.violations(package_inputs.read_lock(self.root), records),
                          "the string is not in the lock")
         before = self.lock_text()
-        for arguments in ((), ("--force",), ("--check",)):
+        for arguments in ((), ("--check",)):
             code, output = self.lock_command(*arguments)
             self.assertEqual(1, code, arguments)
             self.assertIn(f"the same version on nuget.org as {version}", output)
         self.assertEqual(before, self.lock_text())
-
-    def test_lock_refuses_versions_moving_backwards(self):
-        increment(self.props, MAJOR)
-        self.assertEqual(0, self.lock_command()[0])
-        ahead = package_inputs.compute(self.root)["ChsBuffer.Avalonia.AppHost"]["skia3"]["version"]
-        increment(self.props, MAJOR, by=-1)
-        before = self.lock_text()
-        code, output = self.lock_command()
-        self.assertEqual(1, code)
-        self.assertIn("moved back", output)
-        self.assertEqual(before, self.lock_text())
-        self.assertEqual(1, self.lock_command("--check")[0])
-        # Without git nothing is committed, so --force may drop the uncommitted versions ahead.
-        self.assertEqual(0, self.lock_command("--force")[0])
-        self.assertNotIn(ahead, package_inputs.history(package_inputs.read_lock(self.root))["ChsBuffer.Avalonia.AppHost"])
-        self.assertEqual(0, self.lock_command("--check")[0])
 
     def test_lock_check_reports_a_stale_lock(self):
         increment(self.props, MAJOR)
@@ -240,7 +220,7 @@ class LockMechanicsTests(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("git"), "git is required")
 class CommittedLockTests(LockMechanicsTests):
-    """--force and the lock history against a git repository whose HEAD holds the lock."""
+    """The lock history against a git repository whose HEAD holds the lock."""
 
     def setUp(self):
         super().setUp()
@@ -262,30 +242,24 @@ class CommittedLockTests(LockMechanicsTests):
         """Change a VMR commit together with the lock entries of the versions it feeds, so that the lock agrees
         with the repository again."""
         change_vmr_commit(self.root, "0" * 40)
-        lock = package_inputs.read_lock(self.root)
-        records = package_inputs.compute(self.root)
-        for family, versions in package_inputs.entries(records).items():
-            lock["packages"][family].update(versions)
-        (self.root / package_inputs.LOCK).write_text(package_inputs.render(lock["packages"]), encoding="utf-8")
-        self.assertEqual([], package_inputs.guard(package_inputs.read_lock(self.root), records))
+        self.write_lock()
+        self.assertEqual([], package_inputs.guard(package_inputs.read_lock(self.root), package_inputs.compute(self.root)))
 
     def bump_apphost_versions(self):
         increment(self.props, MAJOR)
         increment(self.root / package_inputs.APPHOST_STATIC, r"(<Version>\$\(HostLibsVersion\)-alpha\.)(\d+)(</Version>)")
 
-    def test_edited_committed_entry_is_refused(self):
-        lock = json.loads(self.lock_text())
-        family = lock["packages"]["ChsBuffer.Angle.Static"]
-        version = next(iter(family))
-        del family[version]
-        (self.root / package_inputs.LOCK).write_text(json.dumps(lock), encoding="utf-8")
+    def test_versions_moving_back_from_a_committed_version_are_refused(self):
+        increment(self.props, MAJOR)
+        self.assertEqual(0, self.lock_command()[0])
+        self.commit("bump")
+        increment(self.props, MAJOR, by=-1)
+        before = self.lock_text()
         code, output = self.lock_command()
         self.assertEqual(1, code)
-        self.assertIn(f"ChsBuffer.Angle.Static {version}: in the lock of {self.git('rev-parse', 'HEAD')} but removed",
-                      output)
-        code, output = self.lock_command("--check")
-        self.assertEqual(1, code)
-        self.assertIn("removed", output)
+        self.assertIn("moved back", output)
+        self.assertEqual(before, self.lock_text())
+        self.assertEqual(1, self.lock_command("--check")[0])
 
     def test_entries_rewritten_together_with_their_inputs_are_refused(self):
         base = self.git("rev-parse", "HEAD")

@@ -1,9 +1,10 @@
-"""Inputs of every published package version, and the lock that keeps them tied to their versions.
+"""Inputs of the package versions, and the lock that keeps them tied to their versions.
 
 nuget.org keeps the first upload of a version and CI pushes with --skip-duplicate, so a package whose
 inputs change while its version stays the same is silently not published. The lock
-(package-inputs.lock.json) is an append-only history: for each package family, one entry per version with
-the variant it is built for and its declared inputs. compute() returns one record per variant:
+(package-inputs.lock.json) holds, for each package family, the current version of every variant with its
+declared inputs; the locks committed on main before it hold the earlier versions. compute() returns one record
+per variant:
 
 - ChsBuffer.Avalonia.AppHost (RID, Build and meta packages), one record per SkiaSharp line:
   the runtime and VMR source of each target framework, the SkiaSharp line with its skia commit and
@@ -17,13 +18,14 @@ Versions are evaluated from Directory.Build.props and AppHostStatic.csproj exact
 the default (empty) _Preview, so the lock follows the real version formulas, revisions included.
 
 Rules, enforced by `python scripts/upstream.py lock [--check]` and tests/native/test_package_inputs.py:
-the variants of a family compute distinct versions; a version already in the history keeps its variant and
-inputs; every computed version is in the history (`lock` appends it); versions of a variant never move
-below its highest version in the history; versions are NuGet versions in the form normalized_version() gives,
-so that two versions of the lock are one version on nuget.org exactly when their strings are equal. A committed
-entry never changes: `lock` and `lock --check [--base <ref>]` require every version to keep the entry of the
-first commit on the first-parent history of HEAD (or <ref>) whose lock holds it. Every commit on main counts as
-published: any push may publish, and a push whose check failed still becomes the parent of the next one.
+the variants of a family compute distinct versions; a version in the lock keeps its variant and inputs; the
+lock holds exactly the computed versions (`lock` writes them); versions of a variant never move below its
+version in the lock; versions are NuGet versions in the form normalized_version() gives, so that two versions
+of the lock are one version on nuget.org exactly when their strings are equal. The same holds against the
+history: `lock` and `lock --check [--base <ref>]` require every version to keep the entry of the first commit
+on the first-parent history of HEAD (or <ref>) whose lock holds it, and no version to move below a version of
+its variant in those locks. Every commit on main counts as published: any push may publish, and a push whose
+check failed still becomes the parent of the next one.
 """
 
 import importlib.util
@@ -280,14 +282,15 @@ def compute(root=ROOT):
 
 # --- Lock document --------------------------------------------------------------------------------
 #
-# {"comment": [...], "packages": {family: {version: {"variant": ..., "inputs": {...}}}}}: an append-only history
-# with one entry per package version, so it is also the source manifest of every published version.
+# {"comment": [...], "packages": {family: {version: {"variant": ..., "inputs": {...}}}}}: the current version of
+# every variant. The locks committed on main hold the earlier versions, so they are the source manifest of every
+# published version.
 
 COMMENT = [
-    "Maintained by `python scripts/upstream.py lock`, which only appends; do not edit by hand.",
-    "One entry per package version: the variant it is built for and the inputs it is built from. nuget.org keeps",
-    "the first upload of a version and CI pushes with --skip-duplicate, so changed inputs need a new version, and a",
-    "committed entry never changes (CI compares each entry with the first commit on main that holds it).",
+    "Maintained by `python scripts/upstream.py lock`; do not edit by hand.",
+    "The current version of every package variant with the inputs it is built from. nuget.org keeps the first",
+    "upload of a version and CI pushes with --skip-duplicate, so changed inputs need a new version. CI compares",
+    "each entry, and the versions before it, with the locks committed on main.",
 ]
 FAMILIES = ("ChsBuffer.Avalonia.AppHost", "ChsBuffer.AppHost.Static", "ChsBuffer.SkiaSharp.Static",
             "ChsBuffer.Angle.Static", "ChsBuffer.Avalonia.Native.Static")
@@ -299,8 +302,8 @@ def entries(records):
                      for variant, record in variants.items()} for family, variants in records.items()}
 
 
-def history(lock, origin=LOCK):
-    """The {family: {version: entry}} history of a lock document ({} for no lock); ValueError when malformed.
+def lock_entries(lock, origin=LOCK):
+    """The {family: {version: entry}} of a lock document ({} for no lock); ValueError when malformed.
 
     The lock history check reads the lock of every commit on main with this function, so it keeps reading every
     format a committed lock has had."""
@@ -342,7 +345,7 @@ def _render(value, indent):
 
 
 def render(packages):
-    """Lock file text of the history `packages`."""
+    """Lock file text of `packages`."""
     return _render(document(packages), 0) + "\n"
 
 
@@ -357,7 +360,7 @@ def parse(text, origin=LOCK):
         lock = json.loads(text.decode("utf-8") if isinstance(text, bytes) else text)
     except ValueError as error:
         raise Unreadable(f"{origin}: invalid JSON ({error})") from None
-    history(lock, origin)
+    lock_entries(lock, origin)
     return lock
 
 
@@ -385,13 +388,13 @@ def _changes(old, new):
 # --- Rules ----------------------------------------------------------------------------------------
 #
 # 1. conflicts:   two variants of a family compute the same version.
-# 2. violations:  a computed version is in the history with another variant or other inputs.
-# 3. missing:     a computed version is not in the history yet (`lock` appends it).
-# 4. regressions: a computed version is below the highest version of its family and variant in the history.
+# 2. violations:  a computed version is locked with another variant or other inputs.
+# 3. stale:       the lock does not hold exactly the computed versions (`lock` writes them).
+# 4. regressions: a computed version is below a locked version of its family and variant.
 # 5. unnormalized: a computed version is not a NuGet version, or is not in the form normalized_version() gives,
 #                  so the lock, keyed by the string, would take a version already on nuget.org for a new one.
-# rewritten_entries() compares a lock with the history of committed locks: a committed entry is never removed or
-# changed.
+# Rules 2 and 4 take the entries of the lock, or committed_entries() of the locks on the history of main, which
+# rewritten_entries() also compares a lock with: a version keeps the entry it was first committed with.
 
 def conflicts(records):
     found = []
@@ -404,9 +407,9 @@ def conflicts(records):
     return found
 
 
-def violations(lock, records):
+def violations(locked, records):
+    """Computed versions that the entries `locked` ({family: {version: entry}}) hold with other inputs."""
     found = []
-    locked = history(lock)
     for family, variants in records.items():
         for variant, record in variants.items():
             old = locked.get(family, {}).get(record["version"])
@@ -418,15 +421,15 @@ def violations(lock, records):
 
 
 def missing(lock, records):
-    locked = history(lock)
+    locked = lock_entries(lock)
     return [{"family": family, "variant": variant, "version": record["version"]}
             for family, variants in records.items() for variant, record in variants.items()
             if record["version"] not in locked.get(family, {})]
 
 
-def regressions(lock, records):
+def regressions(locked, records):
+    """Computed versions below a version of their variant in the entries `locked` ({family: {version: entry}})."""
     found = []
-    locked = history(lock)
     for family, variants in records.items():
         for variant, record in variants.items():
             newer = sorted((version for version, entry in locked.get(family, {}).items()
@@ -452,52 +455,49 @@ def unnormalized(records):
     return found
 
 
-def append(packages, records):
-    """A copy of the history `packages` plus the computed versions it lacks; existing entries stay as they are."""
-    result = {family: dict(versions) for family, versions in packages.items()}
-    for family, versions in entries(records).items():
-        for version, entry in versions.items():
-            result.setdefault(family, {}).setdefault(version, entry)
-    return result
-
-
 def first_entries(locks):
     """{family: {version: (origin, entry)}}: the entry of each version in the first of `locks` that holds it.
 
     `locks` is a history [(origin, lock document)], oldest first."""
     first = {}
     for origin, lock in locks:
-        for family, versions in history(lock).items():
+        for family, versions in lock_entries(lock).items():
             for version, entry in versions.items():
                 first.setdefault(family, {}).setdefault(version, (origin, entry))
     return first
 
 
+def committed_entries(locks):
+    """{family: {version: entry}}: the first entry of every version in the history `locks`."""
+    return {family: {version: entry for version, (_, entry) in versions.items()}
+            for family, versions in first_entries(locks).items()}
+
+
 def rewritten_entries(locks, lock):
-    """Versions of the history `locks` [(origin, lock document)], oldest first, whose first entry `lock` removed
-    (changes None) or changed; "origin" names the lock that first holds the version."""
+    """Entries of `lock` that differ from the first entry of their version in the history `locks`
+    [(origin, lock document)], oldest first; "origin" names the lock that first holds the version."""
+    first = first_entries(locks)
     found = []
-    current = history(lock)
-    for family, versions in first_entries(locks).items():
-        for version, (origin, entry) in versions.items():
-            now = current.get(family, {}).get(version)
-            if now != entry:
+    for family, versions in lock_entries(lock).items():
+        for version, entry in versions.items():
+            origin, committed = first.get(family, {}).get(version, (None, None))
+            if committed is not None and committed != entry:
                 found.append({"family": family, "version": version, "origin": origin,
-                              "changes": None if now is None else _changes(entry, now)})
+                              "changes": _changes(committed, entry)})
     return found
 
 
-def changed_entries(base, lock):
-    """Entries of the `base` lock document that `lock` removed or changed."""
-    return rewritten_entries([(None, base)], lock)
-
-
 def stale(lock, records):
-    """Why the lock needs `python scripts/upstream.py lock`: computed versions it lacks, or an outdated comment."""
+    """Why the lock needs `python scripts/upstream.py lock`: computed versions it lacks, versions that are no longer
+    computed, or an outdated comment."""
     if lock is None:
         return [f"{LOCK} does not exist"]
     differences = [f"{_label(item['family'], item['variant'])} {item['version']}: not in the lock"
                    for item in missing(lock, records)]
+    computed = entries(records)
+    differences += [f"{family} {version}: no longer computed from the repository"
+                    for family, versions in lock_entries(lock).items() for version in versions
+                    if version not in computed.get(family, {})]
     if lock.get("comment") != COMMENT:
         differences.append("the lock comment differs")
     return differences
@@ -518,7 +518,7 @@ def describe_conflict(conflict):
 
 
 def describe_violation(violation):
-    lines = [f"{_label(violation['family'], violation['variant'])} {violation['version']} is already in the lock "
+    lines = [f"{_label(violation['family'], violation['variant'])} {violation['version']} is already locked "
              "with other inputs:"]
     lines += [f"  {key}: {_value(old)} -> {_value(new)}" for key, old, new in violation["changes"]]
     lines.append(f"  Fix: {violation['bump']}, then run `python scripts/upstream.py lock` (task upstream-lock).")
@@ -540,15 +540,14 @@ def describe_unnormalized(item):
 
 
 def describe_changed_entry(item, origin):
-    if item["changes"] is None:
-        return f"{item['family']} {item['version']}: in the lock of {origin} but removed"
     return "\n".join([f"{item['family']} {item['version']}: changed since the lock of {origin}:"]
                      + [f"  {key}: {_value(old)} -> {_value(new)}" for key, old, new in item["changes"]])
 
 
 def guard(lock, records):
-    """Messages for rules 1, 2, 4 and 5: computed versions that cannot be published as they are."""
+    """Messages for rules 1, 2, 4 and 5 against the lock: computed versions that cannot be published as they are."""
+    locked = lock_entries(lock)
     return ([describe_unnormalized(item) for item in unnormalized(records)]
             + [describe_conflict(item) for item in conflicts(records)]
-            + [describe_violation(item) for item in violations(lock, records)]
-            + [describe_regression(item) for item in regressions(lock, records)])
+            + [describe_violation(item) for item in violations(locked, records)]
+            + [describe_regression(item) for item in regressions(locked, records)])

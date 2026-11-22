@@ -852,15 +852,6 @@ class FailureTests(UpstreamTestCase):
         self.assertFalse(hostlibs.read_bytes().startswith(b"\xef\xbb\xbf"))
         self.assert_consistent()
 
-    def test_apply_appends_to_the_lock(self):
-        before = package_inputs.read_lock(self.root)
-        code, _, stderr = self.run_main(fake_upstream(self.root, dotnet=True), "apply", "--dotnet")
-        self.assertEqual(0, code, stderr)
-        after = package_inputs.read_lock(self.root)
-        self.assertEqual([], package_inputs.changed_entries(before, after))
-        self.assertGreater(sum(map(len, package_inputs.history(after).values())),
-                           sum(map(len, package_inputs.history(before).values())))
-
 
 class VmrSourceTests(unittest.TestCase):
     """The VMR tag of a runtime: the 1xx SDK tag whose commit built Microsoft.NETCore.App.Ref."""

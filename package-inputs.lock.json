@@ -1,122 +1,12 @@
 {
   "comment": [
-    "Maintained by `python scripts/upstream.py lock`, which only appends; do not edit by hand.",
-    "One entry per package version: the variant it is built for and the inputs it is built from. nuget.org keeps",
-    "the first upload of a version and CI pushes with --skip-duplicate, so changed inputs need a new version, and a",
-    "committed entry never changes (CI compares each entry with the first commit on main that holds it)."
+    "Maintained by `python scripts/upstream.py lock`; do not edit by hand.",
+    "The current version of every package variant with the inputs it is built from. nuget.org keeps the first",
+    "upload of a version and CI pushes with --skip-duplicate, so changed inputs need a new version. CI compares",
+    "each entry, and the versions before it, with the locks committed on main."
   ],
   "packages": {
     "ChsBuffer.Avalonia.AppHost": {
-      "12.0.2-skia4": {
-        "variant": "skia4",
-        "inputs": {
-          "runtimes": {
-            "net10.0": {"version": "10.0.15", "vmr-tag": "v10.0.115", "vmr-commit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7"},
-            "net11.0": {"version": "11.0.0", "vmr-tag": "v11.0.100", "vmr-commit": "297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f"}
-          },
-          "skiasharp": {"version": "4.156.1", "skia-commit": "712ea097151d4951652dee046a8944376fd8df1b", "harfbuzz": "14.4.0.101"},
-          "angle": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"}
-        }
-      },
-      "12.0.2": {
-        "variant": "skia3",
-        "inputs": {
-          "runtimes": {
-            "net10.0": {"version": "10.0.15", "vmr-tag": "v10.0.115", "vmr-commit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7"},
-            "net11.0": {"version": "11.0.0", "vmr-tag": "v11.0.100", "vmr-commit": "297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f"}
-          },
-          "skiasharp": {"version": "3.119.4", "skia-commit": "7dbfc07dd33181f84e0958afb7ee805c6c769f0b", "harfbuzz": "8.3.1.5"},
-          "angle": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"}
-        }
-      },
-      "12.0.3-skia4": {
-        "variant": "skia4",
-        "inputs": {
-          "runtimes": {
-            "net10.0": {"version": "10.0.15", "vmr-tag": "v10.0.115", "vmr-commit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7"},
-            "net11.0": {"version": "11.0.0", "vmr-tag": "v11.0.100", "vmr-commit": "297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f"}
-          },
-          "skiasharp": {"version": "4.157.0", "skia-commit": "51cb594d773b5383a45065ea3c8cbec398ad2c36", "harfbuzz": "14.4.0.200"},
-          "angle": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"}
-        }
-      },
-      "12.0.3": {
-        "variant": "skia3",
-        "inputs": {
-          "runtimes": {
-            "net10.0": {"version": "10.0.15", "vmr-tag": "v10.0.115", "vmr-commit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7"},
-            "net11.0": {"version": "11.0.0", "vmr-tag": "v11.0.100", "vmr-commit": "297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f"}
-          },
-          "skiasharp": {"version": "3.119.4", "skia-commit": "7dbfc07dd33181f84e0958afb7ee805c6c769f0b", "harfbuzz": "8.3.1.5"},
-          "angle": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"}
-        }
-      },
-      "12.0.4-skia4": {
-        "variant": "skia4",
-        "inputs": {
-          "runtimes": {
-            "net10.0": {"version": "10.0.15", "vmr-tag": "v10.0.115", "vmr-commit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7"},
-            "net11.0": {"version": "11.0.0", "vmr-tag": "v11.0.100", "vmr-commit": "297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f"}
-          },
-          "skiasharp": {"version": "4.157.0", "skia-commit": "51cb594d773b5383a45065ea3c8cbec398ad2c36", "harfbuzz": "14.4.0.200"},
-          "angle": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"}
-        }
-      },
-      "12.0.4": {
-        "variant": "skia3",
-        "inputs": {
-          "runtimes": {
-            "net10.0": {"version": "10.0.15", "vmr-tag": "v10.0.115", "vmr-commit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7"},
-            "net11.0": {"version": "11.0.0", "vmr-tag": "v11.0.100", "vmr-commit": "297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f"}
-          },
-          "skiasharp": {"version": "3.119.4", "skia-commit": "7dbfc07dd33181f84e0958afb7ee805c6c769f0b", "harfbuzz": "8.3.1.5"},
-          "angle": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"}
-        }
-      },
-      "12.0.5-skia4": {
-        "variant": "skia4",
-        "inputs": {
-          "runtimes": {
-            "net10.0": {"version": "10.0.15", "vmr-tag": "v10.0.115", "vmr-commit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7"},
-            "net11.0": {"version": "11.0.0", "vmr-tag": "v11.0.100", "vmr-commit": "297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f"}
-          },
-          "skiasharp": {"version": "4.157.0", "skia-commit": "51cb594d773b5383a45065ea3c8cbec398ad2c36", "harfbuzz": "14.4.0.200"},
-          "angle": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"}
-        }
-      },
-      "12.0.5": {
-        "variant": "skia3",
-        "inputs": {
-          "runtimes": {
-            "net10.0": {"version": "10.0.15", "vmr-tag": "v10.0.115", "vmr-commit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7"},
-            "net11.0": {"version": "11.0.0", "vmr-tag": "v11.0.100", "vmr-commit": "297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f"}
-          },
-          "skiasharp": {"version": "3.119.4", "skia-commit": "7dbfc07dd33181f84e0958afb7ee805c6c769f0b", "harfbuzz": "8.3.1.5"},
-          "angle": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"}
-        }
-      },
-      "12.0.6-skia4": {
-        "variant": "skia4",
-        "inputs": {
-          "runtimes": {
-            "net10.0": {"version": "10.0.15", "vmr-tag": "v10.0.115", "vmr-commit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7"},
-            "net11.0": {"version": "11.0.0", "vmr-tag": "v11.0.100", "vmr-commit": "297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f"}
-          },
-          "skiasharp": {"version": "4.157.0", "skia-commit": "51cb594d773b5383a45065ea3c8cbec398ad2c36", "harfbuzz": "14.4.0.200"},
-          "angle": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"}
-        }
-      },
-      "12.0.6": {
-        "variant": "skia3",
-        "inputs": {
-          "runtimes": {
-            "net10.0": {"version": "10.0.15", "vmr-tag": "v10.0.115", "vmr-commit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7"},
-            "net11.0": {"version": "11.0.0", "vmr-tag": "v11.0.100", "vmr-commit": "297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f"}
-          },
-          "skiasharp": {"version": "3.119.4", "skia-commit": "7dbfc07dd33181f84e0958afb7ee805c6c769f0b", "harfbuzz": "8.3.1.5"},
-          "angle": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"}
-        }
-      },
       "12.0.7-skia4": {
         "variant": "skia4",
         "inputs": {
@@ -141,17 +31,9 @@
       }
     },
     "ChsBuffer.AppHost.Static": {
-      "10.0.15-alpha.1": {
-        "variant": "net10.0",
-        "inputs": {"version": "10.0.15", "vmr-tag": "v10.0.115", "vmr-commit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7"}
-      },
       "10.0.15-alpha.2": {
         "variant": "net10.0",
         "inputs": {"version": "10.0.15", "vmr-tag": "v10.0.115", "vmr-commit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7"}
-      },
-      "11.0.0-alpha.1": {
-        "variant": "net11.0",
-        "inputs": {"version": "11.0.0", "vmr-tag": "v11.0.100", "vmr-commit": "297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f"}
       },
       "11.0.0-alpha.2": {
         "variant": "net11.0",
@@ -159,25 +41,9 @@
       }
     },
     "ChsBuffer.SkiaSharp.Static": {
-      "3.119.4.1": {
-        "variant": "skia3",
-        "inputs": {"version": "3.119.4", "skia-commit": "7dbfc07dd33181f84e0958afb7ee805c6c769f0b", "harfbuzz": "8.3.1.5"}
-      },
       "3.119.4.2": {
         "variant": "skia3",
         "inputs": {"version": "3.119.4", "skia-commit": "7dbfc07dd33181f84e0958afb7ee805c6c769f0b", "harfbuzz": "8.3.1.5"}
-      },
-      "4.156.1.1": {
-        "variant": "skia4",
-        "inputs": {"version": "4.156.1", "skia-commit": "712ea097151d4951652dee046a8944376fd8df1b", "harfbuzz": "14.4.0.101"}
-      },
-      "4.157.0.1": {
-        "variant": "skia4",
-        "inputs": {"version": "4.157.0", "skia-commit": "51cb594d773b5383a45065ea3c8cbec398ad2c36", "harfbuzz": "14.4.0.200"}
-      },
-      "4.157.0.2": {
-        "variant": "skia4",
-        "inputs": {"version": "4.157.0", "skia-commit": "51cb594d773b5383a45065ea3c8cbec398ad2c36", "harfbuzz": "14.4.0.200"}
       },
       "4.157.0.3": {
         "variant": "skia4",
@@ -185,10 +51,6 @@
       }
     },
     "ChsBuffer.Angle.Static": {
-      "2.1.27548.1": {
-        "variant": "default",
-        "inputs": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"}
-      },
       "2.1.27548.2": {
         "variant": "default",
         "inputs": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"}

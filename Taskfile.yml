@@ -424,6 +424,6 @@ tasks:
       - uv run --no-project python scripts/upstream.py apply {{.CLI_ARGS}}
 
   upstream-lock:
-    desc: Append the current package versions to package-inputs.lock.json (-- --check to verify)
+    desc: Write the current package versions to package-inputs.lock.json (-- --check to verify)
     cmds:
       - uv run --no-project python scripts/upstream.py lock {{.CLI_ARGS}}
