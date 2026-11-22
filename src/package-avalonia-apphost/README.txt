@@ -25,6 +25,7 @@ Compatibility and fallback
 - net10.0 / net11.0 + linux-musl-arm64: active
 - OS-specific TFMs (e.g. net11.0-windows) use the template of their .NET version
 - builds without a runtime identifier: inactive, without a warning
+- NativeAOT (PublishAot=true) and UseAppHost=false: inactive, the dynamic native libraries are published
 - unsupported target framework & runtime identifier combinations: inactive fallback
 
 Learn more

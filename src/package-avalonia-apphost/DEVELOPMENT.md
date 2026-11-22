@@ -57,7 +57,9 @@ The Build package's `.targets` matches `$(RuntimeIdentifier)` and the project's 
 `@(AvaloniaAppHostRids)`. The TFM is normalized to `net<major>.<minor>`, so OS-specific TFMs such as
 `net11.0-windows` use the `net11.0` template. A build without a RuntimeIdentifier stays inactive and
 silent: its output is portable, and the publish step removes the native libraries by file name, which
-would drop them for every RID. Each RID package depends on the Build package, so consumers install only the RID packages they need. The meta-package `ChsBuffer.Avalonia.AppHost` installs every supported RID package.
+would drop them for every RID. NativeAOT and `UseAppHost=false` builds stay inactive as well, because
+no apphost loads the libraries; the NativeAOT warning is omitted when the static graphics packages
+(`HostForgeStaticGraphicsImported`) link them instead. Each RID package depends on the Build package, so consumers install only the RID packages they need. The meta-package `ChsBuffer.Avalonia.AppHost` installs every supported RID package.
 
 ## SkiaSharp variants and package versions
 

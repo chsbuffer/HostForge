@@ -36,11 +36,22 @@
                    and $([System.String]::Copy('%(AppHostTemplateTfm)').ToLowerInvariant()) == '$(_AvaloniaTemplateTfmLower)'" />
     </ItemGroup>
 
+    <!--
+      NativeAOT and UseAppHost=false run without an apphost, so nothing would load the libraries that the
+      publish step removes. ChsBuffer.SkiaSharp.Static and ChsBuffer.Angle.Static link them into NativeAOT
+      executables instead.
+    -->
+    <PropertyGroup Condition="'$(AvaloniaAppHostActive)' == '' and '$(TargetFramework)' != '' and '$(_AvaloniaTemplateRid)' != ''">
+      <_AvaloniaAppHostInactiveReason Condition="'$(PublishAot)' == 'true'">PublishAot</_AvaloniaAppHostInactiveReason>
+      <_AvaloniaAppHostInactiveReason Condition="'$(_AvaloniaAppHostInactiveReason)' == ''
+          and !('@(_AvaloniaMatchedRid)' != ''
+                and Exists('@(_AvaloniaMatchedRid->'%(AppHostTemplatePath)')')
+                and Exists('@(_AvaloniaMatchedRid->'%(SingleFileHostTemplatePath)')'))">NoTemplate</_AvaloniaAppHostInactiveReason>
+      <_AvaloniaAppHostInactiveReason Condition="'$(_AvaloniaAppHostInactiveReason)' == '' and '$(UseAppHost)' == 'false'">UseAppHost</_AvaloniaAppHostInactiveReason>
+      <AvaloniaAppHostActive Condition="'$(_AvaloniaAppHostInactiveReason)' == ''">true</AvaloniaAppHostActive>
+    </PropertyGroup>
+
     <PropertyGroup>
-      <AvaloniaAppHostActive Condition="'$(AvaloniaAppHostActive)' == '' and '$(TargetFramework)' != ''
-          and '@(_AvaloniaMatchedRid)' != ''
-          and Exists('@(_AvaloniaMatchedRid->'%(AppHostTemplatePath)')')
-          and Exists('@(_AvaloniaMatchedRid->'%(SingleFileHostTemplatePath)')')">true</AvaloniaAppHostActive>
       <AvaloniaAppHostActive Condition="'$(AvaloniaAppHostActive)' == ''">false</AvaloniaAppHostActive>
 
       <AppHostSourcePath Condition="'$(AvaloniaAppHostActive)' == 'true' and '$(AppHostSourcePath)' == ''">@(_AvaloniaMatchedRid->'%(AppHostTemplatePath)')</AppHostSourcePath>
@@ -48,16 +59,21 @@
     </PropertyGroup>
   </Target>
 
+  <!--
+    Running before BeforeCompile puts the initializer and its constants into the compile input cache, so a
+    build that changes the activation in the same intermediate directory, such as one with UseAppHost=false,
+    recompiles the assembly instead of keeping or missing the initializer of the previous build.
+  -->
   <Target Name="InjectAvaloniaModuleInitializer"
-          BeforeTargets="CoreCompile"
+          BeforeTargets="BeforeCompile;CoreCompile"
           DependsOnTargets="ResolveAvaloniaAppHostActivation"
-          Condition="'$(AvaloniaAppHostActive)' == 'true' and Exists('$(_AvaloniaModuleInitializer)')">
-    <PropertyGroup>
+          Condition="Exists('$(_AvaloniaModuleInitializer)')">
+    <PropertyGroup Condition="'$(AvaloniaAppHostActive)' == 'true'">
         <DefineConstants Condition="'$(DetectAvaloniaDesigner)' == 'true'">$(DefineConstants);DETECT_AVALONIA_DESIGNER</DefineConstants>
         <DefineConstants Condition="'$(_AvaloniaTemplateRidIsWindows)' != 'True'">$(DefineConstants);HOSTFORGE_DISABLE_AVALONIA_WIN32_IMPORT_RESOLVER</DefineConstants>
     </PropertyGroup>
 
-    <ItemGroup>
+    <ItemGroup Condition="'$(AvaloniaAppHostActive)' == 'true'">
       <Compile Include="$(_AvaloniaModuleInitializer)"
                Link="HostForge\Avalonia\ModuleInitializer.g.cs"
                Visible="false" />
@@ -66,9 +82,17 @@
 
   <Target Name="WarnAvaloniaAppHostInactive"
           BeforeTargets="PrepareForBuild"
-          DependsOnTargets="ResolveAvaloniaAppHostActivation"
-          Condition="'$(TargetFramework)' != '' and '$(RuntimeIdentifier)' != '' and '$(AvaloniaAppHostActive)' != 'true'">
-    <Warning Text="ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='$(TargetFramework)' RuntimeIdentifier='$(RuntimeIdentifier)'. No matching AvaloniaAppHostRids item for TFM '$(_AvaloniaTemplateTfm)' and RID '$(_AvaloniaTemplateRid)'. Registered: @(AvaloniaAppHostRids->'%(AppHostTemplateTfm)/%(Identity)', ', '). Host replacement and ANGLE/Skia/HarfBuzz runtime copy suppression are disabled." />
+          DependsOnTargets="ResolveAvaloniaAppHostActivation">
+    <PropertyGroup>
+      <_AvaloniaAppHostInactive>ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='$(TargetFramework)' RuntimeIdentifier='$(RuntimeIdentifier)'</_AvaloniaAppHostInactive>
+    </PropertyGroup>
+    <!-- NativeAOT with the static graphics packages is a normal setup. -->
+    <Warning Condition="'$(_AvaloniaAppHostInactiveReason)' == 'PublishAot' and '$(HostForgeStaticGraphicsImported)' != 'true'"
+             Text="$(_AvaloniaAppHostInactive) because PublishAot is true. NativeAOT executables do not use the apphost templates, so the ANGLE, Skia and HarfBuzz dynamic libraries are published. ChsBuffer.SkiaSharp.Static and, on Windows, ChsBuffer.Angle.Static link them into NativeAOT executables." />
+    <Warning Condition="'$(_AvaloniaAppHostInactiveReason)' == 'NoTemplate'"
+             Text="$(_AvaloniaAppHostInactive). No matching AvaloniaAppHostRids item for TFM '$(_AvaloniaTemplateTfm)' and RID '$(_AvaloniaTemplateRid)'. Registered: @(AvaloniaAppHostRids->'%(AppHostTemplateTfm)/%(Identity)', ', '). Host replacement and ANGLE/Skia/HarfBuzz runtime copy suppression are disabled." />
+    <Warning Condition="'$(_AvaloniaAppHostInactiveReason)' == 'UseAppHost'"
+             Text="$(_AvaloniaAppHostInactive) because UseAppHost is false. The application runs on dotnet, not on an apphost, so the ANGLE, Skia and HarfBuzz dynamic libraries are published." />
   </Target>
 
   <!--

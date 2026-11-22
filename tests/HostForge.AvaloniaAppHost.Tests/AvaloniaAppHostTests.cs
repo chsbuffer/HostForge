@@ -264,6 +264,35 @@ public class AvaloniaAppHostTests
     }
 
     [Test]
+    [Arguments("-p:UseAppHost=false", "because UseAppHost is false", false)]
+    [Arguments("-p:PublishAot=true", "because PublishAot is true", true)]
+    public async Task PublishWithoutAppHost_StaysInactiveAndKeepsNativeLibraries_WinX64(string property, string reason, bool runExecutable)
+    {
+        string targetFramework = RepoContext.AvaloniaTemplateTfms[0];
+        string caseName = $"{targetFramework}_publish_{property}";
+        await using var project = await TestProjectWorkspace.CreateAsync(
+            targetFramework: targetFramework,
+            runtimeIdentifier: "win-x64",
+            includeNativeAssetsPackages: true);
+
+        CommandResult result = await RunDotNetCommandAsync("publish", project.ProjectFilePath, project.ProjectDirectory, property);
+        AssertEx.Success(result, caseName);
+        AssertActivationState(result.CombinedOutput, expectedActive: false, targetFramework, "win-x64");
+        AssertEx.Contains(result.CombinedOutput, reason);
+
+        // Neither NativeAOT nor dotnet loads the libraries from a template, so the dynamic libraries stay.
+        string outputDirectory = project.GetPublishDirectory("Release", targetFramework, "win-x64");
+        AssertNativeRuntimeCopy(outputDirectory, expectSkiaHarfBuzzRuntimeCopy: true, expectAngleRuntimeCopy: true);
+
+        CommandResult runResult = runExecutable
+            ? await CommandRunner.RunAsync(Path.Combine(outputDirectory, $"{project.ProjectName}.exe"), string.Empty, outputDirectory)
+            : await CommandRunner.RunAsync("dotnet", $"\"{project.ProjectName}.dll\"", outputDirectory);
+        AssertEx.Success(runResult, $"{caseName}:run");
+        AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        AssertEx.Contains(runResult.CombinedOutput, "AngleError=0x");
+    }
+
+    [Test]
     public async Task DisableSkiaHarfBuzzRuntimeCopy_AffectsPublishOutputs_WinX64()
     {
         SwitchRuleCase[] cases =

@@ -19,14 +19,16 @@ Current coverage:
   glibc, `linux-musl-x64` / `linux-musl-arm64` on Alpine; `HOSTFORGE_NATIVE_RID` overrides it)
 - Publish without a RuntimeIdentifier on Windows and Linux for every template TFM: no inactive warning, the native
   libraries of every RID stay under `runtimes/`, and the portable output runs on `dotnet`
+- Windows `UseAppHost=false` and NativeAOT publishes: inactive with the matching warning, the dynamic libraries stay in
+  the publish directory, and the output runs on `dotnet` or as the NativeAOT executable
 - Linux ELF audit of the linked templates: architecture, the glibc or musl program interpreter, no glibc
   dependency in the musl templates, and the diagnostics exports of the upstream singlefilehost
 - Linux Skia/HarfBuzz native runtime copy suppression switch behavior
 - Skia 3 / 4 package versions, optional preview labels, managed dependencies and unchanged template paths
 
 Link the templates for every template TFM first (`task link-avalonia`). Running the published executables
-needs the matching shared runtimes: .NET 9, 10 and 11 on Windows; .NET 10 and 11 on Linux. The Linux ELF audit
-needs `readelf` (binutils).
+needs the matching shared runtimes: .NET 9, 10 and 11 on Windows; .NET 10 and 11 on Linux. The Windows NativeAOT
+publish needs the MSVC build tools. The Linux ELF audit needs `readelf` (binutils).
 
 Run:
 
