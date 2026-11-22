@@ -17,24 +17,10 @@ restore only one architecture.
 Publish on macOS with `dotnet publish -c Release -r osx-arm64` (or `osx-x64`).
 Keep `AvaloniaNativePlatformOptions.AvaloniaNativeLibraryPath` unset: that option
 explicitly requests dynamic loading and bypasses Avalonia's default P/Invoke.
+Builds without NativeAOT or without a macOS RID load `libAvaloniaNative.dylib` as
+usual.
 
-Integration activates only for `PublishAot=true` and an exact matching RID. It
-force-loads the archive to retain Objective-C categories, links Apple's system
-frameworks and C++/Objective-C runtimes, and removes `libAvaloniaNative.dylib`
-before publish copying or single-file bundling. SkiaSharp and HarfBuzzSharp are
-independent dependencies; their official dynamic native assets remain usable.
-
-The restored `Avalonia` and `Avalonia.Native` versions must match the archive's
-upstream version exactly (`HFG0004` on mismatch). A macOS AOT build without a
-matching RID package produces `HFG1001` and leaves dynamic assets intact.
-Builds without a RID or targeting other platforms are silent and add no linking
-inputs. A fourth package version segment denotes a HostForge packaging revision,
-without changing the required Avalonia version. There is no additional font
-initialization code.
-
-Archives are built from Avalonia 12.1.6 source, commit
-`cf8e564674700348947e93ab19105f27afe859a9`, with upstream MicroCom-generated
-headers. Each archive contains one architecture, targets macOS 12.0, and includes
-a source/toolchain/SHA-256 manifest and the Avalonia license. The final
-application must also meet the system requirements of its .NET and Avalonia
-versions; the archive deployment target does not override those requirements.
+The restored `Avalonia` and `Avalonia.Native` versions must be exactly 12.1.6
+(`HFG0004` otherwise); the fourth part of the package version is a HostForge
+packaging revision. The archives target macOS 12.0; the application must also meet
+the system requirements of its .NET and Avalonia versions.
