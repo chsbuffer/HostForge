@@ -1,5 +1,6 @@
 """Cache invalidation contracts; run with python -m unittest discover -s tests/native."""
 
+import copy
 import importlib.util
 import json
 import re
@@ -25,6 +26,8 @@ OTHER_SKIA = next((v for v in VERSIONS["skiasharp-versions"] if v != SKIA), None
 HOSTLIBS = VERSIONS["hostlibs"]
 OTHER_HOSTLIBS = next((v for v in VERSIONS["hostlibs-versions"] if v != HOSTLIBS), None)
 AVALONIA = VERSIONS["avalonia-native"]
+SKIA_RIDS = ("win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64",
+             "osx-x64", "osx-arm64")
 # The RIDs whose HostLibs build in an upstream container.
 HOSTLIBS_LINUX_RIDS = ("linux-x64", "linux-musl-x64", "linux-musl-arm64")
 
@@ -75,6 +78,36 @@ class NativeCacheKeyTests(unittest.TestCase):
         self.assertNotEqual(before["3"], self.key(lines["3"]))
         self.assertEqual(before["4"], self.key(lines["4"]), "SkiaSharp 4 builds the upstream HarfBuzzSharp project")
         self.assertEqual(linux, self.key(lines["3"], "linux-x64"))
+
+    def test_checked_downloads_are_scoped_to_skiasharp_4(self):
+        lines = {version.split(".")[0]: version for version in VERSIONS["skiasharp-versions"]}
+        if not {"3", "4"} <= set(lines):
+            self.skipTest("needs a SkiaSharp 3 and a SkiaSharp 4 version")
+        file = self.root / "native/skiasharp/upstream-build.json"
+        records = json.loads(file.read_text(encoding="utf-8"))
+
+        def keys(edit):
+            changed = copy.deepcopy(records)
+            edit(changed)
+            file.write_text(json.dumps(changed), encoding="utf-8")
+            return {major: {rid: self.key(version, rid) for rid in SKIA_RIDS} for major, version in lines.items()}
+
+        original = keys(lambda changed: None)
+
+        def unchecked(changed):
+            changed[lines["4"]]["native/windows/build.cake"] = "0" * 40
+            skia3 = changed[lines["3"]]
+            skia3.update({path: "0" * 40 for path in (*skia3, *cache_key.SKIASHARP_CHECKED_DOWNLOADS)})
+
+        self.assertEqual(original, keys(unchecked), "unchecked or SkiaSharp 3 records")
+        for path in cache_key.SKIASHARP_CHECKED_DOWNLOADS:
+            for name, edit in (("changed", lambda changed: changed[lines["4"]].update({path: "0" * 40})),
+                               ("removed", lambda changed: changed[lines["4"]].pop(path))):
+                with self.subTest(path=path, record=name):
+                    after = keys(edit)
+                    self.assertEqual(original["3"], after["3"])
+                    for rid in SKIA_RIDS:
+                        self.assertNotEqual(original["4"][rid], after["4"][rid], rid)
 
     def test_version_source_is_scoped_to_selected_version(self):
         if OTHER_SKIA is None:

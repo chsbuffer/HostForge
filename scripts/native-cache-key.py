@@ -9,6 +9,12 @@ import subprocess
 import tomllib
 from pathlib import Path
 
+# The mono/SkiaSharp files that the SkiaSharp 4 recipe downloads and checks against their upstream-build.json
+# records: WINDOWS_HARFBUZZ of native/skiasharp/conanfile.py, which runs under conan and cannot be imported
+# here (tests/native keeps the two equal).
+SKIASHARP_CHECKED_DOWNLOADS = ("native/windows/libHarfBuzzSharp/libHarfBuzzSharp.vcxproj",
+                               "native/windows/libHarfBuzzSharp/harfbuzz-subset-msvc.cc")
+
 
 def fontconfig_checksums(rid):
     """The fontconfig packages that the SkiaSharp image of a Linux RID adds to its rootfs."""
@@ -52,6 +58,11 @@ def fingerprint(root, component, version, rid, toolchain, generator=""):
         values["source"] = json.loads((root / directory / "versions.json").read_text())[version]
         files += [f"{directory}/git-sync-deps", f"{directory}/{profile_os.split('-')[0]}.py"]
         tasks = [f"_skiasharp-{profile_os.split('-')[0]}"]
+        if version.startswith("4."):
+            # source() fails on every platform when these records do not match the downloads. Only they are
+            # keyed: the other records, and those of other versions, describe files the build does not read.
+            records = json.loads((root / directory / "upstream-build.json").read_text()).get(version, {})
+            values["checked-downloads"] = {path: records.get(path) for path in SKIASHARP_CHECKED_DOWNLOADS}
         if platform == "win":
             files += [f"{directory}/profiles/windows-x64"]
             # SkiaSharp 4 builds the HarfBuzzSharp project of its upstream tag instead (windows.py).

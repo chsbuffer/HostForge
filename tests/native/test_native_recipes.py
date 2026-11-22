@@ -327,6 +327,12 @@ class SkiaSharpSourceTests(unittest.TestCase):
         with self.subTest(version="unrecorded"), self.assertRaisesRegex(ConanException, "records None"):
             self.source(None)
 
+    def test_cache_key_includes_the_records_of_the_checked_files(self):
+        spec = importlib.util.spec_from_file_location("cache_key", ROOT / "scripts/native-cache-key.py")
+        cache_key = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cache_key)
+        self.assertEqual(skiasharp.WINDOWS_HARFBUZZ, cache_key.SKIASHARP_CHECKED_DOWNLOADS)
+
 
 class SkiaSharpDeployTests(unittest.TestCase):
     def test_redeploy_replaces_the_payload_directory(self):
