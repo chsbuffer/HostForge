@@ -11,6 +11,12 @@ Additional linker inputs can be passed via `@(LinkerArg)` (for example: system i
 MSVC toolchain is initialized by `findvcvarsall.bat`.
 Incremental cache is based on native inputs + host assets + RID/machine/flags fingerprint.
 
+The hardening and delay-load options (`/guard:*`, `/CETCOMPAT`, `/DELAYLOAD:*`) come from the `<host>.linkflags`
+that the host libs record, so the relinked hosts match the official ones: on x64 they link with
+`/guard:ehcont`, which fails with `LNK1386` when a `NativeLibrary` has C++ exception handling but was not
+compiled with `/guard:ehcont`. Set `StaticHostGuardEHCont=false` to link such libraries without the EH
+continuation table.
+
 ## Usage
 
 Directly import:

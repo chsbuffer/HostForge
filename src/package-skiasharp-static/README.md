@@ -34,7 +34,7 @@ mutual dependencies. Payloads, source manifests, GN arguments and licenses are u
 Windows libraries are compiled with Control Flow Guard (`/guard:cf`), and the `win-x64`
 libraries also with EH continuation metadata (`/guard:ehcont`), so they link into
 executables that require it: NativeAOT with `ControlFlowGuard=Guard`, which links with
-`/guard:ehcont` on x64.
+`/guard:ehcont` on x64, and the relinked hosts of `ChsBuffer.AppHost.Static`.
 
 Conflicting native lines fail with `HFG0001`; incompatible managed SkiaSharp
 major.minor or HarfBuzzSharp major.minor.patch fail with `HFG0002` or `HFG0003`.

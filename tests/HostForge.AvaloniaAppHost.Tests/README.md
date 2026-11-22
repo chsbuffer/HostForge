@@ -8,6 +8,8 @@ Current coverage:
   `AvaloniaTemplateTfms` entry and generated `AvaloniaAppHostRids` registrations evaluated by MSBuild
 - Windows activation and inactive-warning behavior across `net9.0` (inactive), `net10.0`, `net11.0` and
   `net11.0-windows`, `win-x64` / `win-arm64`
+- Windows PE audit of the linked templates: Control Flow Guard for every RID and, as in the official hosts, the
+  EH continuation table (`/guard:ehcont`) for `win-x64`
 - Windows Skia/HarfBuzz native runtime copy suppression switch behavior
 - Windows ANGLE P/Invoke resolution from the apphost and runtime copy suppression for every template TFM
 - Self-contained single-file publish on Windows and Linux for every template TFM, without and with

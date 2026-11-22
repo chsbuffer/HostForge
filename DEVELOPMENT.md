@@ -132,7 +132,7 @@ task build-skiasharp ARCH=arm64
 
 Windows HarfBuzzSharp 项目由 [`scripts/libHarfBuzzSharp.vcxproj.in`](scripts/libHarfBuzzSharp.vcxproj.in) 原样导出后实例化，仓库中的上游模板不由 recipe 修改。
 
-`win-x64` 的 Skia（clang-cl）与 HarfBuzzSharp（MSVC 工程的 `GuardEHContMetadata`，SkiaSharp 4 的上游工程同样在实例化时加入）以 `/guard:ehcont` 编译：.NET 在 x64 上以 `/guard:ehcont` 链接宿主，而带 C++ EH 却没有 EH continuation 元数据的对象会让 `link.exe` 以 `LNK1386` 失败。
+`win-x64` 的 Skia（clang-cl）与 HarfBuzzSharp（MSVC 工程的 `GuardEHContMetadata`，SkiaSharp 4 的上游工程同样在实例化时加入）以 `/guard:ehcont` 编译：.NET 在 x64 上以 `/guard:ehcont` 链接宿主，Static AppHost 沿用 HostLibs 记录的这一参数，而带 C++ EH 却没有 EH continuation 元数据的对象会让 `link.exe` 以 `LNK1386` 失败。
 
 ### 3. 构建 ANGLE
 

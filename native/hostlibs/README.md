@@ -52,8 +52,9 @@ dependency separator (`|`, `||`, `|@`). Libraries passed inside
 `/WHOLEARCHIVE:<lib>` (.NET 11 links `runtimeinfo.lib` that way) are packaged too.
 
 Each payload records the runtime's own compile and link flags in
-`<host>.linkflags`; the Windows relink reads the `/DELAYLOAD` options from
-`singlefilehost.linkflags`, because .NET 10 and .NET 11 delay-load different DLLs.
+`<host>.linkflags`; the Windows relink reads the `/guard:`, `/CETCOMPAT` and `/DELAYLOAD`
+options from them, because the runtime adds `/guard:ehcont` and `/CETCOMPAT` on x64 only and
+.NET 10 and .NET 11 delay-load different DLLs.
 
 A link input outside the build tree, such as the `libpthread.a` stub that CMake finds
 in the musl rootfs, is copied into the payload, and the response file names the copy.
