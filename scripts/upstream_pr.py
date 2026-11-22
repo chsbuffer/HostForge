@@ -122,7 +122,7 @@ OUTCOMES = {
     "foreign": "pull request not opened by the workflow",
     "kept": "kept: lookup errors",
     "suppressed": "suppressed (declined target)",
-    "closed": "closed (main is up to date)",
+    "closed": "closed (no changes planned)",
     "retired": "closed (group no longer planned)",
     "stale": "stale plan (main moved; retried next run)",
     "nothing": "nothing to do",
@@ -587,7 +587,7 @@ class Processor:
             result.outcome = "maintainer"
             result.notes.append(f"commits by {', '.join(maintainers)} on {branch} are never overwritten or deleted")
             if not meta["changed"]:
-                result.notes.append("main is already up to date with the upstream versions of this group")
+                result.notes.append("the plan has no changes for this group")
             elif open_pull is None:
                 result.notes.append(f"no pull request is opened while {branch} has maintainer commits; delete the "
                                     "branch to let the workflow open one")
@@ -597,8 +597,11 @@ class Processor:
 
         if not meta["changed"]:
             if open_pull:
-                self.github.comment(open_pull["number"], "main is already up to date with the upstream versions "
-                                    f"of this group; closing. ([upstream run]({self.run_url}))")
+                # The plan also has no changes when the newest releases cannot be applied (yet), so the comment
+                # does not claim that main is up to date.
+                self.github.comment(open_pull["number"], "The upstream workflow plans no changes for this group "
+                                    f"any more; closing. The [upstream run]({self.run_url}) lists any updates it "
+                                    "could not apply.")
                 self.github.update_pull(open_pull["number"], state="closed")
                 result.open_target = None
             if head:

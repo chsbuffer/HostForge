@@ -451,9 +451,9 @@ class UpstreamPrTests(unittest.TestCase):
         self.assertEqual(code, 0, summary)
         pull = self.pulls("tools")[0]
         self.assertEqual(pull["state"], "closed")
-        self.assertIn("main is already up to date", self.gh_state()["comments"][str(pull["number"])][0]["body"])
+        self.assertIn("plans no changes for this group", self.gh_state()["comments"][str(pull["number"])][0]["body"])
         self.assertIsNone(self.branch("tools"))
-        self.assertIn("| tools | closed (main is up to date) |", summary)
+        self.assertIn("| tools | closed (no changes planned) |", summary)
         self.assertIn("| inputs | nothing to do |", summary)
         self.reset_calls()
         code, summary = self.run_pr()
@@ -625,7 +625,7 @@ class UpstreamPrTests(unittest.TestCase):
         self.assertEqual(self.branch("tools"), head)
         self.assertEqual(self.pulls("tools")[0]["state"], "open")
         self.assertEqual(self.writes(), [])
-        self.assertIn("main is already up to date", summary)
+        self.assertIn("the plan has no changes for this group", summary)
 
     def land_taken_over_tools_pull(self):
         """The bot's tools pull request, taken over by a maintainer and squash-merged without deleting its branch;
