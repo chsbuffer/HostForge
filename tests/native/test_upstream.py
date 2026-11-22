@@ -836,15 +836,25 @@ class KeepGoingTests(UpstreamTestCase):
         self.assert_consistent()
 
     def test_dotnet_failure_aborts_even_with_keep_going(self):
-        client = fake_upstream(self.root, avalonia=True)
-        channel = ".".join(next(iter(self.pinned["runtimes"].values())).split(".")[:2])
-        del client.responses[f"https://example.invalid/release-metadata/{channel}/releases.json"]
+        # The security verdict does not read the build containers, so only plan_dotnet meets this failure.
+        client = fake_upstream(self.root, dotnet=True, avalonia=True)
+        for url in [url for url in client.responses if upstream.VMR_PIPELINE_RESOURCES in url]:
+            del client.responses[url]
         before = self.snapshot()
         for arguments in (("--keep-going",), ("--keep-going", "--dotnet")):
             code, _, stderr, metadata = self.apply(client, *arguments)
             self.assertEqual(2, code, arguments)
+            self.assertIn(upstream.VMR_PIPELINE_RESOURCES, stderr)
             self.assertIsNone(metadata)
             self.assertEqual(before, self.snapshot())
+        # Without --metadata there is no security verdict, so plan_dotnet is the first to read the releases.
+        client = fake_upstream(self.root, avalonia=True)
+        channel = ".".join(next(iter(self.pinned["runtimes"].values())).split(".")[:2])
+        del client.responses[f"https://example.invalid/release-metadata/{channel}/releases.json"]
+        code, _, stderr = self.run_main(client, "apply", "--keep-going")
+        self.assertEqual(2, code)
+        self.assertIn("releases.json", stderr)
+        self.assertEqual(before, self.snapshot())
 
     def test_security_state_failure_aborts(self):
         client = fake_upstream(self.root, avalonia=True)
