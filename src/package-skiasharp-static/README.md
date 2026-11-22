@@ -14,7 +14,7 @@ package alongside Avalonia; managed graphics dependencies are selected automatic
 ```
 
 Publish with an explicit RID, for example `dotnet publish -c Release -r linux-x64`.
-Use version `4.157.0` for SkiaSharp 4. A single architecture can instead reference
+Use version `4.157.0.2` for SkiaSharp 4. A single architecture can instead reference
 `ChsBuffer.SkiaSharp.Static.<RID>`.
 
 Both versions support `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`,

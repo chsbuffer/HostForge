@@ -405,7 +405,7 @@ flowchart LR
 
 | Job | 执行平台 | 主要输出 |
 | --- | --- | --- |
-| `plan-all` | Linux | 读取规范文件中的版本；`tests/native`（缓存键边界、版本一致性、包输入锁守卫）；与 `main` 首父历史中的包输入锁比对；两个 SkiaSharp 版本与完整 8 RID 矩阵 |
+| `plan-all` | Linux | 读取规范文件中的版本；`tests/native`（缓存键边界、版本一致性、包文档版本、包输入锁守卫）；与 `main` 首父历史中的包输入锁比对；两个 SkiaSharp 版本与完整 8 RID 矩阵 |
 | `build-skia-windows` | Windows x64 | 两个版本 × 两种架构的静态库、RID 包，以及 x64 AOT / 版本保护 |
 | `test-skia-windows-arm64` | Windows 11 ARM64 | ARM64 NativeAOT 原生发布、实际运行与架构审计 |
 | `build-skia-linux` | Linux | 固定 LLVM 20 / bionic sysroot 静态库、RID 包、AOT 运行及 ABI 审计 |
@@ -483,6 +483,8 @@ artifacts/  构建、打包和测试输出
 native RID 包及聚合包统一使用上游版本的前三段加第四段修复号。例如 SkiaSharp 上游 `3.119.4` 对应 `3.119.4.1`；ANGLE 上游 `2.1.27548.20260419` 对应 `2.1.27548.1`。源码构建、产物目录、manifest 和上游托管依赖仍使用完整上游版本。
 
 在 `Directory.Build.props` 的四行 native 包版本配置中维护第四段修复号：Skia 3 / 4 分别配置 `SkiaSharpPackageVersion`，ANGLE 和 AvaloniaNative 分别配置 `AnglePackageVersion`、`AvaloniaNativePackageVersion`。发布修复前，只修改受影响版本线末尾的 `.1` 为 `.2` 等；同一版本线的全部 RID 包和聚合包一起发布。CI 重跑不会自动递增版本。
+
+包文档（`src/*/README.md`，打进包中）让使用者引用的版本是完整的包版本，递增修复号时一并修改：NuGet 把不存在的版本（例如只写上游的前三段）解析为大于它的最低版本，也就是最早的修复号。`tests/native/test_package_docs.py` 检查给出某个 native 包族版本的文档写出了该包族每条版本线的当前包版本，且没有其他修复号。
 
 升级到新的上游前三段版本时，将对应修复号重置为 `1`。若上游前三段没有变化（例如仅 ANGLE 日期段变化），继续递增第四段，避免复用已发布的包版本。漏改时包输入锁守卫会失败，见 [上游跟踪与版本守卫](#上游跟踪与版本守卫)。
 

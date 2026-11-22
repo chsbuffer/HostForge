@@ -18,7 +18,7 @@ Reference `ChsBuffer.SkiaSharp.Static`, `ChsBuffer.Angle.Static` and
 ```
 
 Run `dotnet publish -c Release -r <RID>`. Change only the SkiaSharp static package
-version to `4.157.0` to use SkiaSharp 4.
+version to `4.157.0.2` to use SkiaSharp 4.
 
 The SkiaSharp meta package selects compatible managed SkiaSharp and HarfBuzzSharp
 versions through its RID package dependencies. No additional managed graphics
