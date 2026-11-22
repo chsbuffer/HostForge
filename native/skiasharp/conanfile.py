@@ -168,7 +168,9 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
             self.run(f'"{clang}" --version', stdout=versions, env="conanbuild")
             self.run("cl", stdout=versions, stderr=versions, ignore_errors=True, env="conanbuild")
         else:
-            self.run("clang --version", stdout=versions, env="conanbuild")
+            # GN compiles Linux with $CC (linux.py); macOS always uses the clang of the Command Line Tools.
+            compiler = os.environ.get("CC") if self.settings.os == "Linux" else None
+            self.run(f"{compiler or 'clang'} --version", stdout=versions, env="conanbuild")
             if self.settings.os == "Macos":
                 self.run("xcrun --sdk macosx --show-sdk-version", stdout=versions)
         save(self, str(Path(self.build_folder) / "toolchain.txt"), versions.getvalue())

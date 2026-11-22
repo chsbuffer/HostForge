@@ -146,7 +146,7 @@ tasks:
     vars:
       TARGET_RID: '{{.RID | default (printf "linux-%s" .ARCH)}}'
       CLANG_VERSION:
-        sh: clang -dumpversion
+        sh: ${CC:-clang} -dumpversion
     requires:
       vars:
         - name: TARGET_RID
@@ -155,7 +155,7 @@ tasks:
     cmds:
       - uv run conan export native/skiasharp --version={{.SKIASHARP_VERSION}}
       - >-
-        ROOTFS_DIR="{{.SYSROOT}}" CC=clang CXX=clang++ AR=llvm-ar uv run conan install --requires="skiasharp/{{.SKIASHARP_VERSION}}" --build=missing --no-remote --envs-generation=false
+        ROOTFS_DIR="{{.SYSROOT}}" CC=${CC:-clang} CXX=${CXX:-clang++} AR=${AR:-llvm-ar} uv run conan install --requires="skiasharp/{{.SKIASHARP_VERSION}}" --build=missing --no-remote --envs-generation=false
         -pr:b=native/skiasharp/profiles/linux-x64
         -pr:h=native/skiasharp/profiles/{{.TARGET_RID}}
         -s:h compiler.version={{first (splitList "." .CLANG_VERSION)}}

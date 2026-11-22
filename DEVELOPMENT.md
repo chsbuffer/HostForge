@@ -197,7 +197,7 @@ docker run --rm -v "$PWD:/work" hostforge-skia-musl-arm64 task build-skiasharp R
 task pack-skia-static RID=linux-musl-arm64 SKIASHARP_VERSION=<版本>
 ```
 
-也可以在宿主机上构建：像 CI 一样把镜像中的 rootfs 导出到 `build/rootfs/x64`，再传给 `SYSROOT`；相对路径按仓库根目录解析。可继续用 `CC`、`CXX` 和 `AR` 覆盖 GN 工具链命令。
+也可以在宿主机上构建：像 CI 一样把镜像中的 rootfs 导出到 `build/rootfs/x64`，再传给 `SYSROOT`；相对路径按仓库根目录解析。Task 默认使用 PATH 中的 `clang`、`clang++` 和 `llvm-ar`，可用环境变量 `CC`、`CXX` 和 `AR` 换成其它 Clang / LLVM 命令（例如 `CC=clang-20 CXX=clang++-20 AR=llvm-ar-20`），`compiler.version` 与 recipe 记录的工具链随之取自 `CC`。
 
 ```bash
 mkdir -p build/rootfs/x64
