@@ -46,6 +46,9 @@ class HostLibsConan(ConanFile):
         if self.settings.os != "Linux":
             self.options.rm_safe("libc")
         if self.settings.os != "Windows":
+            # build.sh runs in the pinned upstream build container, which selects
+            # its own LLVM; the container digest identifies it in the cache key.
+            self.settings.rm_safe("compiler")
             # Linux hosts are built like the official Linux runtime, with its PGO
             # data; the no-PGO flavor exists for the Windows AppHost.Static package.
             self.options.rm_safe("pgo")
