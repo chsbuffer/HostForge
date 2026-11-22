@@ -27,7 +27,8 @@ dotnet test --project tests/HostForge.NativeAot.Tests -c Release
 `HOSTFORGE_TEST_META=true` publishes through the three meta packages instead of the
 RID packages and adds a build without a RID, with warnings treated as errors. The meta
 packages restore the same RID packages, so CI tests RID consumers in the jobs that build
-each RID package and meta consumers in `test-all`, both for every TFM.
+each RID package and meta consumers in `test-all`, both for every TFM. Without it, the
+tests of the meta packages are skipped.
 
 Run musl targets inside Alpine. `ROOTFS_DIR` selects the matching Linux sysroot
 and enables ABI version checks. `HOSTFORGE_NATIVE_RUNNER` can name an executable

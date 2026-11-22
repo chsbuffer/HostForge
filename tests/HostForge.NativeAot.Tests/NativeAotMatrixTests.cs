@@ -131,7 +131,7 @@ public class NativeAotMatrixTests
     public async Task MultiRidMetaConsumer_BuildsWithoutRidWithWarningsAsErrors()
     {
         if (!TestMeta)
-            return;
+            Skip.Test("Set HOSTFORGE_TEST_META=true to test the meta packages.");
 
         string workspace = CreateWorkspace("no-rid");
         string properties = Properties(workspace, includeRid: false) + " -p:UseStaticGraphicsMeta=true";

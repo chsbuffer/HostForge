@@ -12,7 +12,7 @@ public class PackageLayoutTests
     public async Task MetaPackages_RequireEverySupportedRidAtTheExactVersion()
     {
         if (Environment.GetEnvironmentVariable("HOSTFORGE_TEST_META") != "true")
-            return;
+            Skip.Test("Set HOSTFORGE_TEST_META=true to test the meta packages.");
 
         foreach ((string component, string version, string[] rids) in new[]
         {
