@@ -256,7 +256,8 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
     def _compiled_externals(self):
         # GN writes each object below obj/ at the directory of its source, so the objects of a build name
         # the externals that the archives contain for this version, platform and set of GN arguments.
-        # MSBuild compiles libHarfBuzzSharp outside that tree on Windows.
+        # libHarfBuzzSharp is HarfBuzz on every platform, but on Windows MSBuild writes its object to
+        # obj/<platform>/Release/libHarfBuzzSharp/, a path that does not name the harfbuzz checkout.
         externals = {"harfbuzz"}
         unmapped = set()
         for build in (self._skia_build, self._harfbuzz_build):
