@@ -44,15 +44,18 @@ public class StaticAppHostMatrixTests
         string noRidExecutable = Path.Combine(outputDir, executableName);
         string ridExecutable = Path.Combine(outputDir, rid, executableName);
         string publishedExecutable = Path.Combine(outputDir, rid, "publish", executableName);
+        string buildNoRid = $"build \"{consumerProject}\" {properties}";
+        string buildRid = $"{buildNoRid} -r {rid}";
+        string publish = $"publish \"{consumerProject}\" {properties} -r {rid} /p:PublishSingleFile=true";
 
         var steps = new (string Name, string Arguments, bool? ExpectUpToDate, string Executable)[]
         {
-            ("01-build-no-rid-first", $"build \"{consumerProject}\" {properties}", firstBuildLinks, noRidExecutable),
-            ("02-build-no-rid-second", $"build \"{consumerProject}\" {properties}", false, noRidExecutable),
-            ("03-build-rid-first", $"build \"{consumerProject}\" {properties} -r {rid}", firstBuildLinks, ridExecutable),
-            ("04-build-rid-second", $"build \"{consumerProject}\" {properties} -r {rid}", false, ridExecutable),
-            ("05-publish-first", $"publish \"{consumerProject}\" {properties} -r {rid} /p:PublishSingleFile=true", firstBuildLinks, publishedExecutable),
-            ("06-publish-second", $"publish \"{consumerProject}\" {properties} -r {rid} /p:PublishSingleFile=true", false, publishedExecutable)
+            ("01-build-no-rid-first", buildNoRid, firstBuildLinks, noRidExecutable),
+            ("02-build-no-rid-second", buildNoRid, false, noRidExecutable),
+            ("03-build-rid-first", buildRid, firstBuildLinks, ridExecutable),
+            ("04-build-rid-second", buildRid, false, ridExecutable),
+            ("05-publish-first", publish, firstBuildLinks, publishedExecutable),
+            ("06-publish-second", publish, false, publishedExecutable)
         };
 
         foreach ((string name, string arguments, bool? expectedUpToDate, string executable) in steps)
@@ -100,28 +103,40 @@ public class StaticAppHostMatrixTests
 
         if (OperatingSystem.IsWindows())
         {
-            await AssertWindowsGuardsAsync(consumerProject, properties, Path.Combine(consumerDir, "obj", configuration, targetFramework, rid), targetFramework, rid);
+            await AssertWindowsGuardsAsync(buildRid, publish, Path.Combine(consumerDir, "obj", configuration, targetFramework, rid), targetFramework);
         }
     }
 
-    private static async Task AssertWindowsGuardsAsync(string consumerProject, string properties, string intermediateDirectory, string targetFramework, string rid)
+    private static async Task AssertWindowsGuardsAsync(string buildRid, string publish, string intermediateDirectory, string targetFramework)
     {
         // The relinked x64 hosts keep the Control Flow Guard and EH continuation table of the official ones.
         string appHost = Path.Combine(intermediateDirectory, "apphost.static.exe");
-        foreach (string host in new[] { appHost, Path.Combine(intermediateDirectory, "singlefilehost.static.exe") })
-        {
-            PeGuardFlags.AssertSet(host, PeGuardFlags.CfInstrumented, "Control Flow Guard");
-            PeGuardFlags.AssertSet(host, PeGuardFlags.EHContinuationTablePresent, "the EH continuation table");
-        }
+        string[] hosts = [appHost, Path.Combine(intermediateDirectory, "singlefilehost.static.exe")];
+        AssertOfficialGuards(hosts);
 
-        CommandResult result = await CommandRunner.RunAsync(
-            "dotnet",
-            $"build \"{consumerProject}\" {properties} -r {rid} -p:StaticHostGuardEHCont=false",
-            RepoContext.RepoRoot);
+        CommandResult result = await CommandRunner.RunAsync("dotnet", $"{buildRid} -p:StaticHostGuardEHCont=false", RepoContext.RepoRoot);
         AssertEx.Success(result, $"{targetFramework} 08-build-rid-without-ehcont");
         AssertEx.Contains(result.CombinedOutput, LinkAppHostMessageMarker);
         PeGuardFlags.AssertSet(appHost, PeGuardFlags.CfInstrumented, "Control Flow Guard");
         PeGuardFlags.AssertClear(appHost, PeGuardFlags.EHContinuationTablePresent, "an EH continuation table");
+
+        // Step 08 rewrote the stamps of both hosts, and a build relinks only the apphost. Publish again with the
+        // default flags, so that both hosts are newer than their stamps and the bin/obj that
+        // HOSTFORGE_MATRIX_NO_CLEAN keeps relink in the next run only for changed inputs.
+        result = await CommandRunner.RunAsync("dotnet", publish, RepoContext.RepoRoot);
+        AssertEx.Success(result, $"{targetFramework} 09-publish-with-ehcont");
+        AssertEx.Contains(result.CombinedOutput, LinkAppHostMessageMarker);
+        AssertEx.Contains(result.CombinedOutput, LinkSingleFileHostMessageMarker);
+        AssertOfficialGuards(hosts);
+    }
+
+    private static void AssertOfficialGuards(string[] hosts)
+    {
+        foreach (string host in hosts)
+        {
+            PeGuardFlags.AssertSet(host, PeGuardFlags.CfInstrumented, "Control Flow Guard");
+            PeGuardFlags.AssertSet(host, PeGuardFlags.EHContinuationTablePresent, "the EH continuation table");
+        }
     }
 
     private static string GetCurrentOsX64Rid()
