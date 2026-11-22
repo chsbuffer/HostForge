@@ -497,9 +497,9 @@ artifacts/  构建、打包和测试输出
 
 ## Native NuGet 修复版本
 
-native RID 包及聚合包统一使用上游版本的前三段加第四段修复号。例如 SkiaSharp 上游 `3.119.4` 对应 `3.119.4.1`；ANGLE 上游 `2.1.27548.20260419` 对应 `2.1.27548.1`。源码构建、产物目录、manifest 和上游托管依赖仍使用完整上游版本。
+native RID 包及聚合包统一使用上游版本的前三段加第四段修复号：SkiaSharp 上游 `<a>.<b>.<c>` 的包版本为 `<a>.<b>.<c>.<修复号>`；ANGLE 上游版本的第四段是日期，包版本以修复号代替它。源码构建、产物目录、manifest 和上游托管依赖仍使用完整上游版本。
 
-在 `Directory.Build.props` 的四行 native 包版本配置中维护第四段修复号：Skia 3 / 4 分别配置 `SkiaSharpPackageVersion`，ANGLE 和 AvaloniaNative 分别配置 `AnglePackageVersion`、`AvaloniaNativePackageVersion`。发布修复前，只修改受影响版本线末尾的 `.1` 为 `.2` 等；同一版本线的全部 RID 包和聚合包一起发布。CI 重跑不会自动递增版本。
+在 `Directory.Build.props` 的四行 native 包版本配置中维护第四段修复号：Skia 3 / 4 分别配置 `SkiaSharpPackageVersion`，ANGLE 和 AvaloniaNative 分别配置 `AnglePackageVersion`、`AvaloniaNativePackageVersion`。发布修复前，只把受影响版本线的修复号加 1；同一版本线的全部 RID 包和聚合包一起发布。CI 重跑不会自动递增版本。
 
 包文档（`src/*/README.md`，打进包中）和根目录的 `README.md` 让使用者引用的版本是完整的包版本，递增修复号时一并修改：NuGet 把不存在的版本（例如只写上游的前三段）解析为大于它的最低版本，也就是最早的修复号。`tests/native/test_package_docs.py` 检查这些文档（`scripts/upstream.py` 的 `DOC_FILES`）：写出某个 native 包族四段版本的文档，要写出该包族每条版本线的当前包版本，且没有其他修复号。
 
