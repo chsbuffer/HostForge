@@ -1,5 +1,7 @@
+using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using HostForge.TestInfra;
 
 namespace HostForge.AvaloniaAppHost.Tests;
@@ -133,6 +135,26 @@ public class AvaloniaAppHostLinuxTests
                 AssertNativeRuntimeCopy(outputDirectory, testCase.ExpectNativeRuntimeCopy);
             });
         }
+    }
+
+    // Builds that no template covers load the dynamic libraries, and SkiaSharp and HarfBuzzSharp do not depend on
+    // their Linux native assets.
+    [Test]
+    public async Task RidPackage_DependsOnTheLinuxNativeAssetsOfTheManagedVersions()
+    {
+        string package = Path.Combine(RepoContext.AvaloniaPackageOutputDir,
+            $"{RepoContext.GetAvaloniaRidPackageId(Rid)}.{RepoContext.AvaloniaPackageIdentityVersion}.nupkg");
+        AssertEx.FileExists(package);
+        using ZipArchive zip = ZipFile.OpenRead(package);
+        using Stream stream = zip.Entries.Single(entry => entry.FullName.EndsWith(".nuspec", StringComparison.Ordinal)).Open();
+        IEnumerable<string> graphics = XDocument.Load(stream).Descendants()
+            .Where(element => element.Name.LocalName == "dependency")
+            .Select(element => $"{(string?)element.Attribute("id")} {(string?)element.Attribute("version")}")
+            .Where(dependency => dependency.StartsWith("SkiaSharp", StringComparison.Ordinal) || dependency.StartsWith("HarfBuzzSharp", StringComparison.Ordinal));
+        string skia = RepoContext.SkiaSharpVersion;
+        string harfBuzz = RepoContext.HarfBuzzVersion;
+        await Assert.That(string.Join(", ", graphics.Order(StringComparer.Ordinal)))
+            .IsEqualTo($"HarfBuzzSharp {harfBuzz}, HarfBuzzSharp.NativeAssets.Linux {harfBuzz}, SkiaSharp {skia}, SkiaSharp.NativeAssets.Linux {skia}");
     }
 
     [Test]

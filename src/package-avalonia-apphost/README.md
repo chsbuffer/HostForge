@@ -15,7 +15,9 @@ Prelinked Avalonia 12 apphost and single-file host templates for .NET 10 (10.0.1
 
 Use the package without a suffix for all supported targets, or reference only the RID packages the project publishes. RID packages bring in the shared `ChsBuffer.Avalonia.AppHost.Build` integration automatically.
 
-The templates activate when the project targets .NET 10 or .NET 11 (including OS-specific TFMs such as `net11.0-windows`) and publishes for an installed RID. Other target combinations keep the standard .NET SDK host behavior.
+The templates activate when the project targets .NET 10 or .NET 11 (including OS-specific TFMs such as `net11.0-windows`) and publishes for an installed RID. Other target combinations keep the standard .NET SDK host behavior and load the SkiaSharp and HarfBuzzSharp dynamic libraries.
+
+Each RID package depends on the SkiaSharp and HarfBuzzSharp versions linked into its templates. The managed packages bring only their Windows and macOS native libraries, so the Linux RID packages also depend on `SkiaSharp.NativeAssets.Linux` and `HarfBuzzSharp.NativeAssets.Linux` of these versions; the dynamic libraries then match the managed packages instead of the older ones Avalonia depends on.
 
 The single-file host embeds the native .NET runtime it was built from (10.0.15 or 11.0.0), while the managed framework comes from the runtime pack chosen at publish time. The .NET SDK 11.0.100 selects exactly these runtime packs; with another SDK, set `RuntimeFrameworkVersion` to the template's version for the closest match.
 
