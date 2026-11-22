@@ -17,7 +17,8 @@ def deploy(graph, output_folder: str, **kwargs):
 
     package = packages[0]
     version = str(package.ref.version)
-    flavor = "default" if package.options.pgo else "no-pgo"
+    # Only Windows packages have the pgo option; Linux packages are always the PGO build.
+    flavor = "default" if package.options.get_safe("pgo", True) else "no-pgo"
     os_name = str(package.settings.os)
     arch = _ARCH[str(package.settings.arch)]
     rid = f"{'win' if os_name == 'Windows' else 'linux'}-{arch}"

@@ -45,6 +45,10 @@ class HostLibsConan(ConanFile):
     def config_options(self):
         if self.settings.os != "Linux":
             self.options.rm_safe("libc")
+        if self.settings.os != "Windows":
+            # Linux hosts are built like the official Linux runtime, with its PGO
+            # data; the no-PGO flavor exists for the Windows AppHost.Static package.
+            self.options.rm_safe("pgo")
 
     def validate(self):
         if str(self.version) not in VERSIONS:

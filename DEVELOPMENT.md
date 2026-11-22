@@ -99,7 +99,7 @@ recipe 只稀疏检出 VMR 的 `src/runtime`，并关闭构建期依赖的 NuGet
 | `upstream-apply` | 按组更新上游版本及包输入锁（默认 `inputs` 组） |
 | `upstream-lock` | 向 `package-inputs.lock.json` 追加当前包版本 |
 
-运行 `task --list` 可查看任务；通过 `NAME=value` 传入目标平台、RID 或打包模式。构建任务接受 `ARCH=x64|arm64`，`build-hostlibs` 另接受 `PGO=True|False`（区分大小写），Linux 构建还需传入 `SYSROOT`。
+运行 `task --list` 可查看任务；通过 `NAME=value` 传入目标平台、RID 或打包模式。构建任务接受 `ARCH=x64|arm64`（Linux 的 `build-hostlibs` 由 `RID` 选择目标）；Windows 的 `build-hostlibs` 另接受 `PGO=True|False`（区分大小写），Linux 的 HostLibs 与官方 Linux 运行时一样只以 PGO 构建，传入 `PGO=False` 会报错；Linux 构建还需传入 `SYSROOT`。
 
 ## Windows 构建
 

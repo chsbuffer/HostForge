@@ -12,7 +12,7 @@ tasks:
       - task --list
 
   build-hostlibs:
-    desc: Build and deploy HostLibs static libraries (HOSTLIBS_VERSION=<runtime in native/hostlibs/versions.json>, ARCH=x64|arm64, PGO=True|False, RID=<Linux RID>, SYSROOT=…)
+    desc: Build and deploy HostLibs static libraries (HOSTLIBS_VERSION=<runtime in native/hostlibs/versions.json>, Windows ARCH=x64|arm64 and PGO=True|False, Linux RID=<Linux RID> and SYSROOT=…)
     vars:
       ARCH: '{{.ARCH | default "x64"}}'
       PGO: '{{.PGO | default "True"}}'
@@ -25,7 +25,7 @@ tasks:
         vars: {ARCH: "{{.ARCH}}", PGO: "{{.PGO}}", HOSTLIBS_VERSION: "{{.HOSTLIBS_VERSION}}"}
         platforms: [windows]
       - task: _hostlibs-linux
-        vars: {RID: "{{.RID}}", SYSROOT: "{{.SYSROOT}}", HOSTLIBS_VERSION: "{{.HOSTLIBS_VERSION}}"}
+        vars: {RID: "{{.RID}}", SYSROOT: "{{.SYSROOT}}", PGO: "{{.PGO}}", HOSTLIBS_VERSION: "{{.HOSTLIBS_VERSION}}"}
         platforms: [linux]
 
   _hostlibs-windows:
@@ -55,6 +55,9 @@ tasks:
         - name: TARGET_RID
           enum: [linux-x64, linux-musl-x64, linux-musl-arm64]
         - HOSTLIBS_VERSION
+    preconditions:
+      - sh: '[ "{{.PGO}}" = True ]'
+        msg: "PGO={{.PGO}} is not supported on Linux: Linux HostLibs are built with PGO, like the official Linux runtime"
     env:
       ROOTFS_DIR: '{{.SYSROOT}}'
     cmds:
