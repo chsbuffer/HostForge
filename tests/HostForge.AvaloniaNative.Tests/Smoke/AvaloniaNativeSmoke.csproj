@@ -8,11 +8,12 @@
     <UseAvaloniaNativeStatic Condition="'$(UseAvaloniaNativeStatic)' == ''">true</UseAvaloniaNativeStatic>
     <StripSymbols>false</StripSymbols>
     <SmokeAvaloniaVersion Condition="'$(SmokeAvaloniaVersion)' == ''">$(AvaloniaNativeVersion)</SmokeAvaloniaVersion>
-    <RestoreAdditionalProjectSources Condition="'$(UseAvaloniaNativeStatic)' == 'true'">$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)</RestoreAdditionalProjectSources>
+    <RestoreAdditionalProjectSources Condition="'$(UseAvaloniaNativeStatic)' == 'true' or '$(SmokeUseStaticSkia)' == 'true'">$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)</RestoreAdditionalProjectSources>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia.Desktop" Version="$(SmokeAvaloniaVersion)" />
     <PackageReference Include="ChsBuffer.Avalonia.Native.Static.$(RuntimeIdentifier)" Version="$(AvaloniaNativePackageVersion)" Condition="'$(UseAvaloniaNativeStatic)' == 'true'" />
-    <PackageReference Include="ChsBuffer.SkiaSharp.Static.$(RuntimeIdentifier)" Version="$(SmokeStaticSkiaVersion)" Condition="'$(SmokeStaticSkiaVersion)' != ''" />
+    <!-- Directory.Build.props derives the package version from SkiaSharpVersion. -->
+    <PackageReference Include="ChsBuffer.SkiaSharp.Static.$(RuntimeIdentifier)" Version="$(SkiaSharpPackageVersion)" Condition="'$(SmokeUseStaticSkia)' == 'true'" />
   </ItemGroup>
 </Project>
