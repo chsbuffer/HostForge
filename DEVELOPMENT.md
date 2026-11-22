@@ -275,7 +275,7 @@ artifacts/
 主要目录：
 
 - `hostlibs`：AppHost / SingleFileHost 静态库、响应文件和链接参数。
-- `skiasharp`：SkiaSharp / HarfBuzzSharp 及其依赖静态库。
+- `skiasharp`：SkiaSharp / HarfBuzzSharp 及其依赖静态库、来源清单，以及 Skia、HarfBuzz 和编入静态库的第三方代码的许可证（`licenses/<组件>/`）。
 - `angle`：Windows ANGLE complete static libraries、宿主导出定义文件，以及 ANGLE 和库中第三方代码的许可证（`licenses/<组件>/`）。
 - `avalonianative`：AvaloniaNative 静态库、来源清单与许可证。
 - `avalonia-host`：已经链接完成、可直接打包的宿主模板。

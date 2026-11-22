@@ -1,6 +1,7 @@
 # NativeAOT static graphics matrix
 
-Tests package layout, AOT/RID activation, version protection, executable
+Tests package layout (including license files that `THIRD-PARTY-NOTICES.txt`
+reproduces), AOT/RID activation, version protection, executable
 architecture, software pixels, HarfBuzz shaping and absence of dynamic graphics
 libraries. The publish-and-run matrix covers every `HostForgeTargetFrameworks`
 entry; `NativeAotMatrixTargetFramework` selects the TFM of

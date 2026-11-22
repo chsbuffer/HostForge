@@ -46,11 +46,18 @@ public class PackageLayoutTests
         if (new FileInfo(path).Length >= 250_000_000)
             throw new InvalidOperationException("The RID package exceeds the 250 MB publishing limit.");
         using ZipArchive zip = ZipFile.OpenRead(path);
-        if (version.StartsWith("4.", StringComparison.Ordinal) && rid.StartsWith("linux-", StringComparison.Ordinal) && zip.GetEntry("licenses/libcxx.LICENSE.TXT") is null)
+        bool bundlesLibcxx = version.StartsWith("4.", StringComparison.Ordinal) && rid.StartsWith("linux-", StringComparison.Ordinal);
+        if (bundlesLibcxx && zip.GetEntry("licenses/libcxx.LICENSE.TXT") is null)
             throw new InvalidOperationException("The bundled libc++ runtime license is missing.");
         string nativeRoot = $"build/native/{rid}/";
+        HashSet<string> notices = AssertLicenseFileCoversPayloadLicenses(zip, nativeRoot + "licenses/", "skia/LICENSE", "harfbuzz/COPYING");
+        if (bundlesLibcxx && !notices.Contains("libcxx/LICENSE.TXT"))
+            throw new InvalidOperationException("THIRD-PARTY-NOTICES.txt lacks the libc++ license.");
         ZipArchiveEntry manifest = zip.GetEntry(nativeRoot + "manifest.json") ?? throw new InvalidOperationException("Missing native manifest.");
         using JsonDocument provenance = await JsonDocument.ParseAsync(manifest.Open());
+        foreach (ZipArchiveEntry entry in zip.Entries.Where(entry => entry.FullName.StartsWith(nativeRoot + "licenses/", StringComparison.Ordinal)))
+            if (!provenance.RootElement.GetProperty("sha256").TryGetProperty(entry.FullName[nativeRoot.Length..], out _))
+                throw new InvalidOperationException($"The native manifest does not cover {entry.FullName}.");
         if (rid.StartsWith("linux-", StringComparison.Ordinal) && provenance.RootElement.TryGetProperty("libc", out JsonElement libc) &&
             libc.GetString() != (rid.StartsWith("linux-musl-", StringComparison.Ordinal) ? "musl" : "glibc"))
             throw new InvalidOperationException("The package contains a different libc target.");
