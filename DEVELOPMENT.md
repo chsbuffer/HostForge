@@ -85,7 +85,7 @@ recipe 只稀疏检出 VMR 的 `src/runtime`，并关闭构建期依赖的 NuGet
 | `pack-avalonianative-meta` | 打包精确依赖两个 macOS RID 包的 AvaloniaNative 元包 |
 | `test-avalonianative` | 验证版本与 AOT/RID 门控；macOS 上发布并运行窗口和字体测试 |
 | `matrix` | 运行 Static AppHost 与 NativeAOT 集成矩阵 |
-| `matrix-nativeaot` | 打包本地静态图形库并验证 NativeAOT 发布与运行 |
+| `matrix-nativeaot` | 按 .NET SDK 的 RID 与 `SKIASHARP_VERSION` 打包静态图形库，并以同一 RID 与版本验证 NativeAOT 发布与运行 |
 | `link-avalonia` | 生成指定操作系统（`TARGET_OS=windows\|linux\|linux-musl`）的 Avalonia 宿主模板，`RID` 只链接其中一个 RID；每个模板 TFM（`net10.0` / `net11.0`）链接各自运行时版本的 HostLibs |
 | `avalonia-test` | 运行 Avalonia AppHost 集成测试 |
 | `pack-avalonia` | 打包全部 Avalonia AppHost（RID 包 + Build + 元包） |
@@ -246,7 +246,7 @@ task matrix
 python -m unittest discover -s tests/native
 ```
 
-`matrix-nativeaot` 会打包当前平台的 SkiaSharp 静态库；Windows 还会打包 ANGLE。随后发布并运行 `samples/nativeaot-matrix`，检查 SkiaSharp、HarfBuzzSharp 和 Windows ANGLE 的原生调用，以及发布目录中没有对应动态本机库。运行前需先构建当前平台的原生库。
+`matrix-nativeaot` 按 .NET SDK 的 RID（`NETCoreSdkPortableRuntimeIdentifier`，即测试进程所在运行时的 RID）和 `SKIASHARP_VERSION`（默认为 `Directory.Build.props` 的 `SkiaSharpVersion`）打包 SkiaSharp 静态库，Windows 还会打包 ANGLE；随后通过 `HOSTFORGE_NATIVE_RID` 与 `HOSTFORGE_SKIA_VERSION` 把同一 RID 与版本交给测试，发布并运行 `samples/nativeaot-matrix`，检查 SkiaSharp、HarfBuzzSharp 和 Windows ANGLE 的原生调用，以及发布目录中没有对应动态本机库。运行前需先构建该 RID 与版本的原生库。
 
 可通过环境变量调整矩阵测试：
 

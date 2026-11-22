@@ -14,10 +14,9 @@ public class PackageLayoutTests
         if (Environment.GetEnvironmentVariable("HOSTFORGE_TEST_META") != "true")
             return;
 
-        string skiaVersion = Environment.GetEnvironmentVariable("HOSTFORGE_SKIA_VERSION") ?? RepoContext.SkiaSharpVersion;
         foreach ((string component, string version, string[] rids) in new[]
         {
-            ("SkiaSharp", RepoContext.GetSkiaSharpPackageVersion(skiaVersion), new[] { "win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64", "osx-x64", "osx-arm64" }),
+            ("SkiaSharp", RepoContext.GetSkiaSharpPackageVersion(NativeAotMatrixTests.SkiaVersion), new[] { "win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64", "osx-x64", "osx-arm64" }),
             ("Angle", RepoContext.AnglePackageVersion, new[] { "win-x64", "win-arm64" }),
             ("Avalonia.Native", RepoContext.AvaloniaNativePackageVersion, new[] { "osx-x64", "osx-arm64" })
         })
@@ -39,7 +38,7 @@ public class PackageLayoutTests
     [Test]
     public async Task RidPackage_HasPortableLayoutAndVerifiablePayload()
     {
-        string version = Environment.GetEnvironmentVariable("HOSTFORGE_SKIA_VERSION") ?? RepoContext.SkiaSharpVersion;
+        string version = NativeAotMatrixTests.SkiaVersion;
         string rid = NativeAotMatrixTests.Rid;
         string path = Path.Combine(RepoContext.AvaloniaPackageOutputDir, $"ChsBuffer.SkiaSharp.Static.{rid}.{RepoContext.GetSkiaSharpPackageVersion(version)}.nupkg");
         AssertEx.FileExists(path);

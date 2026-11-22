@@ -385,38 +385,32 @@ tasks:
         -v:{{.VERBOSITY}}
 
   matrix-nativeaot:
-    desc: Publish and run the NativeAOT static graphics matrix on the current OS
+    desc: Pack the static graphics packages of the .NET SDK's RID and publish and run the NativeAOT matrix with them (SKIASHARP_VERSION=<version in native/skiasharp/versions.json>)
+    vars:
+      SKIASHARP_VERSION:
+        sh: '{{if .SKIASHARP_VERSION}}echo {{.SKIASHARP_VERSION}}{{else}}uv run python scripts/repo_versions.py --get skiasharp{{end}}'
+      # The tests run on the SDK's runtime. Task's ARCH is the architecture of the Task binary and tells no libc apart.
+      RID:
+        sh: dotnet msbuild src/package-skiasharp-static/SkiaSharp.Static.csproj -getProperty:NETCoreSdkPortableRuntimeIdentifier
     cmds:
+      - task: pack-skia-static
+        vars: {RID: '{{.RID}}', SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
       - task: _matrix-nativeaot-windows
-      - task: _matrix-nativeaot-linux
-      - task: _matrix-nativeaot-macos
+        vars: {RID: '{{.RID}}'}
       - >-
+        HOSTFORGE_NATIVE_RID={{.RID}} HOSTFORGE_SKIA_VERSION={{.SKIASHARP_VERSION}}
         dotnet test
         --project tests/HostForge.NativeAot.Tests/HostForge.NativeAot.Tests.csproj
         -c Release
         -v:{{.VERBOSITY}}
 
+  # Task checks the required variables of a called task before the platforms of the call.
   _matrix-nativeaot-windows:
     internal: true
     platforms: [windows]
     cmds:
-      - task: pack-skia-static
-        vars: {RID: win-x64}
       - task: pack-angle-static
-
-  _matrix-nativeaot-linux:
-    internal: true
-    platforms: [linux]
-    cmds:
-      - task: pack-skia-static
-        vars: {RID: linux-x64}
-
-  _matrix-nativeaot-macos:
-    internal: true
-    platforms: [darwin]
-    cmds:
-      - task: pack-skia-static
-        vars: {RID: 'osx-{{if eq ARCH "arm64"}}arm64{{else}}x64{{end}}'}
+        vars: {RID: '{{.RID}}'}
 
   # ── Upstream tracking ─────────────────────────────────────────
 

@@ -9,7 +9,7 @@ namespace HostForge.NativeAot.Tests;
 
 public class NativeAotMatrixTests
 {
-    private static string SkiaVersion => Environment.GetEnvironmentVariable("HOSTFORGE_SKIA_VERSION") ?? RepoContext.SkiaSharpVersion;
+    internal static string SkiaVersion => Environment.GetEnvironmentVariable("HOSTFORGE_SKIA_VERSION") ?? RepoContext.SkiaSharpVersion;
     private static bool CheckAngle => Environment.GetEnvironmentVariable("HOSTFORGE_CHECK_ANGLE") != "false";
     private static bool TestMeta => Environment.GetEnvironmentVariable("HOSTFORGE_TEST_META") == "true";
     internal static string Rid => Environment.GetEnvironmentVariable("HOSTFORGE_NATIVE_RID") ?? RuntimeInformation.RuntimeIdentifier;

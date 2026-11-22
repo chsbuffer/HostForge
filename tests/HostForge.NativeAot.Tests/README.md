@@ -10,8 +10,11 @@ entry; `NativeAotMatrixTargetFramework` selects the TFM of
 task matrix-nativeaot
 ```
 
-`SKIASHARP_VERSION` selects another version from `native/skiasharp/versions.json`;
-the default is `SkiaSharpVersion` in `Directory.Build.props`.
+The task packs the SkiaSharp RID package, and on Windows the ANGLE one, for the RID
+of the .NET SDK, then runs the tests with that RID and version as
+`HOSTFORGE_NATIVE_RID` and `HOSTFORGE_SKIA_VERSION`. `SKIASHARP_VERSION` selects
+another version from `native/skiasharp/versions.json`; the default is
+`SkiaSharpVersion` in `Directory.Build.props`.
 
 For prepacked artifacts, select the RID and version with `HOSTFORGE_NATIVE_RID`
 and `HOSTFORGE_SKIA_VERSION`, then run:
