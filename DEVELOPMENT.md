@@ -99,7 +99,7 @@ recipe 只稀疏检出 VMR 的 `src/runtime`，并关闭构建期依赖的 NuGet
 | `upstream-apply` | 按组更新上游版本及包输入锁（默认 `inputs` 组） |
 | `upstream-lock` | 向 `package-inputs.lock.json` 追加当前包版本 |
 
-运行 `task --list` 可查看任务；通过 `NAME=value` 传入目标平台、RID 或打包模式。构建任务接受 `ARCH=x64|arm64`（Linux 的 `build-hostlibs` 由 `RID` 选择目标）；Windows 的 `build-hostlibs` 另接受 `PGO=True|False`（区分大小写），Linux 的 HostLibs 与官方 Linux 运行时一样只以 PGO 构建，传入 `True` 以外的 `PGO` 会报错；Linux 构建还需传入 `SYSROOT`。
+运行 `task --list` 可查看任务；通过 `NAME=value` 传入目标平台、RID 或打包模式。构建任务接受 `ARCH=x64|arm64`（Linux 的 `build-hostlibs` 由 `RID` 选择目标）；Windows 的 `build-hostlibs` 另接受 `PGO=True|False`（区分大小写），Linux 的 HostLibs 与官方 Linux 运行时一样只以 PGO 构建，传入 `True` 以外的 `PGO` 会报错；Linux 构建还需通过 `SYSROOT` 或环境变量 `ROOTFS_DIR` 指定目标 rootfs。
 
 ## Windows 构建
 
@@ -178,7 +178,7 @@ docker build $(python scripts/upstream.py build-args) -f native/hostlibs/linux.D
 docker run --rm -v "$PWD:/work" hostforge-hostlibs task build-hostlibs RID=linux-x64 HOSTLIBS_VERSION=<运行时版本> SYSROOT=/crossrootfs/x64
 ```
 
-`RID` 为 `linux-x64`（默认）、`linux-musl-x64` 或 `linux-musl-arm64`，`SYSROOT` 为容器中该架构的 rootfs（`/crossrootfs/x64` 或 `/crossrootfs/arm64`），通过 `ROOTFS_DIR` 环境变量传给 Runtime 的 `build.sh --cross`。`native/hostlibs/profiles/linux-musl-*` 设置 `libc=musl`，recipe 向 `build.sh` 传入 `--os linux-musl`，由上游脚本选择 musl RID、CMake 定义与 PGO 数据。
+`RID` 为 `linux-x64`（默认）、`linux-musl-x64` 或 `linux-musl-arm64`，`SYSROOT` 为容器中该架构的 rootfs（`/crossrootfs/x64` 或 `/crossrootfs/arm64`），省略时取环境变量 `ROOTFS_DIR`，相对路径按仓库根目录解析，通过 `ROOTFS_DIR` 环境变量传给 Runtime 的 `build.sh --cross`。`native/hostlibs/profiles/linux-musl-*` 设置 `libc=musl`，recipe 向 `build.sh` 传入 `--os linux-musl`，由上游脚本选择 musl RID、CMake 定义与 PGO 数据。
 
 .NET 11 的 PGO 构建以 LTO 编译 GC，所以 .NET 11 的 HostLibs 含有容器内 LLVM 生成的 bitcode，只有不低于该版本的 LLVM 才能链接。
 

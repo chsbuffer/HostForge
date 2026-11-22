@@ -20,7 +20,8 @@ tasks:
       ARCH: '{{.ARCH | default "x64"}}'
       PGO: '{{.PGO | default "True"}}'
       RID: '{{.RID | default ""}}'
-      SYSROOT: '{{.SYSROOT | default ""}}'
+      # build.sh runs in the Runtime checkout in Conan's cache, so a relative path is resolved against the repository root.
+      SYSROOT: '{{with .SYSROOT | default .ROOTFS_DIR}}{{if osIsAbs .}}{{.}}{{else}}{{joinPath $.ROOT_DIR .}}{{end}}{{end}}'
       HOSTLIBS_VERSION:
         sh: '{{if .HOSTLIBS_VERSION}}echo {{.HOSTLIBS_VERSION}}{{else}}uv run python scripts/repo_versions.py --get hostlibs{{end}}'
     cmds:
@@ -61,12 +62,10 @@ tasks:
     preconditions:
       - sh: '[ "{{.PGO}}" = True ]'
         msg: "Linux HostLibs take only PGO=True (case-sensitive), not PGO={{.PGO}}: like the official Linux runtime, they are always built with PGO"
-    env:
-      ROOTFS_DIR: '{{.SYSROOT}}'
     cmds:
       - uv run conan export native/hostlibs --version={{.HOSTLIBS_VERSION}}
       - >-
-        uv run conan install --requires="hostlibs/{{.HOSTLIBS_VERSION}}" --build=missing --no-remote --envs-generation=false
+        ROOTFS_DIR="{{.SYSROOT}}" uv run conan install --requires="hostlibs/{{.HOSTLIBS_VERSION}}" --build=missing --no-remote --envs-generation=false
         -pr:b=native/hostlibs/profiles/linux-x64
         -pr:h=native/hostlibs/profiles/{{.TARGET_RID}}
         -c tools.build:jobs={{.JOBS}}
