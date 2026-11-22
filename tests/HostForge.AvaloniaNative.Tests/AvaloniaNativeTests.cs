@@ -75,6 +75,7 @@ public class AvaloniaNativeTests
         string payloads = Path.Combine(root, "payloads");
         string packages = Path.Combine(root, "packages");
         Directory.CreateDirectory(root);
+        WriteFixtureNuGetConfig(root);
         try
         {
             CommandResult missing = await PackFixtureAsync(root, "osx-arm64");
@@ -124,6 +125,7 @@ public class AvaloniaNativeTests
         string root = Path.Combine(RepoContext.ArtifactsTestRoot, $"avalonianative-consumer-{Guid.NewGuid():N}");
         string consumer = Path.Combine(root, "consumer");
         Directory.CreateDirectory(consumer);
+        WriteFixtureNuGetConfig(root);
         try
         {
             foreach (string rid in new[] { "osx-x64", "osx-arm64" })
@@ -142,7 +144,6 @@ public class AvaloniaNativeTests
                     <OutputType>Exe</OutputType>
                     <PublishAot>true</PublishAot>
                     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-                    <RestoreAdditionalProjectSources>{{escapedRoot}}/packages</RestoreAdditionalProjectSources>
                     <RestorePackagesPath>{{escapedRoot}}/nuget</RestorePackagesPath>
                   </PropertyGroup>
                   <ItemGroup>
@@ -196,15 +197,11 @@ public class AvaloniaNativeTests
         await File.WriteAllTextAsync(Path.Combine(payload, "licenses/licence.md"), "license fixture");
     }
 
-    private static Task<CommandResult> PackFixtureAsync(string root, string? rid = null)
-    {
-        string project = Path.Combine(RepoContext.RepoRoot, rid is null
-            ? "src/package-static-graphics/StaticGraphics.csproj"
-            : "src/package-avalonia-native-static/Avalonia.Native.Static.Rid.csproj");
-        // The fixture packages have the ids of the real packages, which the repository's NuGet.Config takes only
-        // from artifacts/packages; the meta package and the consumers below the root restore them with this one.
-        string config = Path.Combine(root, "NuGet.Config");
-        File.WriteAllText(config, """
+    // The fixture packages have the ids and versions of the real packages, which nuget.org can also hold and the
+    // repository's NuGet.Config takes from the repository's package directory. This configuration takes them only
+    // from the fixture directory; the meta package pack names it, and consumers below the root find it.
+    private static void WriteFixtureNuGetConfig(string root) =>
+        File.WriteAllText(Path.Combine(root, "NuGet.Config"), """
             <?xml version="1.0" encoding="utf-8"?>
             <configuration>
               <packageSources>
@@ -214,14 +211,26 @@ public class AvaloniaNativeTests
               </packageSources>
               <packageSourceMapping>
                 <clear />
+                <packageSource key="nuget.org">
+                  <package pattern="*" />
+                </packageSource>
+                <packageSource key="fixture">
+                  <package pattern="ChsBuffer.*" />
+                </packageSource>
               </packageSourceMapping>
             </configuration>
             """);
+
+    private static Task<CommandResult> PackFixtureAsync(string root, string? rid = null)
+    {
+        string project = Path.Combine(RepoContext.RepoRoot, rid is null
+            ? "src/package-static-graphics/StaticGraphics.csproj"
+            : "src/package-avalonia-native-static/Avalonia.Native.Static.Rid.csproj");
         // Isolate generated registration files and NuGet assets across parallel tests.
         string parameters = $"-c Release -p:AvaloniaNativeArtifactsRoot=\"{root}/payloads\" -p:PackageOutputPath=\"{root}/packages\""
             + $" -p:BaseIntermediateOutputPath=\"{root}/obj/{rid ?? "meta"}/\" -p:RestorePackagesPath=\"{root}/nuget\" -v:minimal";
         parameters += rid is null
-            ? $" -p:StaticGraphicsComponent=Avalonia.Native -p:RestoreConfigFile=\"{config}\" -p:RestoreAdditionalProjectSources=\"{root}/packages\""
+            ? $" -p:StaticGraphicsComponent=Avalonia.Native -p:RestoreConfigFile=\"{root}/NuGet.Config\""
             : $" -p:AvaloniaNativeRid={rid}";
         return CommandRunner.RunAsync("dotnet", $"pack \"{project}\" {parameters}", RepoContext.RepoRoot);
     }
