@@ -25,6 +25,7 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         bool? disableSkiaHarfBuzzRuntimeCopy = null,
         bool? disableAngleRuntimeCopy = null,
         bool publishSingleFile = false,
+        bool setRuntimeIdentifier = true,
         CancellationToken cancellationToken = default)
     {
         string guid = Guid.NewGuid().ToString("N");
@@ -48,7 +49,8 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
             includeNativeAssetsPackages,
             disableSkiaHarfBuzzRuntimeCopy,
             disableAngleRuntimeCopy,
-            publishSingleFile);
+            publishSingleFile,
+            setRuntimeIdentifier);
 
         return new TestProjectWorkspace(rootDirectory, projectDirectory, projectFilePath, projectName);
     }
@@ -88,7 +90,8 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         bool includeNativeAssetsPackages,
         bool? disableSkiaHarfBuzzRuntimeCopy,
         bool? disableAngleRuntimeCopy,
-        bool publishSingleFile)
+        bool publishSingleFile,
+        bool setRuntimeIdentifier)
     {
         ProjectRootElement project = ProjectRootElement.Create();
         project.Sdk = "Microsoft.NET.Sdk";
@@ -96,7 +99,9 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         ProjectPropertyGroupElement propertyGroup = project.AddPropertyGroup();
         propertyGroup.AddProperty("OutputType", "Exe");
         propertyGroup.AddProperty("TargetFramework", targetFramework);
-        propertyGroup.AddProperty("RuntimeIdentifier", runtimeIdentifier);
+        // runtimeIdentifier also selects the RID and native asset packages, which a build without a RID still references.
+        if (setRuntimeIdentifier)
+            propertyGroup.AddProperty("RuntimeIdentifier", runtimeIdentifier);
         propertyGroup.AddProperty("ImplicitUsings", "enable");
         propertyGroup.AddProperty("Nullable", "enable");
         propertyGroup.AddProperty(
@@ -188,6 +193,7 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
                         typeof(AngleNative).Assembly,
                         static (libraryName, _, _) =>
                             string.Equals(libraryName, "av_libglesv2.dll", StringComparison.OrdinalIgnoreCase)
+                            && NativeLibrary.TryGetExport(NativeLibrary.GetMainProgramHandle(), "EGL_GetError", out _)
                                 ? NativeLibrary.GetMainProgramHandle()
                                 : IntPtr.Zero);
                 #endif

@@ -19,10 +19,11 @@
       <_AvaloniaTemplateTfm Condition="'$(_AvaloniaTemplateTfm)' == ''">$(TargetFramework)</_AvaloniaTemplateTfm>
       <_AvaloniaTemplateTfm Condition="'$(_AvaloniaTemplateTfm)' == ''">net10.0</_AvaloniaTemplateTfm>
 
-      <_AvaloniaTemplateRid Condition="'$(_AvaloniaTemplateRid)' == ''">$(RuntimeIdentifier)</_AvaloniaTemplateRid>
-      <_AvaloniaTemplateRid Condition="'$(_AvaloniaTemplateRid)' == ''">$(AppHostRuntimeIdentifier)</_AvaloniaTemplateRid>
-      <_AvaloniaTemplateRid Condition="'$(_AvaloniaTemplateRid)' == ''">$(DefaultAppHostRuntimeIdentifier)</_AvaloniaTemplateRid>
-      <_AvaloniaTemplateRid Condition="'$(_AvaloniaTemplateRid)' == ''">win-x64</_AvaloniaTemplateRid>
+      <!--
+        A template serves only its own RID. A build without a RuntimeIdentifier is portable: it keeps the
+        dynamic libraries of every RID and runs on the SDK host.
+      -->
+      <_AvaloniaTemplateRid>$(RuntimeIdentifier)</_AvaloniaTemplateRid>
       <_AvaloniaTemplateRidLower>$([System.String]::Copy('$(_AvaloniaTemplateRid)').ToLowerInvariant())</_AvaloniaTemplateRidLower>
       <_AvaloniaTemplateTfmLower>$([System.String]::Copy('$(_AvaloniaTemplateTfm)').ToLowerInvariant())</_AvaloniaTemplateTfmLower>
       <_AvaloniaTemplateRidIsWindows Condition="'$(_AvaloniaTemplateRid)' != ''">$(_AvaloniaTemplateRid.StartsWith('win'))</_AvaloniaTemplateRidIsWindows>
@@ -66,7 +67,7 @@
   <Target Name="WarnAvaloniaAppHostInactive"
           BeforeTargets="PrepareForBuild"
           DependsOnTargets="ResolveAvaloniaAppHostActivation"
-          Condition="'$(TargetFramework)' != '' and '$(AvaloniaAppHostActive)' != 'true'">
+          Condition="'$(TargetFramework)' != '' and '$(RuntimeIdentifier)' != '' and '$(AvaloniaAppHostActive)' != 'true'">
     <Warning Text="ChsBuffer.Avalonia.AppHost is inactive for TargetFramework='$(TargetFramework)' RuntimeIdentifier='$(RuntimeIdentifier)'. No matching AvaloniaAppHostRids item for TFM '$(_AvaloniaTemplateTfm)' and RID '$(_AvaloniaTemplateRid)'. Registered: @(AvaloniaAppHostRids->'%(AppHostTemplateTfm)/%(Identity)', ', '). Host replacement and ANGLE/Skia/HarfBuzz runtime copy suppression are disabled." />
   </Target>
 

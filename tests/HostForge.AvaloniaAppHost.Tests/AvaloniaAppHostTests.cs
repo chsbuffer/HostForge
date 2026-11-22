@@ -235,6 +235,35 @@ public class AvaloniaAppHostTests
     }
 
     [Test]
+    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
+    public async Task PublishWithoutRuntimeIdentifier_KeepsTheNativeLibrariesOfEveryRid(string targetFramework)
+    {
+        await using var project = await TestProjectWorkspace.CreateAsync(
+            targetFramework: targetFramework,
+            runtimeIdentifier: "win-x64",
+            includeNativeAssetsPackages: true,
+            setRuntimeIdentifier: false);
+
+        CommandResult result = await RunDotNetCommandAsync("publish", project.ProjectFilePath, project.ProjectDirectory);
+        AssertEx.Success(result, $"{targetFramework}_publish_no-rid");
+        // dotnet run and IDE builds have no RID either, so the inactive package stays silent.
+        AssertEx.NotContains(result.CombinedOutput, "ChsBuffer.Avalonia.AppHost is inactive");
+
+        string outputDirectory = project.GetPublishDirectory("Release", targetFramework, string.Empty);
+        foreach (string rid in AllRids)
+        {
+            string nativeDirectory = Path.Combine(outputDirectory, "runtimes", rid, "native");
+            AssertNativeRuntimeCopy(nativeDirectory, expectSkiaHarfBuzzRuntimeCopy: true, expectAngleRuntimeCopy: true);
+        }
+
+        // The portable output runs on dotnet and loads the libraries of the running RID from runtimes/.
+        CommandResult runResult = await CommandRunner.RunAsync("dotnet", $"\"{project.ProjectName}.dll\"", outputDirectory);
+        AssertEx.Success(runResult, $"{targetFramework}_publish_no-rid:run");
+        AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        AssertEx.Contains(runResult.CombinedOutput, "AngleError=0x");
+    }
+
+    [Test]
     public async Task DisableSkiaHarfBuzzRuntimeCopy_AffectsPublishOutputs_WinX64()
     {
         SwitchRuleCase[] cases =

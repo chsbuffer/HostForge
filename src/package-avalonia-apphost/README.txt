@@ -24,6 +24,7 @@ Compatibility and fallback
 - net10.0 / net11.0 + linux-musl-x64: active
 - net10.0 / net11.0 + linux-musl-arm64: active
 - OS-specific TFMs (e.g. net11.0-windows) use the template of their .NET version
+- builds without a runtime identifier: inactive, without a warning
 - unsupported target framework & runtime identifier combinations: inactive fallback
 
 Learn more

@@ -17,6 +17,8 @@ Current coverage:
   symbol files) in the publish directory or extracted from the bundle (`DOTNET_BUNDLE_EXTRACT_BASE_DIR` points extraction into the test project)
 - Linux publish-and-run output validation for every template TFM, on the RID of the test system (`linux-x64` on
   glibc, `linux-musl-x64` / `linux-musl-arm64` on Alpine; `HOSTFORGE_NATIVE_RID` overrides it)
+- Publish without a RuntimeIdentifier on Windows and Linux for every template TFM: no inactive warning, the native
+  libraries of every RID stay under `runtimes/`, and the portable output runs on `dotnet`
 - Linux ELF audit of the linked templates: architecture, the glibc or musl program interpreter, no glibc
   dependency in the musl templates, and the diagnostics exports of the upstream singlefilehost
 - Linux Skia/HarfBuzz native runtime copy suppression switch behavior

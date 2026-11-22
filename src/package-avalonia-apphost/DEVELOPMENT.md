@@ -55,7 +55,9 @@ template TFM and register each one in a `.props` file generated at pack time:
 
 The Build package's `.targets` matches `$(RuntimeIdentifier)` and the project's .NET version against
 `@(AvaloniaAppHostRids)`. The TFM is normalized to `net<major>.<minor>`, so OS-specific TFMs such as
-`net11.0-windows` use the `net11.0` template. Each RID package depends on the Build package, so consumers install only the RID packages they need. The meta-package `ChsBuffer.Avalonia.AppHost` installs every supported RID package.
+`net11.0-windows` use the `net11.0` template. A build without a RuntimeIdentifier stays inactive and
+silent: its output is portable, and the publish step removes the native libraries by file name, which
+would drop them for every RID. Each RID package depends on the Build package, so consumers install only the RID packages they need. The meta-package `ChsBuffer.Avalonia.AppHost` installs every supported RID package.
 
 ## SkiaSharp variants and package versions
 

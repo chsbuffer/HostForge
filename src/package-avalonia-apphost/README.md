@@ -15,7 +15,7 @@ Prelinked Avalonia 12 apphost and single-file host templates for .NET 10 (10.0.1
 
 Use the package without a suffix for all supported targets, or reference only the RID packages the project publishes. RID packages bring in the shared `ChsBuffer.Avalonia.AppHost.Build` integration automatically.
 
-The templates activate when the project targets .NET 10 or .NET 11 (including OS-specific TFMs such as `net11.0-windows`) and publishes for an installed RID. Other target combinations keep the standard .NET SDK host behavior.
+The templates activate when the project targets .NET 10 or .NET 11 (including OS-specific TFMs such as `net11.0-windows`) and builds for the RuntimeIdentifier of an installed RID package: `-r <RID>`, `<RuntimeIdentifier>`, or the RID that `PublishSingleFile` infers. Builds without a RuntimeIdentifier, such as `dotnet run` or a portable `dotnet publish`, keep the standard .NET SDK host and the native libraries of every RID, without a warning. Other target combinations keep the standard .NET SDK host behavior and warn that the package is inactive.
 
 The single-file host embeds the native .NET runtime it was built from (10.0.15 or 11.0.0), while the managed framework comes from the runtime pack chosen at publish time. The .NET SDK 11.0.100 selects exactly these runtime packs; with another SDK, set `RuntimeFrameworkVersion` to the template's version for the closest match.
 

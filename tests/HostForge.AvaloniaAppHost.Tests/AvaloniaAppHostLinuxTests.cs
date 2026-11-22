@@ -100,6 +100,38 @@ public class AvaloniaAppHostLinuxTests
     }
 
     [Test]
+    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
+    public async Task PublishWithoutRuntimeIdentifier_KeepsTheNativeLibraries_Linux(string targetFramework)
+    {
+        await using var project = await TestProjectWorkspace.CreateAsync(
+            targetFramework: targetFramework,
+            runtimeIdentifier: Rid,
+            includeNativeAssetsPackages: true,
+            setRuntimeIdentifier: false);
+
+        CommandResult result = await CommandRunner.RunAsync(
+            "dotnet",
+            $"publish \"{project.ProjectFilePath}\" -c Release -v:minimal",
+            project.ProjectDirectory);
+
+        AssertEx.Success(result, $"{targetFramework} publish without a RID");
+        // dotnet run and IDE builds have no RID either, so the inactive package stays silent.
+        AssertEx.NotContains(result.CombinedOutput, "ChsBuffer.Avalonia.AppHost is inactive");
+
+        string outputDirectory = project.GetPublishDirectory("Release", targetFramework, string.Empty);
+        foreach (string library in new[] { "libSkiaSharp.so", "libHarfBuzzSharp.so" })
+        {
+            if (!Directory.EnumerateFiles(Path.Combine(outputDirectory, "runtimes"), library, SearchOption.AllDirectories).Any())
+                throw new InvalidOperationException($"The portable publish output has no {library} under runtimes/.");
+        }
+
+        // The portable output runs on dotnet and loads the libraries of the running RID from runtimes/.
+        CommandResult runResult = await CommandRunner.RunAsync("dotnet", $"\"{project.ProjectName}.dll\"", outputDirectory);
+        AssertEx.Success(runResult, $"{targetFramework} run without a RID");
+        AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+    }
+
+    [Test]
     public async Task DisableSkiaHarfBuzzRuntimeCopy_AffectsPublishOutputs_Linux()
     {
         SwitchRuleCase[] cases =
