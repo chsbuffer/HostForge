@@ -62,6 +62,8 @@ def nuspec_xml(package, version, dependencies=(), commit=None):
 class FakeClient:
     def __init__(self):
         self.responses, self.refs, self.streams, self.requests, self.accepts = {}, {}, {}, [], {}
+        # Failed reads other than 404: {url: exception} for get, {(repository, ref): exception} for ls_remote.
+        self.failures, self.ls_remote_failures = {}, {}
 
     def add_json(self, url, value):
         self.responses[url] = json.dumps(value).encode()
@@ -77,6 +79,8 @@ class FakeClient:
         self.requests.append(url)
         if accept:
             self.accepts[url] = accept
+        if url in self.failures:
+            raise self.failures[url]
         if url not in self.responses:
             raise upstream.NotFound(f"GET {url}: HTTP 404 Not Found")
         return self.responses[url]
@@ -89,6 +93,9 @@ class FakeClient:
         yield from self.streams[url]
 
     def ls_remote(self, repository, *patterns):
+        for pattern in patterns:
+            if (repository, pattern) in self.ls_remote_failures:
+                raise self.ls_remote_failures[repository, pattern]
         refs = self.refs.get(repository, {})
         return {pattern: refs[pattern] for pattern in patterns if pattern in refs}
 
@@ -856,6 +863,38 @@ class KeepGoingTests(UpstreamTestCase):
         self.assertIn("releases.json", stderr)
         self.assertEqual(before, self.snapshot())
 
+    def test_failed_vmr_lookup_aborts_even_with_keep_going(self):
+        # Unlike a nuspec or tag that is not published yet, a failed read leaves the VMR source unknown.
+        runtime = next(iter(self.pinned["runtimes"].values()))
+        new, sdk = next_patch(runtime), next_patch(self.pinned["hostlibs-sources"][runtime]["tag"][1:])
+        nuspec = f"{upstream.NUGET}/microsoft.netcore.app.ref/{new}/microsoft.netcore.app.ref.nuspec"
+        before = self.snapshot()
+        for message in ("HTTP 503 Service Unavailable", "timed out"):
+            with self.subTest(message=message):
+                client = fake_upstream(self.root, dotnet=True, avalonia=True)
+                if message.startswith("HTTP"):
+                    client.failures[nuspec] = upstream.UpstreamError(f"GET {nuspec}: {message}")
+                else:
+                    client.ls_remote_failures[upstream.VMR, f"refs/tags/v{sdk}"] = \
+                        upstream.UpstreamError(f"git ls-remote {upstream.VMR}: {message}")
+                code, _, stderr, metadata = self.apply(client, "--keep-going")
+                self.assertEqual(2, code, stderr)
+                self.assertIn(f".NET {next(iter(self.pinned['runtimes']))} {new}: ", stderr)
+                self.assertIn(message, stderr)
+                self.assertIsNone(metadata)
+                self.assertEqual(before, self.snapshot())
+                # The check keeps its security verdict and shows the failed lookup.
+                code, stdout, stderr = self.run_main(client, "check", "--json", "--fail-on-security")
+                self.assertEqual(1, code, stderr)
+                report = json.loads(stdout)
+                self.assertTrue(report["security"])
+                self.assertEqual([], report["errors"])
+                item = next(item for item in report["dotnet"] if item["pinned"] == runtime)
+                self.assertEqual([], item["latest-source"]["problems"])
+                self.assertEqual(1, len(item["latest-source"]["lookup-errors"]))
+                self.assertIn(message, item["latest-source"]["lookup-errors"][0])
+                self.assertIn(f"latest {new}: lookup failed: ", self.run_main(client, "check")[1])
+
     def test_security_state_failure_aborts(self):
         client = fake_upstream(self.root, avalonia=True)
         del client.responses["https://example.invalid/update.json"]
@@ -1460,6 +1499,25 @@ class VmrSourceTests(unittest.TestCase):
         result = upstream.vmr_source(client, "9.0.0", self.release("9.0.100"), "9.0")
         self.assertEqual(("v9.0.100", "c100"), (result["tag"], result["commit"]))
         self.assertTrue(any("HTTP 404" in problem for problem in result["problems"]))
+        self.assertEqual([], result["lookup-errors"])
+
+    def test_failed_reads_are_lookup_errors_not_problems(self):
+        nuspec = f"{upstream.NUGET}/microsoft.netcore.app.ref/9.0.0/microsoft.netcore.app.ref.nuspec"
+        client = self.client({"v9.0.100": "c100"})
+        client.failures[nuspec] = upstream.UpstreamError(f"GET {nuspec}: HTTP 503 Service Unavailable")
+        result = upstream.vmr_source(client, "9.0.0", self.release("9.0.100"), "9.0")
+        self.assertEqual([], result["problems"])
+        self.assertEqual([f"Microsoft.NETCore.App.Ref 9.0.0: GET {nuspec}: HTTP 503 Service Unavailable"],
+                         result["lookup-errors"])
+        client = self.client({"v9.0.101": "c101", "v9.0.100": "c100"})
+        client.ls_remote_failures[upstream.VMR, "refs/tags/v9.0.100"] = upstream.UpstreamError("git ls-remote: timed out")
+        result = upstream.vmr_source(client, "9.0.0", self.release("9.0.101", "9.0.100"), "9.0")
+        self.assertEqual((None, []), (result["tag"], result["problems"]))
+        self.assertEqual(["git ls-remote: timed out"], result["lookup-errors"])
+        # A tag that does not exist is a problem.
+        result = upstream.vmr_source(self.client({}), "9.0.0", self.release("9.0.100"), "9.0")
+        self.assertEqual([f"{upstream.VMR} has no tag v9.0.100"], result["problems"])
+        self.assertEqual([], result["lookup-errors"])
 
 
 class FailingRead(Response):

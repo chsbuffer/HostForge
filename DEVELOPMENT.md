@@ -526,7 +526,7 @@ SkiaSharp 的 recipe 按 mono/SkiaSharp 对应标签的构建文件（各平台 
 
 以下情况 workflow 失败，原因见 job summary：
 
-- 读不到 .NET 或漏洞公告数据；
+- 读不到 .NET 数据（发布信息，或要应用的补丁版的 VMR 标签与 `Microsoft.NETCore.App.Ref`）或漏洞公告数据；
 - 自动更新后仍有安全问题（渠道停止支持、漏洞没有修复版本、.NET 安全版本暂时无法应用）；
 - 安全修复没有对应的打开 PR（例如 PR 被关闭或已过时）；
 - git 或 gh 操作失败（创建 PR 被拒时检查上面的设置）。

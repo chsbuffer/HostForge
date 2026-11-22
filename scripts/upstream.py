@@ -381,8 +381,11 @@ def vmr_source(client, runtime, release, channel):
     """VMR tag and commit that built `runtime`, cross-checked against Microsoft.NETCore.App.Ref.
 
     Of the 1xx SDKs the release lists, the one whose peeled tag commit is the commit in the Ref nuspec wins.
-    Lookup failures (a nuspec not published yet, a missing tag) end up in "problems"; nothing is raised."""
-    result = {"runtime": runtime, "tag": None, "commit": None, "nuget-commit": None, "problems": []}
+    "problems" say why the release cannot be pinned (a nuspec not published yet, a missing tag, commits that
+    disagree); "lookup-errors" are reads that failed otherwise (HTTP 5xx, timeouts, git ls-remote), which leave
+    it unknown. Nothing is raised, so that the security verdict does not depend on these lookups."""
+    result = {"runtime": runtime, "tag": None, "commit": None, "nuget-commit": None, "problems": [],
+              "lookup-errors": []}
     candidates = _sdk_1xx(release, channel) if release else []
     if not candidates:
         result["problems"].append(f"no 1xx SDK listed for runtime {runtime}")
@@ -391,8 +394,10 @@ def vmr_source(client, runtime, release, channel):
         result["nuget-commit"] = nuspec_commit(nuspec(client, "Microsoft.NETCore.App.Ref", runtime))
         if result["nuget-commit"] is None:
             result["problems"].append(f"Microsoft.NETCore.App.Ref {runtime} declares no repository commit")
-    except UpstreamError as error:
+    except NotFound as error:
         result["problems"].append(f"Microsoft.NETCore.App.Ref {runtime}: {error}")
+    except UpstreamError as error:
+        result["lookup-errors"].append(f"Microsoft.NETCore.App.Ref {runtime}: {error}")
     try:
         tags = []
         for sdk in candidates:
@@ -403,7 +408,8 @@ def vmr_source(client, runtime, release, channel):
                 result["tag"], result["commit"] = tag, commit
                 return result
     except UpstreamError as error:
-        result["problems"].append(str(error))
+        # A missing tag is not an error (tag_commit returns None), so this is a failed lookup.
+        result["lookup-errors"].append(str(error))
         return result
     if len(tags) == 1:
         result["tag"], result["commit"] = tags[0]
@@ -960,6 +966,11 @@ def run_check(client, root=ROOT):
     return report
 
 
+def _source_problems(source):
+    """The problems and failed lookups of a vmr_source result, for the report."""
+    return source["problems"] + [f"lookup failed: {error}" for error in source["lookup-errors"]]
+
+
 def _sections(report):
     """[(title, headers, rows, notes)] shared by the text and Markdown renderings."""
     sections = []
@@ -978,13 +989,13 @@ def _sections(report):
             for release in item["security"]:
                 notes.append(f"{item['framework']} {release['version']} ({release['date']}): {', '.join(release['cves']) or 'no CVE ids'}")
             mapping = item["pinned-source"]
-            if mapping["problems"]:
-                notes.append(f"{item['framework']} pinned {item['pinned']}: " + "; ".join(mapping["problems"]))
+            if _source_problems(mapping):
+                notes.append(f"{item['framework']} pinned {item['pinned']}: " + "; ".join(_source_problems(mapping)))
             else:
                 notes.append(f"{item['framework']} pinned {item['pinned']} -> {mapping['tag']} {mapping['commit']}: "
                              "tag and Microsoft.NETCore.App.Ref commit agree with native/hostlibs/versions.json")
-            if item["newer"] and latest["problems"]:
-                notes.append(f"{item['framework']} latest {item['latest']}: " + "; ".join(latest["problems"]))
+            if item["newer"] and _source_problems(latest):
+                notes.append(f"{item['framework']} latest {item['latest']}: " + "; ".join(_source_problems(latest)))
         if any(item["newer"] for item in report["dotnet"]):
             notes.append("newer patch releases: apply group inputs")
         sections.append((".NET runtimes", ["TFM", "pinned", "latest", "VMR tag", "VMR commit", "newer security", "support"],
@@ -1493,6 +1504,8 @@ def plan_dotnet(run):
         if not item["newer"]:
             continue
         old, new, source = item["pinned"], item["latest"], item["latest-source"]
+        if source["lookup-errors"]:
+            raise UpstreamError(f".NET {item['framework']} {new}: " + "; ".join(source["lookup-errors"]))
         if source["problems"] or not source["commit"]:
             run.notes.append(f"{item['framework']} {new} not applied: " + "; ".join(source["problems"] or ["no VMR commit"]))
             continue
