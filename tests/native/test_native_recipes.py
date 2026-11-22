@@ -253,6 +253,81 @@ class SkiaSharpLicenseTests(unittest.TestCase):
             self.recipe._compiled_externals()
 
 
+class SkiaSharpToolchainTests(unittest.TestCase):
+    # toolchain.txt as build() writes it: clang-cl and the cl banner on Windows, $CC on Linux, then the SDK on macOS.
+    CL = ("Microsoft (R) C/C++ Optimizing Compiler Version 19.50.35719 for x64\n"
+          "Copyright (C) Microsoft Corporation.  All rights reserved.\n\n"
+          "usage: cl [ option... ] filename... [ /link linkoption... ]\n")
+    TOOLCHAINS = {
+        "23": "clang version 23.1.6\nTarget: x86_64-pc-windows-msvc\nThread model: posix\n"
+              "InstalledDir: C:\\Program Files\\LLVM\\bin\n" + CL,
+        "20": "Ubuntu clang version 20.1.8 (++20250708082409+6fb913d3e2ec-1~exp1~20250708202428.132)\n"
+              "Target: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-20/bin\n",
+        "17": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: arm64-apple-darwin24.6.0\nThread model: posix\n"
+              "InstalledDir: /Library/Developer/CommandLineTools/usr/bin\n15.5\n",
+    }
+
+    def test_manifest_records_the_major_version_of_the_clang_that_built(self):
+        for major, toolchain in self.TOOLCHAINS.items():
+            with self.subTest(major=major):
+                self.assertEqual(major, skiasharp.SkiaSharpConan._clang_major(toolchain))
+
+    def test_toolchain_without_clang_fails(self):
+        with self.assertRaisesRegex(ConanException, "names no clang version"):
+            skiasharp.SkiaSharpConan._clang_major(self.CL)
+
+
+class SkiaSharpSourceTests(unittest.TestCase):
+    VERSION = "4.0.0"
+    COMMIT = "c" * 40
+    PROJECT, TRANSLATION_UNIT = skiasharp.WINDOWS_HARFBUZZ
+    CONTENTS = {PROJECT: b"<Project />\n", TRANSLATION_UNIT: b'#include "harfbuzz.cc"\n'}
+    # git hash-object of CONTENTS.
+    BLOBS = {PROJECT: "058246e40862046ca3e0e99c26508fed3b024525",
+             TRANSLATION_UNIT: "3ccd6d85e57fc8d19e666bd47f1f3d8ba51c2b01"}
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="hostforge-recipes-test-")
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.recipe = skiasharp.SkiaSharpConan()
+        self.recipe.version = self.VERSION
+        self.recipe.source_folder = str(self.root)
+        self.served = dict(self.CONTENTS)
+        for patch in (mock.patch.dict(skiasharp.VERSIONS, {self.VERSION: ["skia-commit", "8.0.0", self.COMMIT]}),
+                      mock.patch.object(skiasharp, "download", self.download)):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def download(self, conanfile, url, filename):
+        prefix = f"https://raw.githubusercontent.com/mono/SkiaSharp/{self.COMMIT}/"
+        self.assertTrue(url.startswith(prefix), url)
+        Path(filename).write_bytes(self.served[url.removeprefix(prefix)])
+
+    def source(self, records):
+        with mock.patch.dict(skiasharp.UPSTREAM_BUILD, {self.VERSION: records} if records is not None else {}):
+            self.recipe._download_windows_harfbuzz()
+
+    def test_reviewed_files_are_downloaded(self):
+        self.source(self.BLOBS)
+        for path, content in self.CONTENTS.items():
+            self.assertEqual(content, (self.root / Path(path).name).read_bytes())
+
+    def test_changed_files_fail(self):
+        for path in self.CONTENTS:
+            with self.subTest(path=path):
+                self.served = {**self.CONTENTS, path: self.CONTENTS[path] + b"\n"}
+                with self.assertRaisesRegex(ConanException, f"{re.escape(path)} at {self.COMMIT} is blob"):
+                    self.source(self.BLOBS)
+
+    def test_unrecorded_files_fail(self):
+        for path in self.CONTENTS:
+            with self.subTest(path=path), self.assertRaisesRegex(ConanException, f"records None for {self.VERSION}"):
+                self.source({other: blob for other, blob in self.BLOBS.items() if other != path})
+        with self.subTest(version="unrecorded"), self.assertRaisesRegex(ConanException, "records None"):
+            self.source(None)
+
+
 class SkiaSharpDeployTests(unittest.TestCase):
     def test_redeploy_replaces_the_payload_directory(self):
         with tempfile.TemporaryDirectory(prefix="hostforge-licenses-test-") as temporary:

@@ -158,15 +158,18 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
         else:
             raise ConanException("git-sync-deps failed")
         if self._modern:
-            commit, reviewed = VERSIONS[str(self.version)][2], UPSTREAM_BUILD.get(str(self.version), {})
-            for path in WINDOWS_HARFBUZZ:
-                target = Path(self.source_folder) / Path(path).name
-                download(self, f"https://raw.githubusercontent.com/mono/SkiaSharp/{commit}/{path}", str(target))
-                data = target.read_bytes()
-                blob = hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
-                if blob != reviewed.get(path):
-                    raise ConanException(f"mono/SkiaSharp {path} at {commit} is blob {blob}, but "
-                                         f"upstream-build.json records {reviewed.get(path)} for {self.version}")
+            self._download_windows_harfbuzz()
+
+    def _download_windows_harfbuzz(self):
+        commit, reviewed = VERSIONS[str(self.version)][2], UPSTREAM_BUILD.get(str(self.version), {})
+        for path in WINDOWS_HARFBUZZ:
+            target = Path(self.source_folder) / Path(path).name
+            download(self, f"https://raw.githubusercontent.com/mono/SkiaSharp/{commit}/{path}", str(target))
+            data = target.read_bytes()
+            blob = hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+            if blob != reviewed.get(path):
+                raise ConanException(f"mono/SkiaSharp {path} at {commit} is blob {blob}, but "
+                                     f"upstream-build.json records {reviewed.get(path)} for {self.version}")
 
     def generate(self):
         env = Environment()
@@ -262,18 +265,24 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
                     for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                         digest.update(chunk)
                 hashes[file.relative_to(output).as_posix()] = digest.hexdigest()
-        # The major version of the clang that build() ran: the Windows profiles do not follow the LLVM
-        # that install-llvm provides (Linux and macOS Task pass the same major as compiler.version).
         toolchain = (Path(self.build_folder) / "toolchain.txt").read_text()
-        clang = re.search(r"clang version (\d+)\.", toolchain)
-        if clang is None:
-            raise ConanException(f"toolchain.txt names no clang version:\n{toolchain}")
         manifest = {"skiaSharp": str(self.version), "harfBuzzSharp": VERSIONS[str(self.version)][1],
                     "sourceCommit": VERSIONS[str(self.version)][0], "arch": self._target_arch,
-                    "compiler": str(self.settings.compiler), "compilerVersion": clang.group(1), "sha256": hashes}
+                    "compiler": str(self.settings.compiler), "compilerVersion": self._clang_major(toolchain),
+                    "sha256": hashes}
         if self.settings.os == "Linux":
             manifest["libc"] = str(self.options.libc)
         save(self, str(output / "manifest.json"), json.dumps(manifest, indent=2) + "\n")
+
+    @staticmethod
+    def _clang_major(toolchain):
+        # The major version of the clang that build() ran, from the toolchain.txt it wrote: the Windows profiles
+        # do not follow the LLVM that install-llvm provides (Linux and macOS Task pass the same major as
+        # compiler.version).
+        clang = re.search(r"clang version (\d+)\.", toolchain)
+        if clang is None:
+            raise ConanException(f"toolchain.txt names no clang version:\n{toolchain}")
+        return clang.group(1)
 
     def _compiled_externals(self):
         # GN writes each object below obj/ at the directory of its source, so the objects of a build name
