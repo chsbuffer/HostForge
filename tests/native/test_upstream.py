@@ -533,6 +533,28 @@ class ApplyTests(UpstreamTestCase):
         self.assertEqual(before, self.snapshot())
         self.assertIn("not applied", stdout)
 
+    def test_dotnet_patch_before_an_unpublished_one(self):
+        # releases.json lists the newest patch before nuget.org has its Ref nuspec: the patch before it applies.
+        client = fake_upstream(self.root, dotnet=True, security=False)
+        framework, runtime = next(iter(self.pinned["runtimes"].items()))
+        url = f"https://example.invalid/release-metadata/{'.'.join(runtime.split('.')[:2])}/releases.json"
+        newest = next_patch(next_patch(runtime))
+        sdk = next_patch(next_patch(self.pinned["hostlibs-sources"][runtime]["tag"][1:]))
+        releases = json.loads(client.responses[url])
+        releases["releases"].insert(0, release(newest, sdk, security=True, cves=["CVE-2099-0002"]))
+        client.add_json(url, releases)
+        client.add_ref(upstream.VMR, f"refs/tags/v{sdk}", fake_commit(sdk))
+        code, _, stderr, metadata = self.apply(client, "--dotnet")
+        self.assertEqual(0, code, stderr)
+        self.assertEqual(next_patch(runtime), repo_versions.load(self.root)["runtimes"][framework])
+        notes = [note for note in metadata["notes"] if note.startswith(framework)]
+        self.assertEqual(1, len(notes), metadata["notes"])
+        self.assertRegex(notes[0], rf"^{re.escape(f'{framework} {newest} not applied: ')}.*HTTP 404")
+        # The update does not claim the CVEs of the release it does not apply.
+        self.assertNotIn("CVE-2099-0002", " ".join(metadata["updates"]))
+        self.assertEqual({"before": True, "after": True, "cves": []}, metadata["security"])
+        self.assert_consistent()
+
     def test_avalonia_patch_update(self):
         props = self.root / package_inputs.PROPS
         props.write_text(re.sub(r"(<AvaloniaNativePackageVersion>\$\(AvaloniaNativeVersion\)\.)\d+",

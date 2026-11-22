@@ -456,6 +456,16 @@ def build_containers(client, commit):
     return containers
 
 
+def channel_releases(client, url):
+    """{runtime version: release} of a channel's releases.json; the first release listing a runtime counts."""
+    releases = {}
+    for release in client.json(url)["releases"]:
+        version = (release.get("runtime") or {}).get("version")
+        if version and version not in releases:
+            releases[version] = release
+    return releases
+
+
 def dotnet_report(client, pinned):
     index = client.json(DOTNET_INDEX)["releases-index"]
     reports = []
@@ -464,11 +474,7 @@ def dotnet_report(client, pinned):
         entry = next((item for item in index if item.get("channel-version") == channel), None)
         if entry is None:
             raise UpstreamError(f"{DOTNET_INDEX} has no channel {channel}")
-        releases = {}
-        for release in client.json(entry["releases.json"])["releases"]:
-            version = (release.get("runtime") or {}).get("version")
-            if version and version not in releases:
-                releases[version] = release
+        releases = channel_releases(client, entry["releases.json"])
         newer = sorted((version for version in releases
                         if version_key(version) > version_key(runtime) and (is_stable(version) or not is_stable(runtime))),
                        key=version_key)
@@ -486,7 +492,8 @@ def dotnet_report(client, pinned):
             current["problems"].append(f"pinned commit {pinned_source.get('commit')} != {current['commit']}")
         latest = newer[-1] if newer else runtime
         reports.append({
-            "framework": framework, "channel": channel, "support-phase": entry.get("support-phase"),
+            "framework": framework, "channel": channel, "releases.json": entry["releases.json"],
+            "support-phase": entry.get("support-phase"),
             "eol-date": entry.get("eol-date"), "eol": entry.get("support-phase") == "eol",
             "pinned": runtime, "pinned-source": current,
             "latest": latest, "latest-source": vmr_source(client, latest, releases[latest], channel) if newer else current,
@@ -1504,18 +1511,34 @@ class Run:
             return None
 
 
+def dotnet_target(run, item):
+    """(version, VMR source) of the newest newer release of a dotnet_report item whose VMR source is published,
+    or None; the newer releases passed over are noted. A failed lookup raises."""
+    releases = None
+    for version in reversed(item["newer"]):
+        if version == item["latest"]:
+            source = item["latest-source"]
+        else:
+            releases = releases or channel_releases(run.client, item["releases.json"])
+            source = vmr_source(run.client, version, releases[version], item["channel"])
+        if source["lookup-errors"]:
+            raise UpstreamError(f".NET {item['framework']} {version}: " + "; ".join(source["lookup-errors"]))
+        if not source["problems"] and source["commit"]:
+            return version, source
+        run.notes.append(f"{item['framework']} {version} not applied: "
+                         + "; ".join(source["problems"] or ["no VMR commit"]))
+    return None
+
+
 def plan_dotnet(run):
-    """Newest patch release of each pinned .NET channel; a lookup failure always aborts (no --keep-going)."""
+    """The newest patch release of each pinned .NET channel whose Ref nuspec and VMR tag are published; a lookup
+    failure always aborts (no --keep-going)."""
     pinned, updates = run.pinned, []
     for item in dotnet_report(run.client, pinned):
-        if not item["newer"]:
+        found = dotnet_target(run, item)
+        if found is None:
             continue
-        old, new, source = item["pinned"], item["latest"], item["latest-source"]
-        if source["lookup-errors"]:
-            raise UpstreamError(f".NET {item['framework']} {new}: " + "; ".join(source["lookup-errors"]))
-        if source["problems"] or not source["commit"]:
-            run.notes.append(f"{item['framework']} {new} not applied: " + "; ".join(source["problems"] or ["no VMR commit"]))
-            continue
+        old, (new, source) = item["pinned"], found
         _checked(new, _VERSION, f".NET {item['framework']} runtime")
         _checked(source["tag"], _TAG, f".NET {new} VMR tag")
         _checked(source["commit"], _COMMIT, f".NET {new} VMR commit")
@@ -1528,7 +1551,8 @@ def plan_dotnet(run):
             _edit(root, package_inputs.PROPS, lambda text: _set_property(text, f"HostLibsNet{number}Version", old, new))
             _edit(root, "native/hostlibs/versions.json", lambda text: _replace_entry(text, old, new, entry))
 
-        cves = sorted({cve for release in item["security"] for cve in release["cves"]})
+        cves = sorted({cve for release in item["security"] if version_key(release["version"]) <= version_key(new)
+                       for cve in release["cves"] if cve})
         description = (f".NET {item['framework']}: {old} -> {new} ({source['tag']} {source['commit']})"
                        + (f"; security: {', '.join(cves)}" if cves else ""))
         updates.append(Update("dotnet", description, [old, old_source["tag"][1:], old_source["commit"]], edit,

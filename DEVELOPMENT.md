@@ -510,6 +510,8 @@ native RID 包及聚合包统一使用上游版本的前三段加第四段修复
 
 只报告、手动处理：新主版本、依赖有变化的新 Avalonia、ANGLE 换分支。不跟踪：Microsoft.Build（版本随 SDK）、runner 镜像。
 
+最新的 .NET 补丁版在 nuget.org 上还没有 `Microsoft.NETCore.App.Ref`、或 VMR 还没有它的标签时，`inputs` 组改用此前最新的就绪补丁版；PR 正文的 “Not applied” 列出跳过的版本。
+
 SkiaSharp 的 recipe 按 mono/SkiaSharp 对应标签的构建文件（各平台 `build.cake`、共享 cake 脚本、Xcode 与 vcxproj 工程）编写。[`native/skiasharp/upstream-build.json`](native/skiasharp/upstream-build.json) 按版本记录核对过的这些文件的 git blob SHA：新版本中它们不变时，bot 沿用记录；有变化时，PR 正文列出 diff 和新记录，原生测试失败，直到把变化同步到 recipe 并补上记录。
 
 包输入变化而版本不变时，自动按 [包输入锁](#包输入锁) 的规则递增版本并追加锁。`tools`、`llvm` 和 Dependabot 的 PR 不改包版本，合并后不发布新包。
