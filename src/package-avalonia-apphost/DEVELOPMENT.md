@@ -55,12 +55,21 @@ template TFM and register each one in a `.props` file generated at pack time:
 
 The Build package's `.targets` matches `$(RuntimeIdentifier)` and the project's .NET version against
 `@(AvaloniaAppHostRids)`. The TFM is normalized to `net<major>.<minor>`, so OS-specific TFMs such as
-`net11.0-windows` use the `net11.0` template. A build without a RuntimeIdentifier stays inactive and
-silent: its output is portable, and the publish step removes the native libraries by file name, which
-would drop them for every RID. NativeAOT and `UseAppHost=false` builds stay inactive as well, because
-no apphost loads the libraries; the NativeAOT warning is omitted when the static graphics packages
-(`HostForgeStaticGraphicsImported`) link them instead. Projects whose `$(Language)` is not C# stay
-inactive, because the resolver is the C# source `ModuleInitializer.cs` compiled into the application. Each RID package depends on the Build package, so consumers install only the RID packages they need. The meta-package `ChsBuffer.Avalonia.AppHost` installs every supported RID package.
+`net11.0-windows` use the `net11.0` template. Each RID package depends on the Build package, so consumers install only the RID packages they need. The meta-package `ChsBuffer.Avalonia.AppHost` installs every supported RID package.
+
+`ResolveAvaloniaAppHostActivation` leaves the package inactive, with the native libraries in the output, for:
+
+- builds without a RuntimeIdentifier, silently: their output is portable, and the publish step removes the
+  native libraries by file name, which would drop them for every RID;
+- NativeAOT and `UseAppHost=false` builds, because no apphost loads the libraries; the NativeAOT warning is
+  omitted when the static graphics packages (`HostForgeStaticGraphicsImported`) link them instead;
+- projects whose `$(Language)` is not C#, because the resolver is the C# source `ModuleInitializer.cs`
+  compiled into the application.
+
+`InjectAvaloniaModuleInitializer` defines `HOSTFORGE_<ASSEMBLY>` for each assembly with `libSkiaSharp`,
+`libHarfBuzzSharp` or ANGLE imports that `@(ReferencePath)` contains. `ModuleInitializer.cs` registers its
+resolver with exactly those assemblies, and only for the libraries that the main program exports, so the
+application assembly keeps the default loading under `dotnet`, test hosts and the previewer.
 
 ## SkiaSharp variants and package versions
 
