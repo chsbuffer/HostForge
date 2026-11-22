@@ -121,7 +121,7 @@ task build-hostlibs HOSTLIBS_VERSION=<运行时版本>  # 其他运行时
 
 `CONAN_HOME` 设为 `build/conan` 的绝对路径。构建前先 `export CONAN_HOME=$(pwd)/build/conan`（或 PowerShell: `$env:CONAN_HOME = "$PWD\build\conan"`）。
 
-SingleFileHost 的部分 CoreCLR 目标 PDB 路径很深，`CONAN_HOME` 路径较长时会超过 MSVC 的 `MAX_PATH`，报 `fatal error C1041: 无法打开程序数据库`。此时让 `CONAN_HOME` 使用短路径，例如 `subst Q: "$PWD\build"` 后设 `$env:CONAN_HOME = 'Q:\conan'`，完成后用 `subst Q: /d` 取消映射。
+Runtime 的构建目录层级很深、MSVC 命令行很长（见 [HostLibs recipe 说明](native/hostlibs/README.md)），`CONAN_HOME` 的路径会计入其中每个构建路径。构建因路径过长失败时，让 `CONAN_HOME` 使用短路径，例如 `subst Q: "$PWD\build"` 后设 `$env:CONAN_HOME = 'Q:\conan'`，完成后用 `subst Q: /d` 取消映射。
 
 ### 2. 构建 SkiaSharp / HarfBuzzSharp
 
