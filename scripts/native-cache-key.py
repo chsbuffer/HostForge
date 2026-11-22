@@ -53,7 +53,10 @@ def fingerprint(root, component, version, rid, toolchain, generator=""):
         files += [f"{directory}/git-sync-deps", f"{directory}/{profile_os.split('-')[0]}.py"]
         tasks = [f"_skiasharp-{profile_os.split('-')[0]}"]
         if platform == "win":
-            files += [f"{directory}/profiles/windows-x64", "scripts/libHarfBuzzSharp.vcxproj.in"]
+            files += [f"{directory}/profiles/windows-x64"]
+            # SkiaSharp 4 builds the HarfBuzzSharp project of its upstream tag instead (windows.py).
+            if not version.startswith("4."):
+                files += ["scripts/libHarfBuzzSharp.vcxproj.in"]
         if platform.startswith("linux"):
             files += [f"{directory}/profiles/linux-x64", f"{directory}/{rid}.Dockerfile", fontconfig_checksums(rid)]
     elif component == "angle":

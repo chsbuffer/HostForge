@@ -130,7 +130,7 @@ task build-skiasharp
 task build-skiasharp ARCH=arm64
 ```
 
-Windows HarfBuzzSharp 项目由 [`scripts/libHarfBuzzSharp.vcxproj.in`](scripts/libHarfBuzzSharp.vcxproj.in) 原样导出后实例化，仓库中的上游模板不由 recipe 修改。
+SkiaSharp 3 的 Windows HarfBuzzSharp 项目由 [`scripts/libHarfBuzzSharp.vcxproj.in`](scripts/libHarfBuzzSharp.vcxproj.in) 原样导出后实例化，仓库中的模板不由 recipe 修改。SkiaSharp 4 使用 mono/SkiaSharp 对应标签的 `native/windows/libHarfBuzzSharp` 工程及其 `harfbuzz-subset-msvc.cc`：recipe 把它改为静态库并关闭全程序优化，换用 profile 的工具集与 Windows SDK，去掉需要可选 Spectre 库的 Spectre 缓解。两个版本都以 `/Z7` 把调试信息嵌入对象。只有 SkiaSharp 3 的 Windows 原生库缓存键包含该模板。
 
 ### 3. 构建 ANGLE
 

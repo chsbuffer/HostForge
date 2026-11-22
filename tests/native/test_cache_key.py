@@ -65,6 +65,17 @@ class NativeCacheKeyTests(unittest.TestCase):
         self.change("native/skiasharp/profiles/windows-x64")
         self.assertNotEqual(original, self.key())
 
+    def test_harfbuzz_template_is_scoped_to_skiasharp_3(self):
+        lines = {version.split(".")[0]: version for version in VERSIONS["skiasharp-versions"]}
+        if not {"3", "4"} <= set(lines):
+            self.skipTest("needs a SkiaSharp 3 and a SkiaSharp 4 version")
+        before = {major: self.key(version) for major, version in lines.items()}
+        linux = self.key(lines["3"], "linux-x64")
+        self.change("scripts/libHarfBuzzSharp.vcxproj.in")
+        self.assertNotEqual(before["3"], self.key(lines["3"]))
+        self.assertEqual(before["4"], self.key(lines["4"]), "SkiaSharp 4 builds the upstream HarfBuzzSharp project")
+        self.assertEqual(linux, self.key(lines["3"], "linux-x64"))
+
     def test_version_source_is_scoped_to_selected_version(self):
         if OTHER_SKIA is None:
             self.skipTest("needs two supported versions")
