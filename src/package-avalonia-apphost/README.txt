@@ -27,7 +27,8 @@ Compatibility and fallback
 - builds without a runtime identifier: inactive, without a warning
 - NativeAOT (PublishAot=true) and UseAppHost=false: inactive, the dynamic native libraries are published
 - C# projects only; F# and Visual Basic projects stay inactive
-- unsupported target framework & runtime identifier combinations: inactive fallback
+- other net10.0 and later target framework & runtime identifier combinations: inactive, with a warning
+- target frameworks before net10.0: the packages declare no dependencies for them, so the SDK host is used without a warning
 
 Learn more
 ----------

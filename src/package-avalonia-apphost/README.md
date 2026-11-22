@@ -13,7 +13,7 @@ Prelinked Avalonia 12 apphost and single-file host templates for .NET 10 (10.0.1
 | `ChsBuffer.Avalonia.AppHost.linux-musl-x64` | `linux-musl-x64` (Alpine Linux) only |
 | `ChsBuffer.Avalonia.AppHost.linux-musl-arm64` | `linux-musl-arm64` (Alpine Linux) only |
 
-Use the package without a suffix for all supported targets, or reference only the RID packages the project publishes. RID packages bring in the shared `ChsBuffer.Avalonia.AppHost.Build` integration automatically.
+Use the package without a suffix for all supported targets, or reference only the RID packages the project publishes. In projects that target .NET 10 or later, the RID packages bring in the shared `ChsBuffer.Avalonia.AppHost.Build` integration automatically.
 
 The templates activate for a C# project that targets .NET 10 or .NET 11 (including OS-specific TFMs such as `net11.0-windows`) and builds for the RuntimeIdentifier of an installed RID package: `-r <RID>`, `<RuntimeIdentifier>`, or the RID that `PublishSingleFile` infers. Other builds keep the standard .NET SDK host and publish the SkiaSharp, HarfBuzzSharp and ANGLE dynamic libraries:
 
@@ -21,7 +21,8 @@ The templates activate for a C# project that targets .NET 10 or .NET 11 (includi
 - Projects with `PublishAot=true` warn that the package is inactive in every build for a RuntimeIdentifier, not only when publishing, because the NativeAOT executable they publish has no apphost; the output of `dotnet build -r <RID>` uses the SDK apphost. The warning is omitted when the project references a HostForge static graphics package, such as `ChsBuffer.SkiaSharp.Static` or `ChsBuffer.Angle.Static`, which link these libraries into the NativeAOT executable.
 - `UseAppHost=false` builds run on `dotnet` and warn that the package is inactive.
 - F# and Visual Basic projects warn that the package is inactive: the executable resolves the libraries through a C# module initializer that the package compiles into the project.
-- Other target framework and RID combinations warn that no template matches.
+- Builds of projects that target .NET 10 or later for a RuntimeIdentifier without a template, such as a RID whose package the project does not reference, warn that no template matches.
+- Projects that target an earlier .NET, such as `net9.0`, build without a warning: the packages declare their dependencies for .NET 10 and later only, so these projects get neither the Build integration nor the SkiaSharp and HarfBuzzSharp versions described below.
 
 Each RID package depends on the SkiaSharp and HarfBuzzSharp versions linked into its templates. The managed packages bring only their Windows and macOS native libraries, so the Linux RID packages also depend on `SkiaSharp.NativeAssets.Linux` and `HarfBuzzSharp.NativeAssets.Linux` of these versions; the dynamic libraries then match the managed packages instead of the older ones Avalonia depends on.
 

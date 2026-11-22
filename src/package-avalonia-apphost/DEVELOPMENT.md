@@ -67,6 +67,9 @@ several TFMs appear once. Packing fails when a template directory has no `licens
 The Build package's `.targets` matches `$(RuntimeIdentifier)` and the project's .NET version against
 `@(AvaloniaAppHostRids)`. The TFM is normalized to `net<major>.<minor>`, so OS-specific TFMs such as
 `net11.0-windows` use the `net11.0` template. Each RID package depends on the Build package, so consumers install only the RID packages they need. The meta-package `ChsBuffer.Avalonia.AppHost` installs every supported RID package.
+The packages declare their dependencies in a `net10.0` group only. A project that targets an earlier .NET
+therefore gets nothing from the meta-package and only the TFM-independent `.props` from a RID package: the
+templates are registered, but without the Build package's `.targets` nothing activates or warns.
 
 `ResolveAvaloniaAppHostActivation` leaves the package inactive, with the native libraries in the output, for:
 
