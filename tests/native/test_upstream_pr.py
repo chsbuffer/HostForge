@@ -35,6 +35,7 @@ upstream_pr = _module("upstream_pr")
 REPOSITORY = "owner/repo"
 BOT = "github-actions[bot]"
 MAINTAINER = ("Maintainer", "maintainer@example.com")
+MAINTAINER_LOGIN = "maintainer"
 # Fixed files of the groups the tests use (see upstream_pr.GROUP_FILES).
 INPUTS_FILE = "Directory.Build.props"
 TOOLS_FILE = "pyproject.toml"
@@ -43,7 +44,8 @@ SKIASHARP_FILE = "native/skiasharp/versions.json"
 
 # A stand-in for `gh api` that serves the REST calls of upstream_pr.py from a JSON state file. Like GitHub, the
 # pull request list filters head=owner:branch by the owner of the head repository (so a same-owner fork matches),
-# and --paginate --slurp returns the pages of state["page_size"] items each.
+# closing a pull request records a "closed" issue event by the token's user (the bot), and --paginate --slurp
+# returns the pages of state["page_size"] items each.
 FAKE_GH = textwrap.dedent(r'''
     import json, os, sys, urllib.parse
     state_path = os.environ["FAKE_GH_STATE"]
@@ -113,6 +115,11 @@ FAKE_GH = textwrap.dedent(r'''
     if parts[0] == "pulls" and len(parts) == 2:
         pull = find(int(parts[1]))
         if method == "PATCH":
+            if payload.get("state") == "closed" and pull["state"] != "closed":
+                state["clock"] += 1
+                state["events"].setdefault(parts[1], []).append({
+                    "event": "closed", "actor": {"login": "github-actions[bot]"},
+                    "created_at": "2026-01-01T00:%02d:%02dZ" % divmod(state["clock"], 60)})
             pull.update(payload)
         finish(pull)
     if parts[0] == "issues" and parts[2:] == ["comments"]:
@@ -121,6 +128,8 @@ FAKE_GH = textwrap.dedent(r'''
             comments.append({"body": payload["body"], "user": {"login": "github-actions[bot]"}})
             finish(comments[-1])
         finish(comments)
+    if parts[0] == "issues" and parts[2:] == ["events"] and method == "GET":
+        finish(state["events"].get(parts[1], []))
     finish(None, 1, "gh: unexpected call %s %s" % (method, path))
 ''')
 
@@ -181,7 +190,8 @@ class UpstreamPrTests(unittest.TestCase):
         fake.write_text(FAKE_GH, encoding="utf-8")
         self.gh_command = [sys.executable, str(fake)]
         # One item per page: every listing goes through the pagination of gh api --paginate --slurp.
-        self.gh_state({"repo": REPOSITORY, "pulls": [], "comments": {}, "calls": [], "fail": [], "page_size": 1})
+        self.gh_state({"repo": REPOSITORY, "pulls": [], "comments": {}, "events": {}, "clock": 0, "calls": [],
+                       "fail": [], "page_size": 1})
         # Every push and branch deletion, so that "no push" holds even when a rebuilt commit has the same id.
         self.pushes = []
         for name in ("push", "delete_branch"):
@@ -248,6 +258,16 @@ class UpstreamPrTests(unittest.TestCase):
                 "base": {"ref": "main", "repo": {"full_name": REPOSITORY}}, "mergeable": None})
         self.edit_gh(edit)
         return self.gh_state()["pulls"][-1]["number"]
+
+    def close_pull(self, number, by=MAINTAINER_LOGIN):
+        """Close a pull request as the user `by`; GitHub records who closed it in the issue events."""
+        def edit(gh):
+            next(pull for pull in gh["pulls"] if pull["number"] == number)["state"] = "closed"
+            gh["clock"] += 1
+            gh["events"].setdefault(str(number), []).append({
+                "event": "closed", "actor": {"login": by},
+                "created_at": "2026-01-01T00:%02d:%02dZ" % divmod(gh["clock"], 60)})
+        self.edit_gh(edit)
 
     def main_sha(self):
         return self.git(self.origin, "rev-parse", "refs/heads/main")
@@ -442,7 +462,7 @@ class UpstreamPrTests(unittest.TestCase):
 
     def test_declined_target_is_suppressed_until_a_newer_target(self):
         before = self.open_tools_pull()
-        self.edit_gh(lambda state: state["pulls"][0].update(state="closed"))
+        self.close_pull(1)
         self.reset_calls()
         code, summary = self.run_pr()
         self.assertEqual(code, 0, summary)
@@ -456,6 +476,53 @@ class UpstreamPrTests(unittest.TestCase):
         self.assertEqual([pull["state"] for pull in self.pulls("tools")], ["closed", "open"])
         self.assertEqual(self.show("refs/heads/upstream/tools", TOOLS_FILE), "task 2.1")
 
+    def test_pull_request_the_workflow_closed_does_not_suppress(self):
+        self.open_tools_pull()
+        self.plan_groups(self.group("tools", None), self.group("inputs", None))
+        code, summary = self.run_pr()
+        self.assertEqual(code, 0, summary)
+        self.assertEqual(self.pulls("tools")[0]["state"], "closed")
+        # The same target again: the workflow closed the pull request, nobody declined it.
+        self.plan_groups(self.group("tools", "2.0"), self.group("inputs", None))
+        code, summary = self.run_pr()
+        self.assertEqual(code, 0, summary)
+        self.assertIn("| tools | created |", summary)
+        self.assertEqual([pull["state"] for pull in self.pulls("tools")], ["closed", "open"])
+        self.assertEqual(self.show("refs/heads/upstream/tools", TOOLS_FILE), "task 2.0")
+        # A closing that the events do not show counts as declined.
+        self.edit_gh(lambda state: state["pulls"][1].update(state="closed"))
+        self.reset_calls()
+        code, summary = self.run_pr()
+        self.assertEqual(code, 0, summary)
+        self.assertIn("| tools | suppressed (declined target) |", summary)
+        self.assertEqual(self.writes(), [])
+
+    def test_pull_request_of_a_retired_group_does_not_suppress(self):
+        self.plan_groups(self.group("skiasharp-3", "3.1"), self.group("inputs", None))
+        code, summary = self.run_pr()
+        self.assertEqual(code, 0, summary)
+        self.plan_groups(self.group("inputs", None))
+        code, summary = self.run_pr()
+        self.assertIn("| skiasharp-3 | closed (group no longer planned) |", summary)
+        self.plan_groups(self.group("skiasharp-3", "3.1"), self.group("inputs", None))
+        code, summary = self.run_pr()
+        self.assertEqual(code, 0, summary)
+        self.assertIn("| skiasharp-3 | created |", summary)
+        self.assertEqual([pull["state"] for pull in self.pulls("skiasharp-3")], ["closed", "open"])
+
+    def test_closed_by_is_the_last_closing_in_the_issue_events(self):
+        self.edit_gh(lambda state: state["events"].update({
+            "7": [{"event": "closed", "actor": {"login": MAINTAINER_LOGIN}, "created_at": "2026-01-02T00:00:00Z"},
+                  {"event": "reopened", "actor": {"login": BOT}, "created_at": "2026-01-02T00:00:01Z"},
+                  {"event": "closed", "actor": {"login": BOT}, "created_at": "2026-01-01T00:00:00Z"}],
+            "8": [{"event": "closed", "actor": {"login": BOT}, "created_at": "2026-01-01T00:00:00Z"},
+                  {"event": "closed", "actor": {"login": MAINTAINER_LOGIN}, "created_at": "2026-01-01T00:00:00Z"}],
+            "9": [{"event": "head_ref_deleted", "actor": {"login": BOT}, "created_at": "2026-01-01T00:00:00Z"}]}))
+        github = upstream_pr.GitHub(self.gh_command, REPOSITORY)
+        self.assertEqual(MAINTAINER_LOGIN, github.closed_by(7))
+        self.assertEqual(MAINTAINER_LOGIN, github.closed_by(8))
+        self.assertIsNone(github.closed_by(9))
+
     def test_merged_pull_request_does_not_suppress(self):
         self.open_tools_pull()
         self.edit_gh(lambda state: state["pulls"][0].update(state="closed", merged_at="2026-01-01T00:00:00Z"))
@@ -466,7 +533,11 @@ class UpstreamPrTests(unittest.TestCase):
     def test_listings_span_several_pages(self):
         self.open_tools_pull()
         declined = upstream_pr.format_marker("tools", upstream_pr.sha256("task 2.0"), "0" * 64)
-        self.edit_gh(lambda state: state["pulls"][0].update(state="closed"))
+        # Closed by the bot, reopened and closed by the maintainer: the last closing is on page 3 of the events.
+        self.close_pull(1, by=BOT)
+        self.edit_gh(lambda state: state["events"]["1"].append(
+            {"event": "reopened", "actor": {"login": MAINTAINER_LOGIN}, "created_at": "2026-01-01T00:00:01Z"}))
+        self.close_pull(1)
         # The declined pull request comes last, after other closed ones: one item per page puts it on page 4.
         self.edit_gh(lambda state: state["pulls"].reverse())
         self.add_pull("upstream/tools", BOT, state="closed",
@@ -1092,11 +1163,24 @@ class UpstreamPrTests(unittest.TestCase):
         security = {"before": True, "after": False, "cves": []}
         self.plan_groups(self.group("inputs", "1.0.1", security=security))
         self.run_pr()
-        self.edit_gh(lambda state: state["pulls"][0].update(state="closed"))
+        self.close_pull(1)
         code, summary = self.run_pr()
         self.assertEqual(code, 1)
         self.assertIn("| inputs | suppressed (declined target) |", summary)
         self.assertIn("no open pull request on upstream/inputs for the current target", summary)
+
+    def test_verdict_security_update_closed_by_the_workflow_is_opened_again(self):
+        security = {"before": True, "after": False, "cves": []}
+        self.plan_groups(self.group("inputs", "1.0.1", security=security))
+        self.run_pr()
+        self.plan_groups(self.group("inputs", None, security={"before": False, "after": False, "cves": []}))
+        code, summary = self.run_pr()
+        self.assertEqual(code, 0, summary)
+        self.assertEqual(self.pulls("inputs")[0]["state"], "closed")
+        self.plan_groups(self.group("inputs", "1.0.1", security=security))
+        code, summary = self.run_pr()
+        self.assertEqual(code, 0, summary)
+        self.assertIn("| inputs | created |", summary)
 
     def test_verdict_security_update_outdated_by_maintainer_commits_fails(self):
         security = {"before": True, "after": False, "cves": []}
@@ -1114,7 +1198,7 @@ class UpstreamPrTests(unittest.TestCase):
     def test_verdict_without_security_problem_ignores_declined_inputs(self):
         self.plan_groups(self.group("inputs", "1.0.1", security={"before": False, "after": False, "cves": []}))
         self.run_pr()
-        self.edit_gh(lambda state: state["pulls"][0].update(state="closed"))
+        self.close_pull(1)
         code, summary = self.run_pr()
         self.assertEqual(code, 0, summary)
 

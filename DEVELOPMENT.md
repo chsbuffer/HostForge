@@ -520,7 +520,8 @@ SkiaSharp 的 recipe 按 mono/SkiaSharp 对应标签的构建文件（各平台 
 2. bot 每次创建或更新 PR 后，在 PR 中选择 “Approve workflows to run”，CI 才会运行。
 3. 审阅后合并。包文档（根目录和 `src/*/README.md`）中的版本和源码 commit 随 PR 更新；PR 正文列出其他仍写着旧版本或旧 commit 的文件，需手动修改。
 4. 要接手某个 PR，向它的分支推送提交，此后 bot 不再改动它。
-5. 要重试，在 Actions → upstream → Run workflow 开始新的运行；Re-run 不会更新 PR。
+5. 要拒绝某次更新，不合并而关闭 PR：同一目标不再开 PR，出现更新的版本时再开。bot 自己关闭的 PR（该组的计划没有改动、该组不再存在）不算拒绝。
+6. 要重试，在 Actions → upstream → Run workflow 开始新的运行；Re-run 不会更新 PR。
 
 ### workflow 失败
 
