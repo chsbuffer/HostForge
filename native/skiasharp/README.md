@@ -4,8 +4,10 @@ This Conan 2 recipe builds the SkiaSharp and HarfBuzzSharp static libraries for
 Windows, Linux glibc/musl and macOS x64/arm64. It supports the SkiaSharp versions
 in [`versions.json`](versions.json) (one SkiaSharp 3 and one SkiaSharp 4 version,
 each with its mono/skia commit and HarfBuzzSharp version) and deploys to
-`artifacts/skiasharp/<version>/<rid>/`. Pass the version with `--version`; Task's
-`SKIASHARP_VERSION` defaults to `SkiaSharpVersion` in `Directory.Build.props`.
+`artifacts/skiasharp/<version>/<rid>/`. The deployer replaces that directory, so it
+holds exactly the payload that `manifest.json` hashes. Pass the version with
+`--version`; Task's `SKIASHARP_VERSION` defaults to `SkiaSharpVersion` in
+`Directory.Build.props`.
 
 The GN arguments and project settings follow the build files of the mono/SkiaSharp tag.
 [`upstream-build.json`](upstream-build.json) records, for each version in `versions.json`, the git blob
