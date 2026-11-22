@@ -3,6 +3,16 @@
 Packages the .NET host relinking targets together with the `win-x64` static libraries for `apphost` and `singlefilehost`.
 The bundled Windows host inputs are built from the `no-pgo` HostForge flavor so they do not depend on whole-program optimization.
 
+The package is not published on nuget.org yet. Build it from the HostForge repository on Windows:
+
+```powershell
+task build-hostlibs PGO=False HOSTLIBS_VERSION=<runtime>
+task pack-static-apphost TFM=<target framework>
+```
+
+Without `HOSTLIBS_VERSION` and `TFM`, both use the repository's default `HostLibsTargetFramework`. The package is
+written to `artifacts/packages/Release`; add that directory as a package source to restore it.
+
 Each package version contains the host libraries of one .NET runtime and activates only for that target framework:
 
 | Package version | Target framework | .NET runtime |

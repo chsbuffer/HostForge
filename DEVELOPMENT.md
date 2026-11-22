@@ -163,7 +163,7 @@ task pack-angle-static RID=win-arm64
 task matrix-nativeaot
 ```
 
-`pack-*-static` 的 `RID` 默认为 `win-x64`。`pack-avalonia` 依次打包所有 RID 包、Build 包和元包。也可单独打包某个 RID：`task pack-avalonia-rid RID=win-x64`。详细约定见 [Avalonia 打包说明](src/package-avalonia-apphost/DEVELOPMENT.md)。
+`pack-*-static` 的 `RID` 默认为 `win-x64`。`pack-static-apphost` 打包 `no-pgo` HostLibs（`task build-hostlibs PGO=False`）；这个包只从源码打包，CI 不构建也不发布它。`pack-avalonia` 依次打包所有 RID 包、Build 包和元包。也可单独打包某个 RID：`task pack-avalonia-rid RID=win-x64`。详细约定见 [Avalonia 打包说明](src/package-avalonia-apphost/DEVELOPMENT.md)。
 
 ## Linux 构建
 
@@ -582,7 +582,7 @@ Avalonia 版本不是 AppHost 的输入。版本公式本身已随输入变化�
 | `task upstream-lock -- --check --base <ref>` | 改为与指定提交的首父历史比对；该历史中没有锁时跳过 |
 | `task upstream-lock -- --force` | 允许替换或删除 `HEAD` 首父历史中没有提交过的条目；已提交的条目仍不能改 |
 
-每次推送到 `main` 都可能发布，所以 `main` 首父历史上提交过的条目都视为已发布，包括检查失败、没有发布的推送和同一次推送中的中间提交。`plan-all` 检出完整历史，在推送和 PR 中都运行 `lock --check`（PR 的测试合并提交以基准分支为第一个父提交），即使 `tests/native` 失败也运行。这样输入和锁条目不能在同一提交中一起改掉，检查失败的推送之后的推送也不会以改写后的条目为准。这些命令需要完整历史，在浅克隆中报错。推送后 `main` 原来的 head 不在新 head 的首父历史上时（例如 force push），这一步失败，本次推送不会发布：在本地用 `task upstream-lock -- --check --base <上次已发布的提交>` 确认后，推送一个新提交（重跑无效）。
+每次推送到 `main` 都可能发布，所以 `main` 首父历史上提交过的条目都视为已发布，包括检查失败、没有发布的推送和同一次推送中的中间提交。`ChsBuffer.AppHost.Static` 例外：CI 不打包也不发布它，它的条目只记录各版本从源码打包时的输入，规则与守卫相同。`plan-all` 检出完整历史，在推送和 PR 中都运行 `lock --check`（PR 的测试合并提交以基准分支为第一个父提交），即使 `tests/native` 失败也运行。这样输入和锁条目不能在同一提交中一起改掉，检查失败的推送之后的推送也不会以改写后的条目为准。这些命令需要完整历史，在浅克隆中报错。推送后 `main` 原来的 head 不在新 head 的首父历史上时（例如 force push），这一步失败，本次推送不会发布：在本地用 `task upstream-lock -- --check --base <上次已发布的提交>` 确认后，推送一个新提交（重跑无效）。
 
 比对历史时跳过锁不是 JSON 的提交（例如留下了冲突标记），每个都打印一行：这样的提交读不出自己的锁，`tests/native` 和 `lock --check` 都会失败，没有发布任何包。历史锁是 JSON 却读不出时报错，所以修改锁格式时，`package_inputs.history()` 必须继续能读出旧格式。
 
