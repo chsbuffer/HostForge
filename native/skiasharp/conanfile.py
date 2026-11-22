@@ -23,7 +23,8 @@ VERSIONS = json.loads((Path(__file__).parent / "versions.json").read_text())
 class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
     name = "skiasharp"
     package_type = "static-library"
-    license = "MIT"
+    # SkiaSharp and Skia; licenses/ in the payload holds the license files of every component in the archives.
+    license = ("MIT", "BSD-3-Clause")
     homepage = "https://github.com/mono/skia"
     description = "SkiaSharp and HarfBuzzSharp static libraries"
 
