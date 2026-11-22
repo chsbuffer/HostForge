@@ -30,9 +30,6 @@ public static class AvaloniaPackageBuilder
                 "src",
                 "package-avalonia-apphost",
                 "AvaloniaAppHost.Build.csproj");
-            string packagesCache = Path.Combine(
-                RepoContext.RepoRoot,
-                "artifacts", "tmp", "nuget", "packages");
 
             // A RID package contains every template TFM, so pack only RIDs linked for all of them.
             string artifactRoot = Path.Combine(
@@ -60,18 +57,10 @@ public static class AvaloniaPackageBuilder
                     $"No Avalonia apphost templates are linked for all of {string.Join(", ", RepoContext.AvaloniaTemplateTfms)} under {artifactRoot}.");
             }
 
-            // Pack each available RID
+            // Consumers restore into RepoContext.TestPackagesRoot, which holds none of these packages
+            // at the start of a test run, so they get the packages packed here.
             foreach (string rid in availableRids)
             {
-                string cacheDir = Path.Combine(
-                    packagesCache,
-                    $"chsbuffer.avalonia.apphost.{rid.ToLowerInvariant()}");
-
-                if (Directory.Exists(cacheDir))
-                {
-                    Directory.Delete(cacheDir, recursive: true);
-                }
-
                 CommandResult result = await CommandRunner.RunAsync(
                     "dotnet",
                     $"pack \"{ridProject}\" -c Release -v:minimal -p:AvaloniaHostRid={rid}",
@@ -85,25 +74,16 @@ public static class AvaloniaPackageBuilder
                 }
             }
 
-            // Pack Build package
+            CommandResult buildResult = await CommandRunner.RunAsync(
+                "dotnet",
+                $"pack \"{buildProject}\" -c Release -v:minimal",
+                RepoContext.RepoRoot,
+                cancellationToken);
+
+            if (buildResult.ExitCode != 0)
             {
-                string cacheDir = Path.Combine(packagesCache, "chsbuffer.avalonia.apphost.build");
-                if (Directory.Exists(cacheDir))
-                {
-                    Directory.Delete(cacheDir, recursive: true);
-                }
-
-                CommandResult result = await CommandRunner.RunAsync(
-                    "dotnet",
-                    $"pack \"{buildProject}\" -c Release -v:minimal",
-                    RepoContext.RepoRoot,
-                    cancellationToken);
-
-                if (result.ExitCode != 0)
-                {
-                    throw new InvalidOperationException(
-                        $"Failed to pack Avalonia Build package.{Environment.NewLine}{result.CombinedOutput}");
-                }
+                throw new InvalidOperationException(
+                    $"Failed to pack Avalonia Build package.{Environment.NewLine}{buildResult.CombinedOutput}");
             }
 
             _packed = true;

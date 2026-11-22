@@ -105,6 +105,7 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         propertyGroup.AddProperty(
             "RestoreAdditionalProjectSources",
             "$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)");
+        propertyGroup.AddProperty("RestorePackagesPath", RepoContext.TestPackagesRoot);
 
         propertyGroup.AddProperty("DetectAvaloniaDesigner", "false");
 
