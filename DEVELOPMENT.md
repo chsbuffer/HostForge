@@ -88,7 +88,7 @@ recipe 只稀疏检出 VMR 的 `src/runtime`，并关闭构建期依赖的 NuGet
 | `matrix-nativeaot` | 按 .NET SDK 的 RID 与 `SKIASHARP_VERSION` 打包静态图形库，并以同一 RID 与版本验证 NativeAOT 发布与运行 |
 | `link-avalonia` | 生成指定操作系统（`TARGET_OS=windows\|linux\|linux-musl`）的 Avalonia 宿主模板，`RID` 只链接其中一个 RID；每个模板 TFM（`net10.0` / `net11.0`）链接各自运行时版本的 HostLibs |
 | `avalonia-test` | 运行 Avalonia AppHost 集成测试 |
-| `pack-avalonia` | 打包全部 Avalonia AppHost（RID 包 + Build + 元包） |
+| `pack-avalonia` | 打包全部 Avalonia AppHost（RID 包 + Build + 元包），需要全部 RID 的模板 |
 | `pack-avalonia-rid` | 打包单个 RID 的 Avalonia AppHost 模板（RID=win-x64\|win-arm64\|linux-x64\|linux-musl-x64\|linux-musl-arm64） |
 | `pack-avalonia-build` | 打包 Build 包（targets + ModuleInitializer） |
 | `pack-avalonia-meta` | 打包元包（依赖所有子包） |
@@ -153,7 +153,9 @@ task avalonia-test
 ### 5. 打包
 
 ```powershell
-task pack-avalonia
+task pack-avalonia-rid RID=win-x64
+task pack-avalonia-rid RID=win-arm64
+task pack-avalonia-build
 task pack-static-apphost
 task pack-static-apphost TFM=net11.0
 task pack-skia-static
@@ -163,7 +165,7 @@ task pack-angle-static RID=win-arm64
 task matrix-nativeaot
 ```
 
-`pack-*-static` 的 `RID` 默认为 `win-x64`。`pack-static-apphost` 打包 `no-pgo` HostLibs（`task build-hostlibs PGO=False`）；这个包只从源码打包，CI 不构建也不发布它。`pack-avalonia` 依次打包所有 RID 包、Build 包和元包。也可单独打包某个 RID：`task pack-avalonia-rid RID=win-x64`。详细约定见 [Avalonia 打包说明](src/package-avalonia-apphost/DEVELOPMENT.md)。
+`pack-*-static` 的 `RID` 默认为 `win-x64`。`pack-static-apphost` 打包 `no-pgo` HostLibs（`task build-hostlibs PGO=False`）；这个包只从源码打包，CI 不构建也不发布它。`pack-avalonia-rid` 打包一个已链接 RID 的模板，RID 包依赖的 Build 包由 `pack-avalonia-build` 单独打包。`pack-avalonia` 依次打包全部 RID 包、Build 包和元包，需要先在容器中链接 Linux 与 Alpine 模板（见 [Linux 构建](#linux-构建)）。详细约定见 [Avalonia 打包说明](src/package-avalonia-apphost/DEVELOPMENT.md)。
 
 ## Linux 构建
 

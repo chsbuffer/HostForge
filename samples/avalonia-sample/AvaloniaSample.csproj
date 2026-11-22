@@ -12,6 +12,6 @@
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="$(AvaloniaVersion)" />
     <PackageReference Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
-    <PackageReference Include="ChsBuffer.Avalonia.AppHost" Version="$(AvaloniaAppHostPackageVersion)" />
+    <PackageReference Include="ChsBuffer.Avalonia.AppHost.win-x64" Version="$(AvaloniaAppHostPackageVersion)" />
   </ItemGroup>
 </Project>

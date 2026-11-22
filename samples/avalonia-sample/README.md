@@ -1,19 +1,20 @@
 # avalonia-sample
 
-Minimal Avalonia desktop sample that consumes `ChsBuffer.Avalonia.AppHost`.
+Minimal `win-x64` Avalonia desktop sample that consumes `ChsBuffer.Avalonia.AppHost.win-x64`.
 
 ## Prerequisites
 
-1. Build/package the local Avalonia apphost package:
+1. Build the Windows x64 HostLibs of every runtime, SkiaSharp and ANGLE, as described in
+   [DEVELOPMENT.md](../../DEVELOPMENT.md#windows-构建).
+2. Link the `win-x64` templates, then pack the RID package and the Build package it depends on:
 
 ```powershell
-task link-avalonia TARGET_OS=windows
-task pack-avalonia
+task link-avalonia TARGET_OS=windows RID=win-x64
+task pack-avalonia-rid RID=win-x64
+task pack-avalonia-build
 ```
 
-2. Ensure the produced nupkg exists under:
-
-`artifacts/packages/Release`
+The packages are written to `artifacts/packages/Release`, which the sample adds as a restore source.
 
 NuGet does not extract a package version again once it is in the package folder (`artifacts/tmp/nuget/packages`,
 or `NUGET_PACKAGES` when set). After repacking under the same version, delete the `chsbuffer.avalonia.apphost*`
