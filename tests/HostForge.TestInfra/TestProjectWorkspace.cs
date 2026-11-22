@@ -105,9 +105,6 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         propertyGroup.AddProperty("ImplicitUsings", "enable");
         propertyGroup.AddProperty("Nullable", "enable");
         propertyGroup.AddProperty(
-            "DefineConstants",
-            "$(DefineConstants);HOSTFORGE_DISABLE_AVALONIA_WIN32_IMPORT_RESOLVER");
-        propertyGroup.AddProperty(
             "RestoreAdditionalProjectSources",
             "$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)");
 

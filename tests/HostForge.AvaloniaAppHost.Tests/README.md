@@ -10,6 +10,8 @@ Current coverage:
   `net11.0-windows`, `win-x64` / `win-arm64`
 - Windows Skia/HarfBuzz native runtime copy suppression switch behavior
 - Windows ANGLE P/Invoke resolution from the apphost and runtime copy suppression for every template TFM
+- The consumer projects do not reference Avalonia.Win32, so every run on a Windows template also checks that the
+  module initializer registers its resolver only with referenced assemblies
 - Self-contained single-file publish on Windows and Linux for every template TFM, without and with
   `IncludeNativeLibrariesForSelfExtract`: `RuntimeFrameworkVersion` is pinned to the template's runtime version,
   as the package README requires; the bundle runs on the prelinked singlefilehost (exact runtime version checked)

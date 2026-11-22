@@ -6,6 +6,8 @@ using System.Runtime.InteropServices;
 
 namespace HostForge.Avalonia.AppHost;
 
+// The build defines HOSTFORGE_<ASSEMBLY> for each assembly registered below that the project references.
+// The static type references load no assembly the application lacks, and trimming keeps the assemblies they name.
 internal static class ModuleInitializer
 {
     private static readonly IntPtr MainProgram = NativeLibrary.GetMainProgramHandle();
@@ -16,13 +18,36 @@ internal static class ModuleInitializer
         // The application assembly also runs under other hosts, such as dotnet, a test host or the previewer.
         // Their main program exports none of the libraries, which then load from their files as usual.
         if (Exports("sk_version_get_milestone"))
-            SetResolver(typeof(global::SkiaSharp.SkiaSharpVersion).Assembly, "libSkiaSharp");
+            RegisterSkiaSharp();
         if (Exports("hb_version_string"))
-            SetResolver(typeof(global::HarfBuzzSharp.Blob).Assembly, "libHarfBuzzSharp");
-
-#if !HOSTFORGE_DISABLE_AVALONIA_WIN32_IMPORT_RESOLVER
+            RegisterHarfBuzzSharp();
         if (Exports("EGL_GetError"))
-            SetResolver(Assembly.Load("Avalonia.Win32"), "av_libglesv2");
+            RegisterAngle();
+    }
+
+    // The registrations are separate methods so that the JIT loads their assemblies only when the
+    // executable exports the library.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void RegisterSkiaSharp()
+    {
+#if HOSTFORGE_SKIASHARP
+        SetResolver(typeof(global::SkiaSharp.SkiaSharpVersion).Assembly, "libSkiaSharp");
+#endif
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void RegisterHarfBuzzSharp()
+    {
+#if HOSTFORGE_HARFBUZZSHARP
+        SetResolver(typeof(global::HarfBuzzSharp.Blob).Assembly, "libHarfBuzzSharp");
+#endif
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void RegisterAngle()
+    {
+#if HOSTFORGE_AVALONIA_WIN32
+        SetResolver(typeof(global::Avalonia.Win32PlatformOptions).Assembly, "av_libglesv2");
 #endif
     }
 
