@@ -12,6 +12,8 @@ Each package version contains the host libraries of one .NET runtime and activat
 
 Use this package when you want the generated executable to contain native code directly, instead of deploying separate native DLLs alongside it.
 
+The host libraries are the .NET runtime's own native code. Its `LICENSE.TXT` and `THIRD-PARTY-NOTICES.TXT`, which cover the third-party code in that runtime, are under `build/win-x64/licenses/`.
+
 On supported builds, the imported targets relink `apphost` and `singlefilehost` from the project's `NativeLibrary` items, replacing the default SDK host with one that already contains the requested native libraries.
 
 ## Requirements

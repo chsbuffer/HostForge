@@ -61,6 +61,10 @@ in the musl rootfs, is copied into the payload, and the response file names the 
 Set `CONAN_HOME` to an absolute path (e.g. `$PWD/build/conan`). The
 Runtime build has deeply nested paths and long MSVC command lines.
 
+The payload also contains `licenses/LICENSE.TXT` and `licenses/THIRD-PARTY-NOTICES.TXT`
+of `src/runtime`: the hosts link the runtime's native components, whose third-party code
+those notices cover.
+
 The deployer preserves the response-file-relative directory tree expected by the
 existing MSBuild targets and writes it below
 `artifacts/hostlibs/<runtime-version>/<flavor>/<rid>`.
