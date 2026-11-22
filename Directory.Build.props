@@ -51,7 +51,8 @@
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
 
     <PackagesOutputRoot>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/packages'))</PackagesOutputRoot>
-    <AvaloniaAppHostPackageOutputDir>$([MSBuild]::NormalizePath('$(PackagesOutputRoot)', '$(Configuration)'))</AvaloniaAppHostPackageOutputDir>
+    <!-- This file is imported before the SDK defaults Configuration to Debug; the packages are packed in Release. -->
+    <AvaloniaAppHostPackageOutputDir>$([MSBuild]::NormalizePath('$(PackagesOutputRoot)', $([MSBuild]::ValueOrDefault('$(Configuration)', 'Release'))))</AvaloniaAppHostPackageOutputDir>
 
     <HostLibsBaseRoot>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/hostlibs/$(HostLibsVersion)'))</HostLibsBaseRoot>
     <HostLibsRoot>$([MSBuild]::NormalizePath('$(HostLibsBaseRoot)', '$(HostLibsFlavor)'))</HostLibsRoot>
