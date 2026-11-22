@@ -172,8 +172,10 @@ jobs:
         env:
           BEFORE: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: |
+          # grep without -q reads all of rev-list: -q would stop it early, and under pipefail the SIGPIPE of
+          # rev-list would look like a force push.
           if [[ -n "$BEFORE" && "$BEFORE" != 0000000000000000000000000000000000000000 ]] &&
-             ! git rev-list --first-parent HEAD | grep -qxF "$BEFORE"; then
+             ! git rev-list --first-parent HEAD | grep -xF "$BEFORE" >/dev/null; then
             echo "::error::The previous head of main $BEFORE is not on the first-parent history of $GITHUB_SHA (force push?); the package lock was not checked against the history it was published from."
             exit 1
           fi
