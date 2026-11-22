@@ -12,7 +12,7 @@
 | --- | --- |
 | [`Directory.Build.props`](Directory.Build.props) | `AvaloniaVersion` / `AvaloniaNativeVersion`（两者必须相等）、`AngleVersion`、默认 `SkiaSharpVersion`、各 SkiaSharp 版本对应的 `HarfBuzzVersion`、`HostForgeTargetFrameworks` 与各 TFM 的 `HostLibsNet*Version`；以及各包的版本公式 |
 | [`native/hostlibs/versions.json`](native/hostlibs/versions.json) | 每个 .NET 运行时版本对应的 VMR 标签与 commit，以及该 commit 的 Linux 官方构建容器（`containers`，每个 Linux RID 一个，以 digest 固定） |
-| [`native/skiasharp/versions.json`](native/skiasharp/versions.json) | 每个 SkiaSharp 版本对应的 mono/skia commit 与 HarfBuzzSharp 版本 |
+| [`native/skiasharp/versions.json`](native/skiasharp/versions.json) | 每个 SkiaSharp 版本对应的 mono/skia commit、HarfBuzzSharp 版本，以及 mono/SkiaSharp 版本标签的 commit |
 | [`native/avalonianative/conandata.yml`](native/avalonianative/conandata.yml) | 每个 Avalonia 版本的源码归档 URL、SHA-256 与 commit |
 | [`native/angle/conandata.yml`](native/angle/conandata.yml) | ANGLE 的分支（仅记录）、固定 commit，以及 depot_tools commit |
 | [`native/angle/conanfile.py`](native/angle/conanfile.py) | recipe 的 `version`，必须等于 `AngleVersion` |
@@ -52,7 +52,7 @@ Windows 构建环境：
 - [LLVM](https://github.com/llvm/llvm-project/releases)，版本与 CI 的 [`install-llvm`](.github/actions/install-llvm/action.yml) 一致，默认路径为 `C:\Program Files\LLVM`
 - Git for Windows（ANGLE 构建需要；depot_tools 由 recipe 自行获取，无需安装）
 
-Linux 构建使用 Clang，并通过 sysroot 对齐 .NET Host、SkiaSharp 和 HarfBuzzSharp 的目标 ABI。背景和工具链说明见 [Linux 构建方法](docs/roadmap/2026-03-13-linux-build-methodology.md)。Linux 的原生库构建、Avalonia 模板链接和 Static AppHost 矩阵在容器中进行，需要 Docker 或 Podman。
+Linux 与官方 .NET 构建一样交叉编译：在 Azure Linux amd64 容器中，用容器自带的 LLVM（Clang / LLD）面向 `/crossrootfs/<arch>` 中的目标 rootfs 编译和链接，.NET Host、SkiaSharp 和 HarfBuzzSharp 因此使用同一 ABI 基线。glibc RID 的 rootfs 为 Ubuntu 18.04，产物与官方运行时一样只要求 glibc 2.27；musl RID 的 rootfs 为 Alpine。HostLibs 与 Avalonia 模板使用 `versions.json` 记录的官方构建容器，SkiaSharp 使用 `native/skiasharp/*.Dockerfile` 中以 digest 固定的同类镜像。Linux 的原生库构建、Avalonia 模板链接和 Static AppHost 矩阵在容器中进行，需要 Docker 或 Podman。
 
 macOS 的 SkiaSharp 构建需要 Command Line Tools；AvaloniaNative 构建需要完整的 Xcode 26.0.1，以及满足 Avalonia 源码 `global.json` 的 .NET 10 SDK（10.0.201 及以上）。
 
@@ -85,10 +85,10 @@ recipe 只稀疏检出 VMR 的 `src/runtime`，并关闭构建期依赖的 NuGet
 | `pack-avalonianative-meta` | 打包精确依赖两个 macOS RID 包的 AvaloniaNative 元包 |
 | `test-avalonianative` | 验证版本与 AOT/RID 门控；macOS 上发布并运行窗口和字体测试 |
 | `matrix` | 运行 Static AppHost 与 NativeAOT 集成矩阵 |
-| `matrix-nativeaot` | 打包本地静态图形库并验证 NativeAOT 发布与运行 |
+| `matrix-nativeaot` | 按 .NET SDK 的 RID 与 `SKIASHARP_VERSION` 打包静态图形库，并以同一 RID 与版本验证 NativeAOT 发布与运行 |
 | `link-avalonia` | 生成指定操作系统（`TARGET_OS=windows\|linux\|linux-musl`）的 Avalonia 宿主模板，`RID` 只链接其中一个 RID；每个模板 TFM（`net10.0` / `net11.0`）链接各自运行时版本的 HostLibs |
 | `avalonia-test` | 运行 Avalonia AppHost 集成测试 |
-| `pack-avalonia` | 打包全部 Avalonia AppHost（RID 包 + Build + 元包） |
+| `pack-avalonia` | 打包全部 Avalonia AppHost（RID 包 + Build + 元包），需要全部 RID 的模板 |
 | `pack-avalonia-rid` | 打包单个 RID 的 Avalonia AppHost 模板（RID=win-x64\|win-arm64\|linux-x64\|linux-musl-x64\|linux-musl-arm64） |
 | `pack-avalonia-build` | 打包 Build 包（targets + ModuleInitializer） |
 | `pack-avalonia-meta` | 打包元包（依赖所有子包） |
@@ -97,9 +97,9 @@ recipe 只稀疏检出 VMR 的 `src/runtime`，并关闭构建期依赖的 NuGet
 | `pack-angle-static` | 打包 Windows ANGLE 静态库输入（win-x64 或 win-arm64） |
 | `upstream-check` | 只读检查上游新版本与安全修复 |
 | `upstream-apply` | 按组更新上游版本及包输入锁（默认 `inputs` 组） |
-| `upstream-lock` | 向 `package-inputs.lock.json` 追加当前包版本 |
+| `upstream-lock` | 把当前包版本写入 `package-inputs.lock.json` |
 
-运行 `task --list` 可查看任务；通过 `NAME=value` 传入目标平台、RID 或打包模式。构建任务接受 `ARCH=x64|arm64`，`build-hostlibs` 另接受 `PGO=True|False`（区分大小写），Linux 构建还需传入 `SYSROOT`。
+运行 `task --list` 可查看任务；通过 `NAME=value` 传入目标平台、RID 或打包模式。构建任务接受 `ARCH=x64|arm64`（Linux 的 `build-hostlibs` 由 `RID` 选择目标）；Windows 的 `build-hostlibs` 另接受 `PGO=True|False`（区分大小写），Linux 的 HostLibs 与官方 Linux 运行时一样只以 PGO 构建，传入 `True` 以外的 `PGO` 会报错；Linux 构建还需通过 `SYSROOT` 或环境变量 `ROOTFS_DIR` 指定目标 rootfs。
 
 ## Windows 构建
 
@@ -121,7 +121,7 @@ task build-hostlibs HOSTLIBS_VERSION=<运行时版本>  # 其他运行时
 
 `CONAN_HOME` 设为 `build/conan` 的绝对路径。构建前先 `export CONAN_HOME=$(pwd)/build/conan`（或 PowerShell: `$env:CONAN_HOME = "$PWD\build\conan"`）。
 
-SingleFileHost 的部分 CoreCLR 目标 PDB 路径很深，`CONAN_HOME` 路径较长时会超过 MSVC 的 `MAX_PATH`，报 `fatal error C1041: 无法打开程序数据库`。此时让 `CONAN_HOME` 使用短路径，例如 `subst Q: "$PWD\build"` 后设 `$env:CONAN_HOME = 'Q:\conan'`，完成后用 `subst Q: /d` 取消映射。
+Runtime 的构建目录层级很深、MSVC 命令行很长（见 [HostLibs recipe 说明](native/hostlibs/README.md)），`CONAN_HOME` 的路径会计入其中每个构建路径。构建因路径过长失败时，让 `CONAN_HOME` 使用短路径，例如 `subst Q: "$PWD\build"` 后设 `$env:CONAN_HOME = 'Q:\conan'`，完成后用 `subst Q: /d` 取消映射。
 
 ### 2. 构建 SkiaSharp / HarfBuzzSharp
 
@@ -130,7 +130,9 @@ task build-skiasharp
 task build-skiasharp ARCH=arm64
 ```
 
-Windows HarfBuzzSharp 项目由 [`scripts/libHarfBuzzSharp.vcxproj.in`](scripts/libHarfBuzzSharp.vcxproj.in) 原样导出后实例化，仓库中的上游模板不由 recipe 修改。
+SkiaSharp 3 的 Windows HarfBuzzSharp 项目由 [`scripts/libHarfBuzzSharp.vcxproj.in`](scripts/libHarfBuzzSharp.vcxproj.in) 原样导出后实例化，仓库中的模板不由 recipe 修改。SkiaSharp 4 使用 mono/SkiaSharp 对应标签的 `native/windows/libHarfBuzzSharp` 工程及其 `harfbuzz-subset-msvc.cc`，两者按 `versions.json` 记录的标签 commit 下载，内容与 [`upstream-build.json`](native/skiasharp/upstream-build.json) 记录的 git blob SHA 不符时构建失败；recipe 把工程改为静态库并关闭全程序优化，换用 profile 的工具集与 Windows SDK，去掉需要可选 Spectre 库的 Spectre 缓解。两个版本都以 `/Z7` 把调试信息嵌入对象。只有 SkiaSharp 3 的 Windows 原生库缓存键包含该模板。
+
+`win-x64` 的 Skia（clang-cl）与 HarfBuzzSharp（MSVC 工程的 `GuardEHContMetadata`，SkiaSharp 4 的上游工程同样在实例化时加入）以 `/guard:ehcont` 编译：.NET 在 x64 上以 `/guard:ehcont` 链接宿主，Static AppHost 沿用 HostLibs 记录的这一参数，而带 C++ EH 却没有 EH continuation 元数据的对象会让 `link.exe` 以 `LNK1386` 失败。
 
 ### 3. 构建 ANGLE
 
@@ -153,7 +155,9 @@ task avalonia-test
 ### 5. 打包
 
 ```powershell
-task pack-avalonia
+task pack-avalonia-rid RID=win-x64
+task pack-avalonia-rid RID=win-arm64
+task pack-avalonia-build
 task pack-static-apphost
 task pack-static-apphost TFM=net11.0
 task pack-skia-static
@@ -163,7 +167,7 @@ task pack-angle-static RID=win-arm64
 task matrix-nativeaot
 ```
 
-`pack-*-static` 的 `RID` 默认为 `win-x64`。`pack-avalonia` 依次打包所有 RID 包、Build 包和元包。也可单独打包某个 RID：`task pack-avalonia-rid RID=win-x64`。详细约定见 [Avalonia 打包说明](src/package-avalonia-apphost/DEVELOPMENT.md)。
+`pack-*-static` 的 `RID` 默认为 `win-x64`。`pack-static-apphost` 打包 `no-pgo` HostLibs（`task build-hostlibs PGO=False`）；这个包只从源码打包，CI 不构建也不发布它。`pack-avalonia-rid` 打包一个已链接 RID 的模板，RID 包依赖的 Build 包由 `pack-avalonia-build` 单独打包。`pack-avalonia` 依次打包全部 RID 包、Build 包和元包，需要先在容器中链接 Linux 与 Alpine 模板（见 [Linux 构建](#linux-构建)）。详细约定见 [Avalonia 打包说明](src/package-avalonia-apphost/DEVELOPMENT.md)。
 
 ## Linux 构建
 
@@ -178,26 +182,31 @@ docker build $(python scripts/upstream.py build-args) -f native/hostlibs/linux.D
 docker run --rm -v "$PWD:/work" hostforge-hostlibs task build-hostlibs RID=linux-x64 HOSTLIBS_VERSION=<运行时版本> SYSROOT=/crossrootfs/x64
 ```
 
-`RID` 为 `linux-x64`（默认）、`linux-musl-x64` 或 `linux-musl-arm64`，`SYSROOT` 为容器中该架构的 rootfs（`/crossrootfs/x64` 或 `/crossrootfs/arm64`），通过 `ROOTFS_DIR` 环境变量传给 Runtime 的 `build.sh --cross`。`native/hostlibs/profiles/linux-musl-*` 设置 `libc=musl`，recipe 向 `build.sh` 传入 `--os linux-musl`，由上游脚本选择 musl RID、CMake 定义与 PGO 数据。
+`RID` 为 `linux-x64`（默认）、`linux-musl-x64` 或 `linux-musl-arm64`，`SYSROOT` 为容器中该架构的 rootfs（`/crossrootfs/x64` 或 `/crossrootfs/arm64`），省略时取环境变量 `ROOTFS_DIR`，相对路径按仓库根目录解析，通过 `ROOTFS_DIR` 环境变量传给 Runtime 的 `build.sh --cross`。`native/hostlibs/profiles/linux-musl-*` 设置 `libc=musl`，recipe 向 `build.sh` 传入 `--os linux-musl`，由上游脚本选择 musl RID、CMake 定义与 PGO 数据。
 
 .NET 11 的 PGO 构建以 LTO 编译 GC，所以 .NET 11 的 HostLibs 含有容器内 LLVM 生成的 bitcode，只有不低于该版本的 LLVM 才能链接。
 
 ### 2. 构建 SkiaSharp / HarfBuzzSharp
 
+每个 Linux RID 在对应的 amd64 cross 镜像（`native/skiasharp/<RID>.Dockerfile`）中构建，镜像提供固定的 LLVM 与目标 rootfs，所有 Skia 编译均在 amd64 宿主执行。`RID` 默认为 `linux-x64`，Conan profile 为 `native/skiasharp/profiles/<RID>`。`SYSROOT` 为该架构的 rootfs（镜像中为 `/crossrootfs/x64` 或 `/crossrootfs/arm64`），省略时取环境变量 `ROOTFS_DIR`，通过 `ROOTFS_DIR` 环境变量传给 recipe。例如：
+
 ```bash
-task build-skiasharp SYSROOT=build/rootfs/x64
+docker build $(python scripts/upstream.py build-args) -f native/skiasharp/linux-x64.Dockerfile -t hostforge-skia .
+docker run --rm -v "$PWD:/work" hostforge-skia task build-skiasharp SYSROOT=/crossrootfs/x64
 task pack-skia-static RID=linux-x64
 task matrix-nativeaot
+
+docker build $(python scripts/upstream.py build-args) -f native/skiasharp/linux-musl-arm64.Dockerfile -t hostforge-skia-musl-arm64 .
+docker run --rm -v "$PWD:/work" hostforge-skia-musl-arm64 task build-skiasharp RID=linux-musl-arm64 SKIASHARP_VERSION=<版本> SYSROOT=/crossrootfs/arm64 JOBS=4
+task pack-skia-static RID=linux-musl-arm64 SKIASHARP_VERSION=<版本>
 ```
 
-使用 `native/skiasharp/profiles/linux-x64`，同样通过 `ROOTFS_DIR` 环境变量传入 sysroot；可继续用 `CC`、`CXX` 和 `AR` 覆盖 GN 工具链命令。
-
-其它 Linux RID 使用对应的 amd64 cross 镜像；`SYSROOT` 的末级目录为 `x64` 或 `arm64`，所有 Skia 编译均在 amd64 宿主执行。例如：
+也可以在宿主机上构建：像 CI 一样把镜像中的 rootfs 导出到 `build/rootfs/x64`，再传给 `SYSROOT`；相对路径按仓库根目录解析。Task 默认使用 PATH 中的 `clang`、`clang++` 和 `llvm-ar`，可用环境变量 `CC`、`CXX` 和 `AR` 换成其它 Clang / LLVM 命令（例如 `CC=clang-20 CXX=clang++-20 AR=llvm-ar-20`），`compiler.version` 与 recipe 记录的工具链随之取自 `CC`。
 
 ```bash
-docker build $(python scripts/upstream.py build-args) -f native/skiasharp/linux-musl-arm64.Dockerfile -t hostforge-skia .
-docker run --rm -v "$PWD:/work" hostforge-skia task build-skiasharp RID=linux-musl-arm64 SKIASHARP_VERSION=<版本> SYSROOT=/crossrootfs/arm64 JOBS=4
-task pack-skia-static RID=linux-musl-arm64 SKIASHARP_VERSION=<版本>
+mkdir -p build/rootfs/x64
+docker run --rm hostforge-skia tar cf - -C /crossrootfs/x64 . | tar xf - -C build/rootfs/x64
+task build-skiasharp SYSROOT=build/rootfs/x64
 ```
 
 省略 `SKIASHARP_VERSION` 时使用 `Directory.Build.props` 的 `SkiaSharpVersion`；可选版本见 `native/skiasharp/versions.json`。
@@ -235,20 +244,20 @@ task matrix
 
 两个矩阵都对 `Directory.Build.props` 中 `HostForgeTargetFrameworks` 的每个 TFM 各运行一次；Static AppHost 矩阵因此需要先构建每个运行时版本的 HostLibs。Linux 上 Static AppHost 矩阵链接 .NET 11 HostLibs，CI 在最新运行时的 linux-x64 构建容器中运行它，NativeAOT 矩阵在 runner 上运行。
 
-`tests/native` 是不依赖构建产物的 Python 测试（缓存键、版本一致性、版本字面量、包输入锁与上游脚本），CI 在 `plan-all` 中运行：
+`tests/native` 是不依赖构建产物的 Python 测试（缓存键、版本一致性、版本字面量、包输入锁、包文档版本、上游脚本，以及原生 recipe 中可单独测试的逻辑，如许可证收集；Conan 由测试替身代替），CI 在 `plan-all` 中运行：
 
 ```bash
 python -m unittest discover -s tests/native
 ```
 
-`matrix-nativeaot` 会打包当前平台的 SkiaSharp 静态库；Windows 还会打包 ANGLE。随后发布并运行 `samples/nativeaot-matrix`，检查 SkiaSharp、HarfBuzzSharp 和 Windows ANGLE 的原生调用，以及发布目录中没有对应动态本机库。运行前需先构建当前平台的原生库。
+`matrix-nativeaot` 按 .NET SDK 的 RID（`NETCoreSdkPortableRuntimeIdentifier`，即测试进程所在运行时的 RID）和 `SKIASHARP_VERSION`（默认为 `Directory.Build.props` 的 `SkiaSharpVersion`）打包 SkiaSharp 静态库，Windows 还会打包 ANGLE；随后通过 `HOSTFORGE_NATIVE_RID` 与 `HOSTFORGE_SKIA_VERSION` 把同一 RID 与版本交给测试，发布并运行 `samples/nativeaot-matrix`，检查 SkiaSharp、HarfBuzzSharp 和 Windows ANGLE 的原生调用，以及发布目录中没有对应动态本机库。同一程序还以非 AOT 自包含方式发布并运行，检查加载的 SkiaSharp / HarfBuzzSharp 动态库版本与托管包一致。运行前需先构建该 RID 与版本的原生库。
 
-可通过环境变量调整矩阵测试：
+可通过环境变量调整 Static AppHost 矩阵：
 
 - `HOSTFORGE_MATRIX_SKIP_EXE_RUN=true`：只构建，不运行生成的可执行文件。
-- `HOSTFORGE_MATRIX_NO_CLEAN=true`：保留消费端测试项目的 `bin` / `obj`。
+- `HOSTFORGE_MATRIX_NO_CLEAN=true`：开始前不删除 `samples/simple-pinvoke` 的 `bin` / `obj`，用于检查改动输入后的增量重新链接。每类构建的第一次只在输入自上次运行后有变化时重新链接，所以只检查重复构建不重新链接。
 
-也可在命令行传入对应的 Task 变量：`SKIP_EXE_RUN=true`、`NO_CLEAN=true`。
+也可给 `task matrix` 传入对应的 Task 变量：`SKIP_EXE_RUN=true`、`NO_CLEAN=true`。NativeAOT 矩阵不读取这两个开关：它总是运行发布的程序，并为每次发布新建工作区。
 
 也可以直接运行测试工程：
 
@@ -257,7 +266,15 @@ dotnet test --project .\tests\HostForge.StaticAppHost.Tests\HostForge.StaticAppH
 dotnet test --project .\tests\HostForge.AvaloniaAppHost.Tests\HostForge.AvaloniaAppHost.Tests.csproj -c Release -v:minimal
 ```
 
-Avalonia 测试包含平台特定用例：Windows 用例在非 Windows 系统跳过，Linux 用例在非 Linux 系统跳过。Linux 用例使用当前系统的 RID（可用 `HOSTFORGE_NATIVE_RID` 覆盖）：glibc 上为 `linux-x64`，Alpine 上为 `linux-musl-x64` / `linux-musl-arm64`；它们同时审计模板的 ELF 架构、解释器、libc 依赖，以及单文件宿主是否导出上游 singlefilehost 的诊断符号。
+Avalonia 测试包含平台特定用例：Windows 用例在非 Windows 系统跳过，Linux 用例在非 Linux 系统跳过。Linux 用例使用当前系统的 RID（可用 `HOSTFORGE_NATIVE_RID` 覆盖）：glibc 上为 `linux-x64`，Alpine 上为 `linux-musl-x64` / `linux-musl-arm64`；它们同时检查单文件宿主是否导出上游 singlefilehost 的诊断符号。
+
+测试、示例和元包从仓库打出的包还原：根目录的 [`NuGet.Config`](NuGet.Config) 只从 `artifacts/packages/Release` 还原 `ChsBuffer.*` 包，其余包取自 nuget.org。缺少本地包时还原失败，不会改用 nuget.org 上同版本的已发布包。包目录中已有的版本 NuGet 直接使用，不再读取包源，而开发中会以不变的版本重新打包：
+
+- 示例和元包使用全局包目录 `artifacts/tmp/nuget/packages`（设置了 `NUGET_PACKAGES` 时为该目录）；以同一版本重新打包后，先删除其中对应的 `chsbuffer.*` 目录再还原。
+- 测试生成的工程以 `RepoContext.TestPackagesRoot`（`artifacts/tmp/build-tests/packages/<测试程序集>`）为 `RestorePackagesPath`，`NUGET_PACKAGES` 和 `globalPackagesFolder` 都不改变它。每个测试进程先删除其中的 `chsbuffer.*`，因此还原本次打出的包；其余包是不会变化的已发布版本，留给下次运行。
+- NativeAOT 矩阵为每次发布新建工作区，以工作区的 `obj/packages` 为包目录。
+
+用镜像源代替 nuget.org 时，在用户级 NuGet.Config 中为镜像源加上 `<package pattern="*" />` 映射，它与仓库配置中的映射合并。[`samples/avalonia-nativeaot-smoke`](samples/avalonia-nativeaot-smoke/README.md) 也能发布已发布的版本，它的 `NuGet.Config` 取消了这一限制，由 `SmokePackageSource` 和已配置的源提供包。配方在 `build/conan` 下构建的上游源码（.NET Runtime、Avalonia）从自己配置的源还原，[`build/NuGet.Config`](build/NuGet.Config) 同样取消这一限制，并停用 `artifacts/packages/Release` 源。
 
 ## 产物布局
 
@@ -274,11 +291,11 @@ artifacts/
 
 主要目录：
 
-- `hostlibs`：AppHost / SingleFileHost 静态库、响应文件和链接参数。
-- `skiasharp`：SkiaSharp / HarfBuzzSharp 及其依赖静态库。
-- `angle`：Windows ANGLE complete static libraries 与宿主导出定义文件。
+- `hostlibs`：AppHost / SingleFileHost 静态库、响应文件、链接参数，以及 .NET 运行时的许可证与第三方声明（`licenses/`）。
+- `skiasharp`：SkiaSharp / HarfBuzzSharp 及其依赖静态库、来源清单，以及 Skia、HarfBuzz 和编入静态库的第三方代码的许可证（`licenses/<组件>/`）。
+- `angle`：Windows ANGLE complete static libraries、宿主导出定义文件，以及 ANGLE 和库中第三方代码的许可证（`licenses/<组件>/`）。
 - `avalonianative`：AvaloniaNative 静态库、来源清单与许可证。
-- `avalonia-host`：已经链接完成、可直接打包的宿主模板。
+- `avalonia-host`：已经链接完成、可直接打包的宿主模板，以及所链接输入的许可证（`licenses/`）。
 - `packages`：生成的 NuGet 包。
 - `tmp`：集成测试工作区和临时 NuGet 缓存。
 
@@ -405,12 +422,12 @@ flowchart LR
 
 | Job | 执行平台 | 主要输出 |
 | --- | --- | --- |
-| `plan-all` | Linux | 读取规范文件中的版本；`tests/native`（缓存键边界、版本一致性、包输入锁守卫）；与上一次推送或 PR 基准提交的包输入锁比对；两个 SkiaSharp 版本与完整 8 RID 矩阵 |
+| `plan-all` | Linux | 读取规范文件中的版本；`tests/native`（缓存键、版本一致性、版本字面量、包输入锁、包文档版本、上游脚本、原生 recipe 逻辑）；与 `main` 首父历史中的包输入锁比对；两个 SkiaSharp 版本与完整 8 RID 矩阵 |
 | `build-skia-windows` | Windows x64 | 两个版本 × 两种架构的静态库、RID 包，以及 x64 AOT / 版本保护 |
 | `test-skia-windows-arm64` | Windows 11 ARM64 | ARM64 NativeAOT 原生发布、实际运行与架构审计 |
-| `build-skia-linux` | Linux | 固定 LLVM 20 / bionic sysroot 静态库、RID 包、AOT 运行及 ABI 审计 |
+| `build-skia-linux` | Linux | 固定 LLVM 20 / bionic sysroot 静态库、RID 包、AOT 运行及 ABI 审计、非 AOT 运行 |
 | `build-skia-linux-cross` | Linux x64 | linux-arm64 / musl-x64 / musl-arm64 × 两版本的静态库、RID 包及固定目标 sysroot |
-| `test-skia-linux-cross` | Linux x64 / ARM64 | glibc ARM64 原生 AOT 与 ABI 审计；musl 在原生 Alpine 容器内发布、运行及解释器审计 |
+| `test-skia-linux-cross` | Linux x64 / ARM64 | glibc ARM64 原生 AOT 与 ABI 审计；musl 在原生 Alpine 容器内发布、运行及解释器审计；两者都运行非 AOT 消费者 |
 | `build-skia-macos` | macOS 15 Intel / ARM64 | 两个版本的 Metal + GL 静态库、RID 包、AOT 实际运行、Mach-O 架构 / 部署版本审计 |
 | `pack-all` | Linux | 依赖全部 RID 的正式元包、消费 feed 与包体积审计 |
 | `test-all` | Windows / Linux / macOS 的原生 x64 / ARM64 | 三元包消费者（每个 TFM）、无 RID build、16 个发布运行单元、ABI 审计；静态 ANGLE / Vulkan / EGL / GLX 与 macOS 绘制证明 |
@@ -426,7 +443,7 @@ flowchart LR
 | `link-avalonia-apphost-skia4-linux` | 同上 | SkiaSharp 4 的 Linux Avalonia 模板及版本匹配测试 |
 | `link-avalonia-apphost-linux-musl` | Linux，最新运行时的官方 linux-musl 构建容器 | `linux-musl-x64` / `linux-musl-arm64` Avalonia 模板 |
 | `link-avalonia-apphost-skia4-linux-musl` | 同上 | SkiaSharp 4 的 Alpine Avalonia 模板 |
-| `test-avalonia-apphost-linux-musl` | Linux x64 / ARM64 上的原生 Alpine 容器 | Alpine 模板的发布、运行、单文件与 ELF 解释器 / libc 审计 |
+| `test-avalonia-apphost-linux-musl` | Linux x64 / ARM64 上的原生 Alpine 容器 | Alpine 模板的发布、运行与单文件 |
 | `test-avalonia-apphost-skia4-linux-musl` | 同上 | SkiaSharp 4 的 Alpine 模板测试及版本匹配 |
 | `pack-avalonia-apphost` | Windows | 5 个 RID 包 + Build 包 + 元包（ChsBuffer.Avalonia.AppHost） |
 | `pack-avalonia-apphost-skia4` | Windows | SkiaSharp 4 的 5 个 RID 包 + Build 包 + 元包；版本追加 `skia4` |
@@ -441,7 +458,7 @@ NativeAOT 发布测试按阶段分工，两处都覆盖全部 TFM：RID 包在�
 
 job 通过 `scripts/repo_versions.py` 读取上游版本，workflow 中不写这些版本号。Linux job 固定在 `ubuntu-24.04`，避免镜像切换改变构建环境；升级 runner 时一并修改 `build.yml` 与 `upstream.yml`。depot_tools 由 ANGLE recipe 按固定的 commit 获取。
 
-`build.yml` 在推送到 `main` 和向 `main` 发起的 PR 上运行。PR 运行除 `publish-nuget` 外的全部 job，把包输入锁与 PR 的基准提交比对，并清理中间工件（fork 的 PR 只有只读 token，工件保留到过期）。PR 运行写入的缓存不能在 `main` 上恢复，所以 PR 改动的原生组件在合并后会重新构建。
+`build.yml` 在推送到 `main` 和向 `main` 发起的 PR 上运行。PR 运行除 `publish-nuget` 外的全部 job，把包输入锁与基准分支的首父历史比对，并清理中间工件（fork 的 PR 只有只读 token，工件保留到过期）。PR 运行写入的缓存不能在 `main` 上恢复，所以 PR 改动的原生组件在合并后会重新构建。
 
 [`upstream.yml`](.github/workflows/upstream.yml) 是独立的 workflow，不在上图中，见 [上游跟踪与版本守卫](#上游跟踪与版本守卫)。[`cleanup-pr-caches.yml`](.github/workflows/cleanup-pr-caches.yml) 在 PR 关闭时和每天一次删除所有未打开 PR 写入的缓存，仓库的缓存配额留给 `main`；用 `GITHUB_TOKEN` 关闭的 PR 不触发 workflow，由每天那次清理。
 
@@ -449,7 +466,7 @@ job 通过 `scripts/repo_versions.py` 读取上游版本，workflow 中不写这
 
 推送到 `main` 时运行完整构建，覆盖 `native/skiasharp/versions.json` 中的两个 SkiaSharp 版本、全部 8 个 RID、AvaloniaNative 的两个 macOS RID，以及 AppHost 构建与回归测试。`pack-all` 聚合所有原生 RID 包与正式元包，上传 `nuget-native-all`，随后在 8 个原生 RID 上验收。musl 测试在对应架构的 Alpine 容器中执行；macOS runner 无 Metal 设备时验收 Software，并记录检测结果。`nuget-native-all` 保留 7 天，跨 job sysroot 最多保留 3 天；成功完成后的清理可能更早删除中间工件。
 
-原生库产物键按组件、版本、RID、实际工具链版本，以及对应 recipe 核心 / 平台模块 / profile / Dockerfile / 校验和与相关 Task 片段生成。版本表只读取当前版本条目；无关 Task、其它平台 profile 和 Python 项目元数据不参与。AppHost 与 NativeAOT 共享 Skia 3 产物。`plan-all` 运行 `tests/native` 的缓存键边界测试。
+原生库产物键按组件、版本、RID、实际工具链版本，以及对应 recipe 核心 / 平台模块 / profile / Dockerfile / 校验和与相关 Task 片段生成。版本表（HostLibs、SkiaSharp 的 `versions.json` 与 AvaloniaNative `conandata.yml` 的 `sources`）只读取当前版本条目，SkiaSharp 4 另含 `upstream-build.json` 中 recipe 校验的上游文件记录；无关 Task、其它平台 profile 和 Python 项目元数据不参与。AppHost 与 NativeAOT 共享 Skia 3 产物。`plan-all` 运行 `tests/native` 的缓存键边界测试。
 
 产物 miss 时恢复同组件、版本、RID、工具链前缀的编译缓存。Skia、HarfBuzz、ANGLE 和 HostLibs 使用 sccache 0.18，关闭直接模式。HostLibs 保留 MSVC 预编译头，只缓存独立对象；Clang 预编译头在当前目录重新生成。AvaloniaNative 使用 ccache depend 模式与正常模块头文件校验。单元上限：Windows Skia 128 MiB、ANGLE 64 MiB、Windows HostLibs 256 MiB、Linux glibc / musl HostLibs 512 MiB、Linux / macOS Skia 64 MiB、AvaloniaNative 32 MiB，合计 5.44 GiB；另为产物、目标 sysroot 和工具缓存留出空间。旧输入代际由 Actions LRU 回收。
 
@@ -480,9 +497,11 @@ artifacts/  构建、打包和测试输出
 
 ## Native NuGet 修复版本
 
-native RID 包及聚合包统一使用上游版本的前三段加第四段修复号。例如 SkiaSharp 上游 `3.119.4` 对应 `3.119.4.1`；ANGLE 上游 `2.1.27548.20260419` 对应 `2.1.27548.1`。源码构建、产物目录、manifest 和上游托管依赖仍使用完整上游版本。
+native RID 包及聚合包统一使用上游版本的前三段加第四段修复号：SkiaSharp 上游 `<a>.<b>.<c>` 的包版本为 `<a>.<b>.<c>.<修复号>`；ANGLE 上游版本的第四段是日期，包版本以修复号代替它。源码构建、产物目录、manifest 和上游托管依赖仍使用完整上游版本。
 
-在 `Directory.Build.props` 的四行 native 包版本配置中维护第四段修复号：Skia 3 / 4 分别配置 `SkiaSharpPackageVersion`，ANGLE 和 AvaloniaNative 分别配置 `AnglePackageVersion`、`AvaloniaNativePackageVersion`。发布修复前，只修改受影响版本线末尾的 `.1` 为 `.2` 等；同一版本线的全部 RID 包和聚合包一起发布。CI 重跑不会自动递增版本。
+在 `Directory.Build.props` 的四行 native 包版本配置中维护第四段修复号：Skia 3 / 4 分别配置 `SkiaSharpPackageVersion`，ANGLE 和 AvaloniaNative 分别配置 `AnglePackageVersion`、`AvaloniaNativePackageVersion`。发布修复前，只把受影响版本线的修复号加 1；同一版本线的全部 RID 包和聚合包一起发布。CI 重跑不会自动递增版本。
+
+包文档（`src/*/README.md`，打进包中）和根目录的 `README.md` 让使用者引用的版本是完整的包版本，递增修复号时一并修改：NuGet 把不存在的版本（例如只写上游的前三段）解析为大于它的最低版本，也就是最早的修复号。`tests/native/test_package_docs.py` 检查这些文档（`scripts/upstream.py` 的 `DOC_FILES`）：写出某个 native 包族四段版本的文档，要写出该包族每条版本线的当前包版本，且没有其他修复号。
 
 升级到新的上游前三段版本时，将对应修复号重置为 `1`。若上游前三段没有变化（例如仅 ANGLE 日期段变化），继续递增第四段，避免复用已发布的包版本。漏改时包输入锁守卫会失败，见 [上游跟踪与版本守卫](#上游跟踪与版本守卫)。
 
@@ -508,25 +527,28 @@ native RID 包及聚合包统一使用上游版本的前三段加第四段修复
 | `tools` | Task、uv、conan、ninja、TUnit、Microsoft.Build.Locator |
 | `llvm` | [`install-llvm`](.github/actions/install-llvm/action.yml) 的 LLVM 版本（新版本仍提供该 action 使用的安装包时） |
 
-只报告、手动处理：新主版本、依赖有变化的新 Avalonia、ANGLE 换分支。不跟踪：Microsoft.Build（版本随 SDK）、runner 镜像。
+只报告、手动处理：新主版本、依赖有变化的新 Avalonia、ANGLE 换分支、固定为预览版的 .NET 运行时的新版本（含正式版）。不跟踪：Microsoft.Build（版本随 SDK）、runner 镜像。
 
-SkiaSharp 的 recipe 按 mono/SkiaSharp 对应标签的构建文件（各平台 `build.cake`、共享 cake 脚本、Xcode 与 vcxproj 工程）编写。[`native/skiasharp/upstream-build.json`](native/skiasharp/upstream-build.json) 按版本记录核对过的这些文件的 git blob SHA：新版本中它们不变时，bot 沿用记录；有变化时，PR 正文列出 diff 和新记录，原生测试失败，直到把变化同步到 recipe 并补上记录。
+`inputs` 组从最新版往下逐个核对比固定版本新的 .NET 补丁版，应用第一个 VMR 来源已确定的版本：nuget.org 上它的 `Microsoft.NETCore.App.Ref` 声明了 commit，且 releases.json 为它列出的某个 1xx SDK 的 VMR 标签指向该 commit。PR 正文的 “Not applied” 列出跳过的版本及原因。
 
-包输入变化而版本不变时，自动按 [包输入锁](#包输入锁) 的规则递增版本并追加锁。`tools`、`llvm` 和 Dependabot 的 PR 不改包版本，合并后不发布新包。
+SkiaSharp 的 recipe 按 mono/SkiaSharp 对应标签的构建文件（各平台 `build.cake`、共享 cake 脚本、Xcode 与 vcxproj 工程，以及 Windows HarfBuzzSharp 工程编译的 `harfbuzz-subset-msvc.cc`）编写。[`native/skiasharp/upstream-build.json`](native/skiasharp/upstream-build.json) 按版本记录核对过的这些文件的 git blob SHA：新版本中它们不变时，bot 沿用记录；有变化时，PR 正文列出 diff 和新记录，原生测试失败，直到把变化同步到 recipe 并补上记录。SkiaSharp 4 的 Windows 构建直接使用其中两个文件，下载后按这份记录校验；bot 同时把新标签的 commit 写入 `versions.json`，作为下载这两个文件的固定版本。
+
+包输入变化而版本不变时，自动按 [包输入锁](#包输入锁) 的规则递增版本并更新锁。`tools`、`llvm` 和 Dependabot 的 PR 不改包版本，合并后不发布新包。
 
 ### 维护者操作
 
 1. 一次性设置：Settings → Actions → General → Workflow permissions → “Allow GitHub Actions to create and approve pull requests”。
 2. bot 每次创建或更新 PR 后，在 PR 中选择 “Approve workflows to run”，CI 才会运行。
-3. 审阅后合并。包文档（根目录和 `src/*/README.md`）中的版本随 PR 更新；PR 正文列出其他仍写着旧版本的文件，需手动修改。
+3. 审阅后合并。包文档（根目录和 `src/*/README.md`）中的版本和源码 commit 随 PR 更新；PR 正文列出其他仍写着旧版本或旧 commit 的文件，需手动修改。
 4. 要接手某个 PR，向它的分支推送提交，此后 bot 不再改动它。
-5. 要重试，在 Actions → upstream → Run workflow 开始新的运行；Re-run 不会更新 PR。
+5. 要拒绝某次更新，不合并而关闭 PR：同一目标不再开 PR，出现更新的版本时再开。bot 自己关闭的 PR（该组的计划没有改动、该组不再存在）不算拒绝。
+6. 要重试，在 Actions → upstream → Run workflow 开始新的运行；Re-run 不会更新 PR。
 
 ### workflow 失败
 
 以下情况 workflow 失败，原因见 job summary：
 
-- 读不到 .NET 或漏洞公告数据；
+- 读不到 .NET 数据（发布信息、逐个核对的补丁版的 `Microsoft.NETCore.App.Ref` 与 VMR 标签、要应用的补丁版的官方构建容器）或漏洞公告数据；
 - 自动更新后仍有安全问题（渠道停止支持、漏洞没有修复版本、.NET 安全版本暂时无法应用）；
 - 安全修复没有对应的打开 PR（例如 PR 被关闭或已过时）；
 - git 或 gh 操作失败（创建 PR 被拒时检查上面的设置）。
@@ -539,16 +561,17 @@ SkiaSharp 的 recipe 按 mono/SkiaSharp 对应标签的构建文件（各平台 
 | --- | --- |
 | `task upstream-check` | 只读报告上游新版本与安全问题；加 `-- --fail-on-security` 时有安全问题退出码为 1 |
 | `task upstream-apply -- --group <g> [--dry-run]` | 生成与 workflow 相同的改动，默认 `inputs` 组 |
-| `task upstream-lock` | 追加包输入锁 |
+| `task upstream-lock` | 更新包输入锁 |
 
 ### 包输入锁
 
-根目录的 [`package-inputs.lock.json`](package-inputs.lock.json) 由 `scripts/package_inputs.py` 计算，按包族记录每个版本的变体与上游输入。它只增不减，也是每个已发布版本的源码清单，不要手动编辑。`tests/native/test_package_inputs.py` 检查四条规则，失败时给出要修改的属性：
+根目录的 [`package-inputs.lock.json`](package-inputs.lock.json) 由 `scripts/package_inputs.py` 计算，按包族记录每个变体的当前版本与上游输入，不要手动编辑。更早的版本留在 `main` 历史上提交过的锁里，这些锁就是每个已发布版本的源码清单。`tests/native/test_package_inputs.py` 检查五条规则，失败时给出要修改的属性：
 
 1. 同一包族内，各变体的当前版本互不相同。
-2. 已记录的版本，其变体与输入不能改变；输入变了就递增版本。
-3. 当前版本必须已记录；未记录表示锁过期，运行 `task upstream-lock` 追加。
-4. 同一变体的版本不能倒退。
+2. 锁中的版本，其变体与输入不能改变；输入变了就递增版本。
+3. 锁恰好记录当前版本；不一致表示锁过期，运行 `task upstream-lock` 重写。
+4. 同一变体的版本不能低于锁中的版本。
+5. 版本是 NuGet 接受的版本，并按规范形式书写：采用 nuget.org 规范化后的形式（数字段没有前导零，第四段不为 0，不带构建元数据），预发布标签小写。锁按版本字符串记录，而 `1.2.3.01` 在 nuget.org 上就是 `1.2.3.1`，会被 `--skip-duplicate` 当作已发布的版本跳过；nuget.org 保留预发布标签的大小写，但比较时不区分大小写，标签统一小写后，字符串相同才是 nuget.org 上的同一版本。
 
 各包族的输入与要递增的属性：
 
@@ -564,12 +587,13 @@ Avalonia 版本不是 AppHost 的输入。版本公式本身已随输入变化�
 
 | 命令 | 作用 |
 | --- | --- |
-| `task upstream-lock` | 追加当前版本；不修改已有条目，违反规则时拒绝写入 |
-| `task upstream-lock -- --check` | 只检查；同时与 `HEAD` 的锁比对，已提交的条目不能改动或删除 |
-| `task upstream-lock -- --check --base <ref>` | 改为与指定提交的锁比对；该提交没有锁时跳过 |
-| `task upstream-lock -- --force` | 允许替换或删除 `HEAD` 的锁中没有的条目（尚未提交的版本）；已提交的条目仍不能改 |
+| `task upstream-lock` | 写入当前版本；与 `HEAD` 首父历史上的锁比对，提交过的版本换了输入或版本低于提交过的版本时拒绝写入。没有提交过的条目可以直接替换或删除 |
+| `task upstream-lock -- --check` | 只检查；除上述五条规则外，同时与 `HEAD` 的首父历史比对：锁中每个版本的条目必须与历史中第一个含有它的锁相同，版本不能低于历史中同一变体的版本 |
+| `task upstream-lock -- --check --base <ref>` | 改为与指定提交的首父历史比对；该历史中没有锁时跳过 |
 
-每次推送到 `main` 都会发布，所以已提交的条目视为已发布。`plan-all` 在推送时运行 `lock --check --base <上一次推送>`，在 PR 中运行 `lock --check --base <PR 的基准提交>`，防止输入和锁在同一提交中一起改掉。取不到上一次推送的提交（例如 force push 之后）时这一步失败，本次推送不会发布：在本地用 `task upstream-lock -- --check --base <上次已发布的提交>` 确认后，推送一个新提交（重跑无效，下一次推送才能取到上一次的提交）。
+每次推送到 `main` 都可能发布，所以 `main` 首父历史上提交过的条目都视为已发布，包括检查失败、没有发布的推送和同一次推送中的中间提交。`ChsBuffer.AppHost.Static` 例外：CI 不打包也不发布它，它的条目只记录各版本从源码打包时的输入，规则与守卫相同。`plan-all` 检出完整历史，在推送和 PR 中都运行 `lock --check`（PR 的测试合并提交以基准分支为第一个父提交），即使 `tests/native` 失败也运行。这样输入和锁条目不能在同一提交中一起改掉，检查失败的推送之后的推送也不会以改写后的条目为准。这些命令需要完整历史，在浅克隆中报错。推送后 `main` 原来的 head 不在新 head 的首父历史上时（例如 force push），这一步失败，本次推送不会发布：在本地用 `task upstream-lock -- --check --base <上次已发布的提交>` 确认后，推送一个新提交（重跑无效）。
+
+比对历史时跳过锁不是 JSON 的提交（例如留下了冲突标记），每个都打印一行：这样的提交读不出自己的锁，`tests/native` 和 `lock --check` 都会失败，没有发布任何包。历史锁是 JSON 却读不出时报错，所以修改锁格式时，`package_inputs.lock_entries()` 必须继续能读出旧格式。
 
 锁只覆盖上述上游输入，不覆盖仓库内的构建改动（patch、recipe、链接 targets）和工具链；这些改动需要发布时，手动递增受影响包的版本。
 
@@ -577,5 +601,6 @@ Avalonia 版本不是 AppHost 的输入。版本公式本身已随输入变化�
 | --- | --- |
 | 手动修改了规范文件或包版本 | 运行 `task upstream-lock`，与改动一起提交 |
 | `plan-all` 的包输入锁测试失败 | 按失败信息递增对应版本属性，再运行 `task upstream-lock` |
-| `plan-all` 的 “Check the package lock against the previous push” 或 “… against the pull request base” 失败 | 已提交的锁条目被改动或删除：恢复这些条目，改为递增版本；取不到上一次推送时见上文 |
+| `plan-all` 的 “Check the package lock against the history of main” 失败 | 提交过的版本换了输入，或版本倒退：按失败信息递增版本，再运行 `task upstream-lock`；force push 时见上文 |
+| 包输入锁不是 JSON（例如合并冲突后） | 取回一个完好的锁（`git checkout <提交> -- package-inputs.lock.json`），再运行 `task upstream-lock` |
 | 修改了 patch、recipe、链接 targets 或工具链，且需要发布 | 手动递增受影响包的版本，再运行 `task upstream-lock` |

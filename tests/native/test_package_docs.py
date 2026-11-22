@@ -1,0 +1,76 @@
+"""The package documentation names the current native package versions; run with python -m unittest discover -s
+tests/native.
+
+The documentation is upstream.DOC_FILES: the README files packed into the packages and the README.md of the
+repository. A fix revision is bumped by hand in Directory.Build.props, not by the upstream workflow that updates
+the documentation, and NuGet resolves a version that does not exist (an upstream version such as 1.2.3) to the
+lowest version above it, the oldest revision. So the documentation that gives a package version of a native
+package family gives the current version of each of its lines, and no other revision of them.
+
+A family is found in a document by a four-part version of one of its lines, so the check does not see a document
+that names only the three-part upstream version, nor a version that follows a dotted name, as in
+Name.win-x64.1.2.3.4.nupkg: FOUR_PARTS skips what follows a dot, so as not to match the end of a longer version.
+"""
+
+import importlib.util
+import re
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _module(name):
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, ROOT / f"scripts/{name}.py")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    return sys.modules[name]
+
+
+package_inputs = _module("package_inputs")
+upstream = _module("upstream")
+
+# The native package families: upstream version, three parts, and a fix revision (DEVELOPMENT.md).
+NATIVE = ("ChsBuffer.SkiaSharp.Static", "ChsBuffer.Angle.Static", "ChsBuffer.Avalonia.Native.Static")
+FOUR_PARTS = re.compile(r"(?<![\w.])\d+\.\d+\.\d+\.\d+(?!\w|\.\d)")
+
+
+def upstream_versions(pinned):
+    """Pinned upstream versions, which the documentation may name; the ANGLE version has four parts too."""
+    return {pinned["angle"], *pinned["harfbuzz"].values()}
+
+
+def problems(texts, records, pins):
+    """Problems of the documents {path: text}: a four-part version of a native package line that is not its
+    current version, and a document that gives a version of a family but not the current version of each line."""
+    lines = {record["version"].rsplit(".", 1)[0]: (family, record["version"])
+             for family in NATIVE for record in records[family].values()}
+    found = []
+    for path, text in texts.items():
+        families = set()
+        for version in dict.fromkeys(FOUR_PARTS.findall(text)):
+            family, current = lines.get(version.rsplit(".", 1)[0], (None, None))
+            if family is None or version in pins:
+                continue
+            families.add(family)
+            if version != current:
+                found.append(f"{path}: {version} is not the current {family} version {current}")
+        for family in sorted(families):
+            found += [f"{path}: gives {family} versions but not {record['version']}"
+                      for record in records[family].values()
+                      if not upstream._mention_pattern([record["version"]]).search(text)]
+    return found
+
+
+class PackageDocumentationTests(unittest.TestCase):
+    def test_documentation_gives_the_current_native_package_versions(self):
+        texts = {path: (ROOT / path).read_text(encoding="utf-8") for path in upstream.DOC_FILES}
+        found = problems(texts, package_inputs.compute(ROOT), upstream_versions(package_inputs.repo_versions.load(ROOT)))
+        self.assertEqual([], found, "Give the package versions of Directory.Build.props in the package documentation "
+                                    f"({', '.join(upstream.DOC_FILES)}):\n" + "\n".join(found))
+
+if __name__ == "__main__":
+    unittest.main()

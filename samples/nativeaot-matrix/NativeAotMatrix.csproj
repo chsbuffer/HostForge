@@ -12,7 +12,6 @@
     <DefineConstants Condition="'$(CheckAngle)' == 'true'">$(DefineConstants);CHECK_ANGLE</DefineConstants>
     <RuntimeIdentifier Condition="'$(NativeAotMatrixRid)' != ''">$(NativeAotMatrixRid)</RuntimeIdentifier>
     <RuntimeIdentifiers Condition="'$(UseStaticGraphicsMeta)' == 'true'">win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
-    <RestoreAdditionalProjectSources>$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)</RestoreAdditionalProjectSources>
   </PropertyGroup>
   <ItemGroup Condition="'$(SysRoot)' != ''">
     <LinkerArg Include="--gcc-toolchain=&quot;$(SysRoot)/usr&quot;" />

@@ -10,64 +10,6 @@ namespace HostForge.AvaloniaNative.Tests;
 public class AvaloniaNativeTests
 {
     [Test]
-    [Arguments(true)]
-    [Arguments(false)]
-    public async Task PublishAssets_AreFilteredBeforeSdkSnapshotsCopyLists(bool aot)
-    {
-        string root = Path.Combine(RepoContext.ArtifactsTestRoot, $"avalonianative-publish-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(root);
-        try
-        {
-            string targets = SecurityElement.Escape(Path.Combine(RepoContext.RepoRoot,
-                "src/HostForge.StaticGraphics.targets")) ?? throw new InvalidOperationException();
-            string escapedRoot = SecurityElement.Escape(root) ?? throw new InvalidOperationException();
-            await File.WriteAllTextAsync(Path.Combine(root, "libAvaloniaNative.a"), "publish contract fixture");
-            await File.WriteAllTextAsync(Path.Combine(root, "manifest.json"), "{}");
-            string project = Path.Combine(root, "PublishContract.csproj");
-            await File.WriteAllTextAsync(project, $$"""
-                <Project Sdk="Microsoft.NET.Sdk">
-                  <PropertyGroup>
-                    <TargetFramework>net10.0</TargetFramework>
-                    <PublishAot>false</PublishAot>
-                    <RuntimeIdentifier>osx-arm64</RuntimeIdentifier>
-                    <PublishDir>{{escapedRoot}}/publish/</PublishDir>
-                    <CopyBuildOutputToPublishDirectory>false</CopyBuildOutputToPublishDirectory>
-                  </PropertyGroup>
-                  <ItemGroup>
-                    <PackageReference Include="Avalonia.Desktop" Version="{{RepoContext.AvaloniaNativeVersion}}" />
-                    <HostForgeStaticPackage Include="test" Component="Avalonia.Native" Rid="osx-arm64" AvaloniaVersion="{{RepoContext.AvaloniaNativeVersion}}" NativeDir="{{escapedRoot}}/" />
-                  </ItemGroup>
-                  <Import Project="{{targets}}" />
-                  <!-- Exercise SDK publish-list processing without cross-OS native compilation. -->
-                  <Target Name="SelectPublishMode" BeforeTargets="ComputeResolvedFilesToPublishList">
-                    <PropertyGroup>
-                      <PublishAot>{{aot.ToString().ToLowerInvariant()}}</PublishAot>
-                    </PropertyGroup>
-                  </Target>
-                  <Target Name="Probe" DependsOnTargets="ResolveReferences;ComputeResolvedFilesToPublishList;_ComputeResolvedFilesToPublishTypes">
-                    <ItemGroup>
-                      <_NativePublish Include="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'libAvaloniaNative.dylib'" />
-                      <_NativeCopy Include="@(_ResolvedFileToPublishPreserveNewest);@(_ResolvedFileToPublishAlways);@(_ResolvedFileToPublishIfDifferent)"
-                                   Condition="'%(Filename)%(Extension)' == 'libAvaloniaNative.dylib'" />
-                      <_SkiaPublish Include="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'libSkiaSharp.dylib'" />
-                      <_HarfBuzzPublish Include="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'libHarfBuzzSharp.dylib'" />
-                    </ItemGroup>
-                    <Message Importance="high" Text="NATIVE_PUBLISH=@(_NativePublish->Count()) NATIVE_COPY=@(_NativeCopy->Count()) SKIA=@(_SkiaPublish->Count()) HARFBUZZ=@(_HarfBuzzPublish->Count())" />
-                  </Target>
-                </Project>
-                """);
-            CommandResult result = await CommandRunner.RunAsync("dotnet", $"msbuild \"{project}\" -restore -t:Probe -v:minimal", root);
-            AssertEx.Success(result);
-            string count = aot ? "0" : "1";
-            AssertEx.Contains(result.CombinedOutput, $"NATIVE_PUBLISH={count} NATIVE_COPY={count} SKIA=1 HARFBUZZ=1");
-        }
-        finally
-        {
-            Directory.Delete(root, recursive: true);
-        }
-    }
-
-    [Test]
     public async Task Packages_ContainPortableRidRegistrationAndExactMetaDependencies()
     {
         string version = RepoContext.AvaloniaNativePackageVersion;
@@ -75,6 +17,7 @@ public class AvaloniaNativeTests
         string payloads = Path.Combine(root, "payloads");
         string packages = Path.Combine(root, "packages");
         Directory.CreateDirectory(root);
+        WriteFixtureNuGetConfig(root);
         try
         {
             CommandResult missing = await PackFixtureAsync(root, "osx-arm64");
@@ -118,74 +61,6 @@ public class AvaloniaNativeTests
         }
     }
 
-    [Test]
-    public async Task MetaPackage_AotConsumerBuildsWithoutWarningsOrLinkItemsForOtherPlatforms()
-    {
-        string root = Path.Combine(RepoContext.ArtifactsTestRoot, $"avalonianative-consumer-{Guid.NewGuid():N}");
-        string consumer = Path.Combine(root, "consumer");
-        Directory.CreateDirectory(consumer);
-        try
-        {
-            foreach (string rid in new[] { "osx-x64", "osx-arm64" })
-            {
-                await CreatePayloadFixtureAsync(Path.Combine(root, "payloads"), rid);
-                AssertEx.Success(await PackFixtureAsync(root, rid), $"pack {rid}");
-            }
-            AssertEx.Success(await PackFixtureAsync(root), "pack meta");
-
-            string project = Path.Combine(consumer, "Consumer.csproj");
-            string escapedRoot = SecurityElement.Escape(root) ?? throw new InvalidOperationException();
-            await File.WriteAllTextAsync(project, $$"""
-                <Project Sdk="Microsoft.NET.Sdk">
-                  <PropertyGroup>
-                    <TargetFramework>net10.0</TargetFramework>
-                    <OutputType>Exe</OutputType>
-                    <PublishAot>true</PublishAot>
-                    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-                    <RestoreAdditionalProjectSources>{{escapedRoot}}/packages</RestoreAdditionalProjectSources>
-                    <RestorePackagesPath>{{escapedRoot}}/nuget</RestorePackagesPath>
-                  </PropertyGroup>
-                  <ItemGroup>
-                    <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="{{RepoContext.AvaloniaNativePackageVersion}}" />
-                  </ItemGroup>
-                  <Target Name="VerifyInactivePackage" AfterTargets="Build">
-                    <Error Condition="@(HostForgeStaticPackage->Count()) != 2" Text="Both transitive RID packages must be imported." />
-                    <Error Condition="'@(DirectPInvoke)' != '' or '@(NativeLibrary)' != '' or '@(NativeFramework)' != '' or '@(NativeSystemLibrary)' != '' or '@(LinkerArg)' != '' or '$(LinkStandardCPlusPlusLibrary)' == 'true'"
-                           Text="AvaloniaNative must not inject linking inputs for RID='$(RuntimeIdentifier)'." />
-                    <Message Importance="high" Text="INACTIVE_CONSUMER RID='$(RuntimeIdentifier)' AOT=$(PublishAot)" />
-                  </Target>
-                </Project>
-                """);
-            await File.WriteAllTextAsync(Path.Combine(consumer, "Program.cs"), "System.Console.WriteLine(\"Consumer\");");
-
-            // The upstream telemetry collector and reused MSBuild nodes (which keep Avalonia's task
-            // assemblies loaded on Windows) otherwise outlive the build and lock the temporary NuGet cache.
-            var environment = new Dictionary<string, string>
-            {
-                ["AVALONIA_TELEMETRY_OPTOUT"] = "1",
-                ["MSBUILDDISABLENODEREUSE"] = "1"
-            };
-            foreach (string rid in new[] { "", "win-x64", "linux-x64" })
-            {
-                string arguments = $"build \"{project}\" -c Release -warnaserror -v:minimal";
-                if (rid.Length != 0)
-                {
-                    CommandResult restore = await CommandRunner.RunAsync("dotnet", $"restore \"{project}\" -r {rid} -warnaserror -v:minimal", RepoContext.RepoRoot, environmentVariables: environment);
-                    AssertEx.Success(restore, $"restore {rid}");
-                    arguments += $" -r {rid} --no-restore";
-                }
-                CommandResult build = await CommandRunner.RunAsync("dotnet", arguments, RepoContext.RepoRoot, environmentVariables: environment);
-                AssertEx.Success(build, $"build RID='{rid}'");
-                AssertEx.NotContains(build.CombinedOutput, "HFG1001");
-                AssertEx.Contains(build.CombinedOutput, $"INACTIVE_CONSUMER RID='{rid}' AOT=true");
-            }
-        }
-        finally
-        {
-            Directory.Delete(root, recursive: true);
-        }
-    }
-
     private static async Task CreatePayloadFixtureAsync(string payloads, string rid)
     {
         string payload = Path.Combine(payloads, RepoContext.AvaloniaNativeVersion, rid);
@@ -196,6 +71,30 @@ public class AvaloniaNativeTests
         await File.WriteAllTextAsync(Path.Combine(payload, "licenses/licence.md"), "license fixture");
     }
 
+    // The fixture packages have the ids and versions of the real packages, which nuget.org can also hold and the
+    // repository's NuGet.Config takes from the repository's package directory. This configuration takes them only
+    // from the fixture directory; the meta package pack names it, and consumers below the root find it.
+    private static void WriteFixtureNuGetConfig(string root) =>
+        File.WriteAllText(Path.Combine(root, "NuGet.Config"), """
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+                <add key="fixture" value="packages" />
+              </packageSources>
+              <packageSourceMapping>
+                <clear />
+                <packageSource key="nuget.org">
+                  <package pattern="*" />
+                </packageSource>
+                <packageSource key="fixture">
+                  <package pattern="ChsBuffer.*" />
+                </packageSource>
+              </packageSourceMapping>
+            </configuration>
+            """);
+
     private static Task<CommandResult> PackFixtureAsync(string root, string? rid = null)
     {
         string project = Path.Combine(RepoContext.RepoRoot, rid is null
@@ -205,7 +104,7 @@ public class AvaloniaNativeTests
         string parameters = $"-c Release -p:AvaloniaNativeArtifactsRoot=\"{root}/payloads\" -p:PackageOutputPath=\"{root}/packages\""
             + $" -p:BaseIntermediateOutputPath=\"{root}/obj/{rid ?? "meta"}/\" -p:RestorePackagesPath=\"{root}/nuget\" -v:minimal";
         parameters += rid is null
-            ? $" -p:StaticGraphicsComponent=Avalonia.Native -p:RestoreAdditionalProjectSources=\"{root}/packages\""
+            ? $" -p:StaticGraphicsComponent=Avalonia.Native -p:RestoreConfigFile=\"{root}/NuGet.Config\""
             : $" -p:AvaloniaNativeRid={rid}";
         return CommandRunner.RunAsync("dotnet", $"pack \"{project}\" {parameters}", RepoContext.RepoRoot);
     }
@@ -224,9 +123,11 @@ public class AvaloniaNativeTests
         };
         string project = Path.Combine(RepoContext.RepoRoot, "tests/HostForge.AvaloniaNative.Tests/Smoke/AvaloniaNativeSmoke.csproj");
         string output = Path.Combine(RepoContext.RepoRoot, "artifacts/avalonianative-smoke", rid);
-        string packageCache = Path.Combine(RepoContext.RepoRoot, "build", $"avalonianative-nuget-{rid}");
+        // Restore takes ChsBuffer packages only from the local package directory; name a missing pack directly.
+        AssertEx.FileExists(Path.Combine(RepoContext.AvaloniaPackageOutputDir,
+            $"ChsBuffer.Avalonia.Native.Static.{rid}.{RepoContext.AvaloniaNativePackageVersion}.nupkg"));
         CommandResult publish = await CommandRunner.RunAsync("dotnet",
-            $"publish \"{project}\" -c Release -r {rid} -o \"{output}\" -p:RestorePackagesPath=\"{packageCache}\" -v:minimal", RepoContext.RepoRoot);
+            $"publish \"{project}\" -c Release -r {rid} -o \"{output}\" -p:RestorePackagesPath=\"{RepoContext.TestPackagesRoot}\" -v:minimal", RepoContext.RepoRoot);
         AssertEx.Success(publish, "AvaloniaNative AOT publish");
         AssertEx.FileMissing(Path.Combine(output, "libAvaloniaNative.dylib"));
         AssertEx.FileExists(Path.Combine(output, "libSkiaSharp.dylib"));

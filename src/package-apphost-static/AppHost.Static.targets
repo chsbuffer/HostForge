@@ -7,7 +7,7 @@
     <_StaticHostRid Condition="'$(_StaticHostRid)' == '' and '$(DefaultAppHostRuntimeIdentifier)' != ''">$(DefaultAppHostRuntimeIdentifier)</_StaticHostRid>
   </PropertyGroup>
 
-  <!-- The host libraries embed one .NET runtime, so relink only for the TFM they were built for (see the package props). -->
-  <Import Condition="'$(HostForgeStaticAppHostTargetFramework)' != '' and $(TargetFramework.StartsWith('$(HostForgeStaticAppHostTargetFramework)')) and '$(_StaticHostRid)' == 'win-x64' and '$(PublishAot)' != 'true'" Project="$(MSBuildThisFileDirectory)StaticAppHost.targets" />
+  <!-- The host libraries embed one .NET runtime for one RID, so relink only for the TFM and RID they were built for (see the package props). -->
+  <Import Condition="'$(HostForgeStaticAppHostTargetFramework)' != '' and $(TargetFramework.StartsWith('$(HostForgeStaticAppHostTargetFramework)')) and '$(HostForgeStaticAppHostRid)' != '' and '$(_StaticHostRid)' == '$(HostForgeStaticAppHostRid)' and '$(PublishAot)' != 'true'" Project="$(MSBuildThisFileDirectory)StaticAppHost.targets" />
 
 </Project>

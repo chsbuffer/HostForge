@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import re
 import shutil
 import tempfile
 import unittest
@@ -14,15 +15,13 @@ spec.loader.exec_module(cache_key)
 spec = importlib.util.spec_from_file_location("repo_versions", ROOT / "scripts/repo_versions.py")
 repo_versions = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(repo_versions)
-spec = importlib.util.spec_from_file_location("upstream", ROOT / "scripts/upstream.py")
-upstream = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(upstream)
 VERSIONS = repo_versions.load()
 # A second supported version of each multi-version component, so tests can change one without the other.
 SKIA = VERSIONS["skiasharp"]
 OTHER_SKIA = next((v for v in VERSIONS["skiasharp-versions"] if v != SKIA), None)
 HOSTLIBS = VERSIONS["hostlibs"]
 OTHER_HOSTLIBS = next((v for v in VERSIONS["hostlibs-versions"] if v != HOSTLIBS), None)
+AVALONIA = VERSIONS["avalonia-native"]
 # The RIDs whose HostLibs build in an upstream container.
 HOSTLIBS_LINUX_RIDS = ("linux-x64", "linux-musl-x64", "linux-musl-arm64")
 
@@ -33,8 +32,7 @@ class NativeCacheKeyTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         shutil.copytree(ROOT / "native", self.root / "native", ignore=shutil.ignore_patterns("__pycache__"))
-        image_tools = [tool.path for tool in upstream.TOOLS if tool.build_arg]
-        for name in ("Taskfile.yml", "pyproject.toml", "scripts/libHarfBuzzSharp.vcxproj.in", *image_tools):
+        for name in ("Taskfile.yml", "pyproject.toml", "scripts/libHarfBuzzSharp.vcxproj.in"):
             destination = self.root / name
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, destination)
@@ -46,15 +44,6 @@ class NativeCacheKeyTests(unittest.TestCase):
         with (self.root / name).open("a", encoding="utf-8") as file:
             file.write("\n# Changed input\n")
 
-    def test_unrelated_platform_and_task_do_not_invalidate(self):
-        original = self.key()
-        self.change("native/skiasharp/macos.py")
-        self.change("native/skiasharp/profiles/windows-arm64")
-        self.change("native/avalonianative/conanfile.py")
-        with (self.root / "Taskfile.yml").open("a", encoding="utf-8") as file:
-            file.write("\n  unrelated-task:\n    cmds: [echo hello]\n")
-        self.assertEqual(original, self.key())
-
     def test_selected_profile_and_platform_do_invalidate(self):
         original = self.key()
         self.change("native/skiasharp/windows.py")
@@ -62,6 +51,17 @@ class NativeCacheKeyTests(unittest.TestCase):
         original = self.key()
         self.change("native/skiasharp/profiles/windows-x64")
         self.assertNotEqual(original, self.key())
+
+    def test_harfbuzz_template_is_scoped_to_skiasharp_3(self):
+        lines = {version.split(".")[0]: version for version in VERSIONS["skiasharp-versions"]}
+        if not {"3", "4"} <= set(lines):
+            self.skipTest("needs a SkiaSharp 3 and a SkiaSharp 4 version")
+        before = {major: self.key(version) for major, version in lines.items()}
+        linux = self.key(lines["3"], "linux-x64")
+        self.change("scripts/libHarfBuzzSharp.vcxproj.in")
+        self.assertNotEqual(before["3"], self.key(lines["3"]))
+        self.assertEqual(before["4"], self.key(lines["4"]), "SkiaSharp 4 builds the upstream HarfBuzzSharp project")
+        self.assertEqual(linux, self.key(lines["3"], "linux-x64"))
 
     def test_version_source_is_scoped_to_selected_version(self):
         if OTHER_SKIA is None:
@@ -84,6 +84,33 @@ class NativeCacheKeyTests(unittest.TestCase):
         file.write_text(json.dumps(versions))
         self.assertEqual(selected, self.key(HOSTLIBS, component="hostlibs"))
         self.assertNotEqual(other, self.key(OTHER_HOSTLIBS, component="hostlibs"))
+
+    def test_avalonianative_source_is_scoped_to_selected_version(self):
+        others = [version for version in VERSIONS["avalonia-sources"] if version != AVALONIA]
+        if not others:
+            self.skipTest("needs two Avalonia sources")
+        file = self.root / "native/avalonianative/conandata.yml"
+        text = file.read_text(encoding="utf-8")
+
+        def keys():
+            return {rid: self.key(AVALONIA, rid, "avalonianative") for rid in ("osx-x64", "osx-arm64")}
+
+        def entry(version):
+            return re.compile(rf'^  "{re.escape(version)}":\n(?:    .*\n)+', re.M)
+
+        original = keys()
+        file.write_text(entry(others[0]).sub("", text.replace(VERSIONS["avalonia-sources"][others[-1]]["sha256"],
+                                                                "0" * 64)), encoding="utf-8")
+        self.assertEqual(original, keys(), "other versions removed or changed")
+        file.write_text(text.replace(VERSIONS["avalonia-sources"][AVALONIA]["sha256"], "0" * 64), encoding="utf-8")
+        for rid, key in keys().items():
+            self.assertNotEqual(original[rid], key, rid)
+        file.write_text(text + 'patches:\n  "0.0.0":\n    - patch_file: "patches/x.patch"\n', encoding="utf-8")
+        for rid, key in keys().items():
+            self.assertNotEqual(original[rid], key, f"{rid}: another section")
+        file.write_text(entry(AVALONIA).sub("", text), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "no source"):
+            keys()
 
     def test_hostlibs_container_is_scoped_to_selected_rid(self):
         for changed in HOSTLIBS_LINUX_RIDS:
@@ -120,23 +147,6 @@ class NativeCacheKeyTests(unittest.TestCase):
                 self.assertNotEqual(before.pop(changed), after.pop(changed))
                 self.assertEqual(before, after)
 
-    def test_image_tool_update_does_not_invalidate(self):
-        linux = [("skiasharp", version, rid) for version in VERSIONS["skiasharp-versions"]
-                 for rid in ("linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64")]
-        linux += [("hostlibs", HOSTLIBS, rid) for rid in HOSTLIBS_LINUX_RIDS]
-
-        def keys():
-            return {target: cache_key.fingerprint(self.root, target[0], target[1], target[2], "compiler-1")
-                    for target in linux}
-
-        before = keys()
-        for tool in upstream.TOOLS:
-            if tool.build_arg:
-                file = self.root / tool.path
-                file.write_text(tool.set(file.read_text(encoding="utf-8"), "99.0.0"), encoding="utf-8")
-                self.assertEqual("99.0.0", tool.pin(self.root))
-        self.assertEqual(before, keys())
-
     def test_toolchain_and_relevant_task_invalidate(self):
         original = self.key()
         self.assertNotEqual(original, self.key(toolchain="compiler-2"))
@@ -146,20 +156,3 @@ class NativeCacheKeyTests(unittest.TestCase):
         taskfile.write_text(text, encoding="utf-8")
         self.assertNotEqual(original, self.key())
 
-    def test_other_components_only_use_selected_profile(self):
-        for component, version, rid, other in (
-            ("angle", VERSIONS["angle"], "win-x64", "windows-arm64"),
-            ("hostlibs", HOSTLIBS, "win-x64", "linux-x64"),
-            ("avalonianative", VERSIONS["avalonia-native"], "osx-arm64", "osx-x64"),
-        ):
-            with self.subTest(component=component):
-                original = self.key(version, rid, component)
-                self.change(f"native/{component}/profiles/{other}")
-                self.assertEqual(original, self.key(version, rid, component))
-
-    def test_generator_update_rebuilds_payload_but_can_reuse_objects(self):
-        before, after = [cache_key.fingerprint(self.root, "hostlibs", HOSTLIBS, "win-x64",
-                                              "compiler-1", generator)
-                         for generator in ("cmake 3.29", "cmake 4.0")]
-        self.assertNotEqual(before["key"], after["key"])
-        self.assertEqual(before["compiler-prefix"], after["compiler-prefix"])

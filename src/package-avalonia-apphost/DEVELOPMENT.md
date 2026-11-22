@@ -19,6 +19,12 @@ Examples:
 - `artifacts/avalonia-host/12.0/net10.0/win-x64/apphost.exe`
 - `artifacts/avalonia-host/12.0/net11.0/linux-x64/singlefilehost`
 
+Each `<tfm>/<rid>/` directory also receives `licenses/`, copied from the inputs of that link:
+`dotnet/<runtime-version>/` from the host libs, `skiasharp/` from the SkiaSharp payload (plus
+`skiasharp/libcxx/` from `src/package-skiasharp-static/licenses` for Linux SkiaSharp 4), and
+`angle/` from the ANGLE payload on Windows. Linking fails when an input has no licenses, which
+means it was built by an older recipe.
+
 `AvaloniaTemplateTfms` (default: `HostForgeTargetFrameworks` in `Directory.Build.props`)
 selects the template TFMs. Each TFM links the host libs of its own runtime
 (`HostLibsNet<N>Version`), from `artifacts/hostlibs/<runtime-version>/...`, so build HostLibs
@@ -53,9 +59,33 @@ template TFM and register each one in a `.props` file generated at pack time:
 </AvaloniaAppHostRids>
 ```
 
+The RID package contains `THIRD-PARTY-NOTICES.txt`, which
+[`HostForge.Notices.targets`](../HostForge.Notices.targets) writes at pack time from the `licenses/`
+directories of every packed template; sections that are identical for several TFMs appear once. Packing fails when a template directory has no `licenses/`.
+
 The Build package's `.targets` matches `$(RuntimeIdentifier)` and the project's .NET version against
 `@(AvaloniaAppHostRids)`. The TFM is normalized to `net<major>.<minor>`, so OS-specific TFMs such as
 `net11.0-windows` use the `net11.0` template. Each RID package depends on the Build package, so consumers install only the RID packages they need. The meta-package `ChsBuffer.Avalonia.AppHost` installs every supported RID package.
+The packages declare their dependencies in a `net10.0` group only. A project that targets an earlier .NET
+therefore gets nothing from the meta-package and only the TFM-independent `.props` from a RID package: the
+templates are registered, but without the Build package's `.targets` nothing activates or warns.
+
+`ResolveAvaloniaAppHostActivation` leaves the package inactive, with the native libraries in the output, for:
+
+- builds without a RuntimeIdentifier, silently: their output is portable, and the publish step removes the
+  native libraries by file name, which would drop them for every RID;
+- builds of a project with `PublishAot=true`, not only its publish, as in `AppHost.Static.targets`, because
+  the NativeAOT executable it publishes has no apphost, and `UseAppHost=false` builds, which run on `dotnet`; the NativeAOT
+  warning is omitted when any static graphics package is imported (`HostForgeStaticGraphicsImported`);
+- projects whose `$(Language)` is not C#, because the resolver is the C# source `ModuleInitializer.cs`
+  compiled into the application.
+
+`InjectAvaloniaModuleInitializer` defines `HOSTFORGE_<ASSEMBLY>` for each assembly with `libSkiaSharp`,
+`libHarfBuzzSharp` or ANGLE imports that `@(ReferencePath)` contains. `ModuleInitializer.cs` registers its
+resolver with exactly those assemblies, and only for the libraries that the main program exports, so the
+application assembly keeps the default loading under `dotnet`, test hosts and the previewer.
+
+Each RID package also depends on SkiaSharp and HarfBuzzSharp at the linked versions. The managed packages depend on their Windows and macOS native assets but not on the Linux ones, which otherwise stay at the older versions Avalonia.Skia depends on, so the Linux RID packages add `SkiaSharp.NativeAssets.Linux` and `HarfBuzzSharp.NativeAssets.Linux` at the same versions. Builds without an active template, and the Avalonia designer, load these dynamic libraries.
 
 ## SkiaSharp variants and package versions
 
@@ -85,6 +115,20 @@ For local builds, link and pack one Skia variant before linking the other varian
 CI uses separate jobs and `avalonia-host-skia4-windows` / `avalonia-host-skia4-linux` /
 `avalonia-host-skia4-linux-musl-<arch>` artifacts, then uploads the seven Skia 4 packages
 as `nuget-avalonia-apphost-skia4`.
+
+## Windows templates
+
+The Windows templates link with the `/guard:*`, `/CETCOMPAT` and `/DELAYLOAD` options that the host libs
+record from the runtime's own host links (see `src/StaticAppHost.Windows.targets`). On `win-x64` this
+includes `/guard:ehcont`, so every linked object with C++ exception handling must carry EH continuation
+metadata, or `link.exe` stops with `LNK2047` and `LNK1386`: the SkiaSharp recipe compiles Skia and
+HarfBuzzSharp for `win-x64` with `/guard:ehcont`. ANGLE has no C++ exception handling; for its structured
+exception handlers `link.exe` generates the metadata itself and warns with `LNK4291`.
+
+`dumpbin /loadconfig <template>.exe` shows the result: the `win-x64` templates list
+`EH Continuation table present` under `Guard Flags` (`IMAGE_GUARD_EH_CONTINUATION_TABLE_PRESENT`, 0x00400000)
+and a nonzero `Guard EH continuation count`, as the official hosts do; the official `win-arm64` hosts have no
+such table. `task avalonia-test` asserts these guard flags on the linked templates.
 
 ## Linux templates
 

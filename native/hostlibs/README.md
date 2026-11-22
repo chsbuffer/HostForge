@@ -1,8 +1,10 @@
 # HostLibs Conan recipe
 
 This Conan 2 recipe builds and packages the .NET Runtime apphost and single-file
-host static link inputs. `pgo=True` is the default package; set `pgo=False` for
-the Windows no-PGO flavor.
+host static link inputs. On Windows, `pgo=True` is the default package and
+`pgo=False` selects the no-PGO flavor. Linux packages have no `pgo` option: like
+the official Linux runtime, they are always built with PGO, and Task rejects any
+`PGO` other than `True` on Linux.
 
 Sources come from `src/runtime` of the .NET VMR (`dotnet/dotnet`) at the 1xx SDK
 band tag that built each shipped runtime, as listed in [`versions.json`](versions.json).
@@ -21,8 +23,14 @@ task build-hostlibs
 task build-hostlibs HOSTLIBS_VERSION=<runtime version from versions.json>
 ```
 
-The upstream workflow opens a pull request that updates `versions.json` to the latest
-runtime patch releases; `task upstream-apply -- --dotnet` does the same locally.
+The `inputs` group of the upstream workflow moves each runtime pinned to a release to
+its newest patch release whose VMR source is confirmed: its `Microsoft.NETCore.App.Ref`
+package names a commit that the VMR tag of one of its 1xx SDKs points to. It updates
+`HostLibsNet<N>Version` in `Directory.Build.props` and records the tag, the commit and
+the build containers in `versions.json`; the pull request lists the newer releases it
+passes over under "Not applied". A runtime pinned to a preview is only reported.
+`task upstream-apply -- --dotnet` computes the same change locally; see
+[DEVELOPMENT.md](../../DEVELOPMENT.md#更新组).
 
 On Linux, Task's `RID` selects the host profile: `linux-x64` (the default),
 `linux-musl-x64` or `linux-musl-arm64`. The musl profiles set `libc=musl`, and the
@@ -51,15 +59,27 @@ link rules when it collects link inputs, and ends the explicit inputs at any Nin
 dependency separator (`|`, `||`, `|@`). Libraries passed inside
 `/WHOLEARCHIVE:<lib>` (.NET 11 links `runtimeinfo.lib` that way) are packaged too.
 
+On Windows the recipe rewrites the Runtime's `/Zi` compiles to `/Z7`, precompiled
+headers included, so the debug information travels in the packaged objects: the
+relink runs outside the build tree, where the compiler PDBs that `/Zi` writes do not
+exist. An object that uses a precompiled header references the types stored in the
+object that created it, which is packaged too.
+
 Each payload records the runtime's own compile and link flags in
-`<host>.linkflags`; the Windows relink reads the `/DELAYLOAD` options from
-`singlefilehost.linkflags`, because .NET 10 and .NET 11 delay-load different DLLs.
+`<host>.linkflags`, as the Runtime's link rule passes them (the `/Z7` rewrite changes
+only the compiles); the Windows relink reads the `/guard:`, `/CETCOMPAT` and `/DELAYLOAD`
+options from them, because the runtime adds `/guard:ehcont` and `/CETCOMPAT` on x64 only and
+.NET 10 and .NET 11 delay-load different DLLs.
 
 A link input outside the build tree, such as the `libpthread.a` stub that CMake finds
 in the musl rootfs, is copied into the payload, and the response file names the copy.
 
 Set `CONAN_HOME` to an absolute path (e.g. `$PWD/build/conan`). The
 Runtime build has deeply nested paths and long MSVC command lines.
+
+The payload also contains `licenses/LICENSE.TXT` and `licenses/THIRD-PARTY-NOTICES.TXT`
+of `src/runtime`: the hosts link the runtime's native components, whose third-party code
+those notices cover.
 
 The deployer preserves the response-file-relative directory tree expected by the
 existing MSBuild targets and writes it below

@@ -25,6 +25,9 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         bool? disableSkiaHarfBuzzRuntimeCopy = null,
         bool? disableAngleRuntimeCopy = null,
         bool publishSingleFile = false,
+        string? appHostPackageRid = null,
+        bool setRuntimeIdentifier = true,
+        bool referenceAvaloniaWin32 = false,
         CancellationToken cancellationToken = default)
     {
         string guid = Guid.NewGuid().ToString("N");
@@ -48,7 +51,10 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
             includeNativeAssetsPackages,
             disableSkiaHarfBuzzRuntimeCopy,
             disableAngleRuntimeCopy,
-            publishSingleFile);
+            publishSingleFile,
+            appHostPackageRid ?? runtimeIdentifier,
+            setRuntimeIdentifier,
+            referenceAvaloniaWin32);
 
         return new TestProjectWorkspace(rootDirectory, projectDirectory, projectFilePath, projectName);
     }
@@ -88,7 +94,10 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         bool includeNativeAssetsPackages,
         bool? disableSkiaHarfBuzzRuntimeCopy,
         bool? disableAngleRuntimeCopy,
-        bool publishSingleFile)
+        bool publishSingleFile,
+        string appHostPackageRid,
+        bool setRuntimeIdentifier,
+        bool referenceAvaloniaWin32)
     {
         ProjectRootElement project = ProjectRootElement.Create();
         project.Sdk = "Microsoft.NET.Sdk";
@@ -96,17 +105,12 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         ProjectPropertyGroupElement propertyGroup = project.AddPropertyGroup();
         propertyGroup.AddProperty("OutputType", "Exe");
         propertyGroup.AddProperty("TargetFramework", targetFramework);
-        propertyGroup.AddProperty("RuntimeIdentifier", runtimeIdentifier);
+        // runtimeIdentifier also selects the RID and native asset packages, which a build without a RID still references.
+        if (setRuntimeIdentifier)
+            propertyGroup.AddProperty("RuntimeIdentifier", runtimeIdentifier);
         propertyGroup.AddProperty("ImplicitUsings", "enable");
         propertyGroup.AddProperty("Nullable", "enable");
-        propertyGroup.AddProperty(
-            "DefineConstants",
-            "$(DefineConstants);HOSTFORGE_DISABLE_AVALONIA_WIN32_IMPORT_RESOLVER");
-        propertyGroup.AddProperty(
-            "RestoreAdditionalProjectSources",
-            "$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)");
-
-        propertyGroup.AddProperty("DetectAvaloniaDesigner", "false");
+        propertyGroup.AddProperty("RestorePackagesPath", RepoContext.TestPackagesRoot);
 
         if (publishSingleFile)
         {
@@ -116,6 +120,12 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
             propertyGroup.AddProperty("PublishSingleFile", "true");
             propertyGroup.AddProperty("SelfContained", "true");
             propertyGroup.AddProperty("RuntimeFrameworkVersion", RepoContext.GetHostLibsVersion(targetFramework));
+        }
+
+        if (referenceAvaloniaWin32)
+        {
+            // Compiles the call to the ANGLE import of Avalonia.Win32 into the program.
+            propertyGroup.AddProperty("DefineConstants", "$(DefineConstants);REFERENCES_AVALONIA_WIN32");
         }
 
         if (disableSkiaHarfBuzzRuntimeCopy is not null)
@@ -132,11 +142,21 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
                 disableAngleRuntimeCopy.Value.ToString().ToLowerInvariant());
         }
 
+        // As in an application, the RID package brings the Build package and the SkiaSharp and HarfBuzzSharp
+        // versions that its templates link.
         ProjectItemGroupElement itemGroup = project.AddItemGroup();
-        AddPackageReference(itemGroup, RepoContext.GetAvaloniaRidPackageId(runtimeIdentifier), "$(AvaloniaAppHostPackageVersion)");
-        AddPackageReference(itemGroup, RepoContext.AvaloniaAppHostBuildPackageId, "$(AvaloniaAppHostPackageVersion)");
-        AddPackageReference(itemGroup, "SkiaSharp", "$(SkiaSharpVersion)");
-        AddPackageReference(itemGroup, "HarfBuzzSharp", "$(HarfBuzzVersion)");
+        AddPackageReference(itemGroup, RepoContext.GetAvaloniaRidPackageId(appHostPackageRid), "$(AvaloniaAppHostPackageVersion)");
+        // Skottie also brings SkiaSharp.SceneGraph and SkiaSharp.Resources, each with its own libSkiaSharp imports.
+        AddPackageReference(itemGroup, "SkiaSharp.Skottie", "$(SkiaSharpVersion)");
+        if (referenceAvaloniaWin32)
+            AddPackageReference(itemGroup, "Avalonia.Win32", "$(AvaloniaVersion)");
+
+        // The RID packages have dependencies only for their own target framework, net10.0, and later ones.
+        // An application on an earlier target framework gets SkiaSharp and HarfBuzzSharp from Avalonia alone.
+        ProjectItemGroupElement avaloniaGraphics = project.AddItemGroup();
+        avaloniaGraphics.Condition = "!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net10.0'))";
+        AddPackageReference(avaloniaGraphics, "SkiaSharp", "$(SkiaSharpVersion)");
+        AddPackageReference(avaloniaGraphics, "HarfBuzzSharp", "$(HarfBuzzVersion)");
 
         if (includeNativeAssetsPackages)
         {
@@ -179,6 +199,8 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
     private static string BuildProgramSource()
     {
         return """
+                using System.Diagnostics;
+                using System.Reflection;
                 using System.Runtime.InteropServices;
 
                 if (OperatingSystem.IsWindows())
@@ -188,13 +210,43 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
                         typeof(AngleNative).Assembly,
                         static (libraryName, _, _) =>
                             string.Equals(libraryName, "av_libglesv2.dll", StringComparison.OrdinalIgnoreCase)
+                            && NativeLibrary.TryGetExport(NativeLibrary.GetMainProgramHandle(), "EGL_GetError", out _)
                                 ? NativeLibrary.GetMainProgramHandle()
                                 : IntPtr.Zero);
                 #endif
                     Console.WriteLine($"AngleError=0x{AngleNative.GetError():X}");
+                #if REFERENCES_AVALONIA_WIN32
+                    // Avalonia.Win32 loads ANGLE through its own EGL_GetProcAddress import, an internal method.
+                    MethodInfo eglGetProcAddress = typeof(Avalonia.Win32PlatformOptions).Assembly.GetTypes()
+                        .SelectMany(type => type.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+                        .First(method => method.GetCustomAttribute<DllImportAttribute>() is { EntryPoint: "EGL_GetProcAddress" } import
+                            && Path.GetFileNameWithoutExtension(import.Value).Equals("av_libglesv2", StringComparison.OrdinalIgnoreCase));
+                    IntPtr eglGetError = (IntPtr)eglGetProcAddress.Invoke(null, new object[] { "eglGetError" })!;
+                    Console.WriteLine($"AvaloniaWin32Angle={eglGetError != IntPtr.Zero}");
+                #endif
                 }
                 Console.WriteLine($"SkiaSharpVersion.Native={SkiaSharp.SkiaSharpVersion.Native}");
+                using (var harfBuzzBuffer = new HarfBuzzSharp.Buffer())
+                {
+                    harfBuzzBuffer.AddUtf8("HostForge");
+                    Console.WriteLine($"HarfBuzzLength={harfBuzzBuffer.Length}");
+                }
+                using (var resources = new SkiaSharp.Resources.FileResourceProvider(AppContext.BaseDirectory))
+                using (var invalidation = new SkiaSharp.SceneGraph.InvalidationController())
+                {
+                    invalidation.Begin();
+                    invalidation.End();
+                    bool parsed = SkiaSharp.Skottie.Animation.TryParse(
+                        "{\"v\":\"5.7.4\",\"fr\":30,\"ip\":0,\"op\":30,\"w\":16,\"h\":16,\"layers\":[]}", out var animation);
+                    animation?.Dispose();
+                    Console.WriteLine($"Skottie={parsed}");
+                }
                 Console.WriteLine($"RuntimeVersion={Environment.Version}");
+                string[] graphicsLibraries = ["libSkiaSharp", "libHarfBuzzSharp", "av_libglesv2"];
+                IEnumerable<string> loadedGraphicsLibraries = Process.GetCurrentProcess().Modules.Cast<ProcessModule>()
+                    .Select(module => Path.GetFileName(module.FileName))
+                    .Where(file => graphicsLibraries.Any(library => file.StartsWith(library, StringComparison.OrdinalIgnoreCase)));
+                Console.WriteLine($"GraphicsLibraryFiles={string.Join(",", loadedGraphicsLibraries)}");
 
                 internal static class AngleNative
                 {

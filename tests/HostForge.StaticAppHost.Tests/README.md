@@ -4,7 +4,10 @@ TUnit matrix tests for the source-based `StaticAppHost.targets` integration. The
 `HostForgeTargetFrameworks` entry in `Directory.Build.props`, relinking `samples/simple-pinvoke` against the
 host libs of that runtime, so build HostLibs for every runtime version first. On Linux the .NET 11 host libs
 contain LLVM bitcode: run the matrix with a Clang and LLD at least as new as the LLVM of the runtime's build
-container, as CI does in the `build` stage of `native/hostlibs/linux.Dockerfile`.
+container, as CI does in the `build` stage of `native/hostlibs/linux.Dockerfile`. On Windows the matrix also
+checks that the relinked hosts keep Control Flow Guard and the EH continuation table of the official x64 hosts,
+that `StaticHostGuardEHCont=false` relinks without the table, and that a publish with the default options
+then relinks both hosts with it again, so a kept `bin` / `obj` matches the default options.
 
 Run:
 
@@ -14,5 +17,7 @@ dotnet test --project .\tests\HostForge.StaticAppHost.Tests\HostForge.StaticAppH
 
 Optional env flags:
 
-- `HOSTFORGE_MATRIX_SKIP_EXE_RUN=true`
-- `HOSTFORGE_MATRIX_NO_CLEAN=true`
+- `HOSTFORGE_MATRIX_SKIP_EXE_RUN=true`: build and publish without running the executable.
+- `HOSTFORGE_MATRIX_NO_CLEAN=true`: keep the `bin` / `obj` of `samples/simple-pinvoke` from the previous run, to
+  check incremental relinking after changing an input. The first build of each kind then relinks only if its
+  inputs changed, so only the repeated builds are checked: they must not relink.

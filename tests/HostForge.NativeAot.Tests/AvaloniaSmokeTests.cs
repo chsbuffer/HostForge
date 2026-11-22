@@ -36,7 +36,7 @@ public class AvaloniaSmokeTests
         {
             string output = Path.Combine(RepoContext.RepoRoot, "artifacts", "avalonia-smoke", version, rid);
             Directory.CreateDirectory(output);
-            string arguments = $"publish \"{project}\" -c Release -r {rid} -p:SkiaSharpVersion={version} -p:IlcMaxParallelism=4 -o \"{output}\" -v:minimal";
+            string arguments = $"publish \"{project}\" -c Release -r {rid} -p:SkiaSharpVersion={version} -p:IlcMaxParallelism=4 -p:RestorePackagesPath=\"{RepoContext.TestPackagesRoot}\" -o \"{output}\" -v:minimal";
             foreach (string property in new[] { "SmokeUseStaticSkia", "SmokeSkiaPackageId", "SmokeSkiaPackageVersion", "SmokeUseStaticAngle", "SmokeAnglePackageId", "SmokeAnglePackageVersion", "SmokeUseStaticAvaloniaNative", "SmokeAvaloniaNativePackageId", "SmokeAvaloniaNativePackageVersion", "SmokePackageSource" })
             {
                 if (Environment.GetEnvironmentVariable(property) is { Length: > 0 } value)

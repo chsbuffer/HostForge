@@ -45,6 +45,13 @@ class HostLibsConan(ConanFile):
     def config_options(self):
         if self.settings.os != "Linux":
             self.options.rm_safe("libc")
+        if self.settings.os != "Windows":
+            # build.sh runs in the pinned upstream build container, which selects
+            # its own LLVM; the container digest identifies it in the cache key.
+            self.settings.rm_safe("compiler")
+            # Linux hosts are built like the official Linux runtime, with its PGO
+            # data; the no-PGO flavor exists for the Windows AppHost.Static package.
+            self.options.rm_safe("pgo")
 
     def validate(self):
         if str(self.version) not in VERSIONS:
@@ -128,6 +135,12 @@ class HostLibsConan(ConanFile):
                 / "singlefilehost.exports"
             )
             shutil.copy2(source, Path(self.package_folder) / source.name)
+
+        # The runtime's notices cover the third-party code of its native components, which the hosts link.
+        licenses = Path(self.package_folder) / "licenses"
+        licenses.mkdir()
+        for name in ("LICENSE.TXT", "THIRD-PARTY-NOTICES.TXT"):
+            shutil.copy2(self._runtime_root / name, licenses / name)
 
     def package_info(self):
         self.cpp_info.includedirs = []
@@ -213,30 +226,42 @@ class HostLibsConan(ConanFile):
         if pre_ninja:
             cmd += f" && {pre_ninja}"
         self.run(cmd, cwd=root, env="conanbuild")
-        if os.environ.get("HOSTFORGE_COMPILER_CACHE"):
-            # MSVC PCH consumers cannot be cached by sccache. Preserve their
-            # PCH acceleration and shared PDB instead of expanding headers and
-            # debug types into every object. Cache only independent objects.
-            ninja = build_root / "build.ninja"
-            blocks = ninja.read_text(encoding="utf-8").split("\n\n")
-            for index, block in enumerate(blocks):
-                if re.search(r"^  FLAGS = .* /Y[cu]", block, re.M):
-                    blocks[index] = re.sub(r"^  LAUNCHER =.*$", "  LAUNCHER = ", block, flags=re.M)
-                elif re.search(r"^build .*: (?:C|CXX)_COMPILER__", block, re.M):
-                    # Use per-object CodeView (CMake spells the debug format
-                    # /Zi or -Zi) and the equivalent dash spelling of /Zl,
-                    # which sccache otherwise parses as an input path.
-                    blocks[index] = re.sub(r"^  FLAGS =.*$", lambda match:
-                                          match.group().replace(" /Zi", " /Z7").replace(" -Zi", " -Z7")
-                                          .replace(" /Zl", " -Zl"),
-                                          block, flags=re.M)
-            ninja.write_text("\n\n".join(blocks), encoding="utf-8")
+        self._msvc_rewrite_compiles(build_root)
         target = self._link_inputs_target(build_root, target)
         cmd = ""
         if self._target_arch == "arm64":
             cmd = f'call "{root}\\eng\\native\\init-vs-env.cmd" arm64 && '
         cmd += f'ninja -C "{build_root}" -j {build_jobs(self)} {target}'
         self.run(cmd, cwd=root, env="conanbuild")
+
+    @staticmethod
+    def _msvc_rewrite_compiles(build_root):
+        # The packaged objects are relinked outside this build tree, where the
+        # compiler PDBs that /Zi writes (named by /Fd) do not exist: the linker
+        # reports LNK4099 and links the objects without debug information.
+        # Embed CodeView in every object instead (/Z7; CMake spells the format
+        # /Zi or -Zi). A /Yc object then holds the types of its precompiled
+        # header, and the /Yu objects reference it, which also links it in.
+        cache = bool(os.environ.get("HOSTFORGE_COMPILER_CACHE"))
+        ninja = build_root / "build.ninja"
+        blocks = ninja.read_text(encoding="utf-8").split("\n\n")
+        for index, block in enumerate(blocks):
+            if not re.search(r"^build .*: (?:C|CXX)_COMPILER__", block, re.M):
+                continue
+            # sccache cannot cache MSVC PCH creators or consumers: compile them
+            # directly and keep their PCH. Through sccache, spell /Zl as -Zl,
+            # which sccache otherwise parses as an input path.
+            cached = cache and not re.search(r"^  FLAGS = .* /Y[cu]", block, re.M)
+
+            def flags(match):
+                text = match.group().replace(" /Zi", " /Z7").replace(" -Zi", " -Z7")
+                return text.replace(" /Zl", " -Zl") if cached else text
+
+            block = re.sub(r"^  FLAGS =.*$", flags, block, flags=re.M)
+            if cache and not cached:
+                block = re.sub(r"^  LAUNCHER =.*$", "  LAUNCHER = ", block, flags=re.M)
+            blocks[index] = block
+        ninja.write_text("\n\n".join(blocks), encoding="utf-8")
 
     def _runtime_properties(self, prefix):
         # Rebuilding a fixed release must not fail on advisories published later

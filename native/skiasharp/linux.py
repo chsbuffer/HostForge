@@ -16,7 +16,7 @@ class LinuxBuild:
         self.run(
             f'"{gn}" gen "{self._skia_build}" '
             f'--root="{self._skia_root}" '
-            f'--script-executable="{sys.executable}" --nocolor',
+            f'--script-executable="{sys.executable}" --fail-on-unused-args --nocolor',
             cwd=str(self._skia_root),
             env="conanbuild",
         )
@@ -34,7 +34,7 @@ class LinuxBuild:
         self.run(
             f'"{gn}" gen "{self._harfbuzz_build}" '
             f'--root="{self._skia_root}" '
-            f'--script-executable="{sys.executable}" --nocolor',
+            f'--script-executable="{sys.executable}" --fail-on-unused-args --nocolor',
             cwd=str(self._skia_root),
             env="conanbuild",
         )
@@ -92,9 +92,10 @@ class LinuxBuild:
                 "is_official_build = true",
                 "is_static_skiasharp = true",
                 "skia_enable_tools = false",
-                # Kept although the SkiaSharp 4.157 build.cake dropped it: the AppHost exports the hb_* functions
-                # of this archive for its DllImport resolver, which needs them at default visibility.
-                "visibility_hidden = false",
+                # The AppHost exports the hb_* functions of this archive for its DllImport resolver, which needs
+                # them at default visibility. m119 hides every symbol unless visibility_hidden is false; m15x no
+                # longer declares that argument and gives hb_* default visibility with its HB_EXTERN define.
+                *([] if self._modern else ["visibility_hidden = false"]),
                 *(["skia_use_partition_alloc = false"] if self._modern else []),
                 f"extra_asmflags = {self._format_gn_list(asmflags)}",
                 f"extra_cflags = {self._format_gn_list(cflags)}",

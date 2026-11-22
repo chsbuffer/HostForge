@@ -9,7 +9,7 @@ namespace HostForge.NativeAot.Tests;
 
 public class NativeAotMatrixTests
 {
-    private static string SkiaVersion => Environment.GetEnvironmentVariable("HOSTFORGE_SKIA_VERSION") ?? RepoContext.SkiaSharpVersion;
+    internal static string SkiaVersion => Environment.GetEnvironmentVariable("HOSTFORGE_SKIA_VERSION") ?? RepoContext.SkiaSharpVersion;
     private static bool CheckAngle => Environment.GetEnvironmentVariable("HOSTFORGE_CHECK_ANGLE") != "false";
     private static bool TestMeta => Environment.GetEnvironmentVariable("HOSTFORGE_TEST_META") == "true";
     internal static string Rid => Environment.GetEnvironmentVariable("HOSTFORGE_NATIVE_RID") ?? RuntimeInformation.RuntimeIdentifier;
@@ -131,7 +131,7 @@ public class NativeAotMatrixTests
     public async Task MultiRidMetaConsumer_BuildsWithoutRidWithWarningsAsErrors()
     {
         if (!TestMeta)
-            return;
+            Skip.Test("Set HOSTFORGE_TEST_META=true to test the meta packages.");
 
         string workspace = CreateWorkspace("no-rid");
         string properties = Properties(workspace, includeRid: false) + " -p:UseStaticGraphicsMeta=true";
@@ -149,18 +149,34 @@ public class NativeAotMatrixTests
         }
     }
 
+    // Without NativeAOT the application loads the restored dynamic libraries. SkiaSharp checks that their native
+    // version matches at startup, so a Linux library from Avalonia's older native asset packages fails the run.
+    // Self-contained, the run does not depend on the .NET runtimes installed on the runner.
     [Test]
-    public async Task NonAotConsumer_DoesNotActivateStaticInputs()
+    [NotInParallel("nativeaot-publish")]
+    public async Task NonAotConsumer_RunsWithDynamicLibrariesOfTheManagedVersions()
     {
-        string workspace = CreateWorkspace("non-aot");
-        CommandResult result = await CommandRunner.RunAsync("dotnet",
-            $"msbuild NativeAotMatrix.csproj -restore -t:HostForgeResolveStaticGraphics {Properties(workspace)} -p:PublishAot=false -getItem:NativeLibrary,DirectPInvoke -v:quiet", workspace);
-        AssertEx.Success(result, "Non-AOT package evaluation");
-        int jsonStart = result.StandardOutput.IndexOf('{');
-        using JsonDocument items = JsonDocument.Parse(result.StandardOutput.Substring(jsonStart));
-        if (items.RootElement.GetProperty("Items").GetProperty("NativeLibrary").GetArrayLength() != 0 ||
-            items.RootElement.GetProperty("Items").GetProperty("DirectPInvoke").GetArrayLength() != 0)
-            throw new InvalidOperationException("Static graphics inputs leaked into a non-AOT consumer.");
+        string workspace = CreateWorkspace($"jit-{(TestMeta ? "meta" : "rid")}");
+        string output = Path.Combine(workspace, "publish");
+        string arguments = $"publish NativeAotMatrix.csproj -c Release -r {Rid} {Properties(workspace)} -p:UseStaticGraphicsMeta={TestMeta.ToString().ToLowerInvariant()} -p:PublishAot=false -p:SelfContained=true -p:PublishDir=\"{output}\" -warnaserror -v:minimal";
+        CommandResult publish = await CommandRunner.RunAsync("dotnet", arguments, workspace);
+        await File.WriteAllTextAsync(Path.Combine(workspace, "publish.log"), publish.CombinedOutput);
+        AssertEx.Success(publish, $"Non-AOT publish ({Rid}, {SkiaVersion}, meta={TestMeta})");
+
+        string executable = Path.Combine(output, Rid.StartsWith("win-", StringComparison.Ordinal) ? "NativeAotMatrix.exe" : "NativeAotMatrix");
+        string? runner = Environment.GetEnvironmentVariable("HOSTFORGE_NATIVE_RUNNER");
+        CommandResult run = runner is { Length: > 0 }
+            ? await CommandRunner.RunAsync(runner, $"\"{executable}\"", output)
+            : await CommandRunner.RunAsync(executable, string.Empty, output);
+        await File.WriteAllTextAsync(Path.Combine(workspace, "run.log"), run.CombinedOutput);
+        AssertEx.Success(run, $"Non-AOT run ({Rid}, {SkiaVersion}, meta={TestMeta})");
+        AssertEx.Contains(run.CombinedOutput, $"SkiaNative={Version.Parse(SkiaVersion).Minor}.");
+        // hb_version_string reports the HarfBuzz version, the first three numbers of the HarfBuzzSharp version.
+        string harfBuzz = RepoContext.VersionPrefix(RepoContext.GetHarfBuzzVersion(SkiaVersion), 3);
+        if (!Regex.IsMatch(run.StandardOutput, $@"^HarfBuzzNative={Regex.Escape(harfBuzz)}\r?$", RegexOptions.Multiline))
+            throw new InvalidOperationException($"Expected native HarfBuzz {harfBuzz}.{Environment.NewLine}{run.CombinedOutput}");
+        AssertEx.Contains(run.CombinedOutput, "SoftwarePixels=1024/1024");
+        AssertEx.Contains(run.CombinedOutput, "HarfBuzzShape=OK");
     }
 
     private static string CreateWorkspace(string purpose)

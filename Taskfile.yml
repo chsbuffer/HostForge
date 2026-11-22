@@ -1,5 +1,8 @@
 version: "3"
 
+# Commands receive environment values as assignments on the command line: a task's env: entry does not replace
+# a variable that the caller's environment already sets.
+
 vars:
   VERBOSITY: '{{.VERBOSITY | default "minimal"}}'
   JOBS: '{{.JOBS | default "12"}}'
@@ -12,12 +15,13 @@ tasks:
       - task --list
 
   build-hostlibs:
-    desc: Build and deploy HostLibs static libraries (HOSTLIBS_VERSION=<runtime in native/hostlibs/versions.json>, ARCH=x64|arm64, PGO=True|False, RID=<Linux RID>, SYSROOT=…)
+    desc: Build and deploy HostLibs static libraries (HOSTLIBS_VERSION=<runtime in native/hostlibs/versions.json>, Windows ARCH=x64|arm64 and PGO=True|False, Linux RID=<Linux RID> and SYSROOT=…)
     vars:
       ARCH: '{{.ARCH | default "x64"}}'
       PGO: '{{.PGO | default "True"}}'
       RID: '{{.RID | default ""}}'
-      SYSROOT: '{{.SYSROOT | default ""}}'
+      # build.sh runs in the Runtime checkout in Conan's cache, so a relative path is resolved against the repository root.
+      SYSROOT: '{{with .SYSROOT | default .ROOTFS_DIR}}{{if osIsAbs .}}{{.}}{{else}}{{joinPath $.ROOT_DIR .}}{{end}}{{end}}'
       HOSTLIBS_VERSION:
         sh: '{{if .HOSTLIBS_VERSION}}echo {{.HOSTLIBS_VERSION}}{{else}}uv run python scripts/repo_versions.py --get hostlibs{{end}}'
     cmds:
@@ -25,7 +29,7 @@ tasks:
         vars: {ARCH: "{{.ARCH}}", PGO: "{{.PGO}}", HOSTLIBS_VERSION: "{{.HOSTLIBS_VERSION}}"}
         platforms: [windows]
       - task: _hostlibs-linux
-        vars: {RID: "{{.RID}}", SYSROOT: "{{.SYSROOT}}", HOSTLIBS_VERSION: "{{.HOSTLIBS_VERSION}}"}
+        vars: {RID: "{{.RID}}", SYSROOT: "{{.SYSROOT}}", PGO: "{{.PGO}}", HOSTLIBS_VERSION: "{{.HOSTLIBS_VERSION}}"}
         platforms: [linux]
 
   _hostlibs-windows:
@@ -55,12 +59,13 @@ tasks:
         - name: TARGET_RID
           enum: [linux-x64, linux-musl-x64, linux-musl-arm64]
         - HOSTLIBS_VERSION
-    env:
-      ROOTFS_DIR: '{{.SYSROOT}}'
+    preconditions:
+      - sh: '[ "{{.PGO}}" = True ]'
+        msg: "Linux HostLibs take only PGO=True (case-sensitive), not PGO={{.PGO}}: like the official Linux runtime, they are always built with PGO"
     cmds:
       - uv run conan export native/hostlibs --version={{.HOSTLIBS_VERSION}}
       - >-
-        uv run conan install --requires="hostlibs/{{.HOSTLIBS_VERSION}}" --build=missing --no-remote --envs-generation=false
+        ROOTFS_DIR="{{.SYSROOT}}" uv run conan install --requires="hostlibs/{{.HOSTLIBS_VERSION}}" --build=missing --no-remote --envs-generation=false
         -pr:b=native/hostlibs/profiles/linux-x64
         -pr:h=native/hostlibs/profiles/{{.TARGET_RID}}
         -c tools.build:jobs={{.JOBS}}
@@ -74,7 +79,8 @@ tasks:
       RID: '{{.RID | default ""}}'
       SKIASHARP_VERSION:
         sh: '{{if .SKIASHARP_VERSION}}echo {{.SKIASHARP_VERSION}}{{else}}uv run python scripts/repo_versions.py --get skiasharp{{end}}'
-      SYSROOT: '{{.SYSROOT | default .ROOTFS_DIR | default ""}}'
+      # The recipe reads the sysroot in Conan's build folder, so a relative path is resolved against the repository root.
+      SYSROOT: '{{with .SYSROOT | default .ROOTFS_DIR}}{{if osIsAbs .}}{{.}}{{else}}{{joinPath $.ROOT_DIR .}}{{end}}{{end}}'
     cmds:
       - task: _skiasharp-windows
         vars: {ARCH: "{{.ARCH}}", RID: "{{.RID}}", SKIASHARP_VERSION: "{{.SKIASHARP_VERSION}}"}
@@ -139,18 +145,16 @@ tasks:
     vars:
       TARGET_RID: '{{.RID | default (printf "linux-%s" .ARCH)}}'
       CLANG_VERSION:
-        sh: clang -dumpversion
+        sh: ${CC:-clang} -dumpversion
     requires:
       vars:
         - name: TARGET_RID
           enum: [linux-x64, linux-arm64, linux-musl-x64, linux-musl-arm64]
         - SKIASHARP_VERSION
-    env:
-      ROOTFS_DIR: '{{.SYSROOT}}'
     cmds:
       - uv run conan export native/skiasharp --version={{.SKIASHARP_VERSION}}
       - >-
-        CC=clang CXX=clang++ AR=llvm-ar uv run conan install --requires="skiasharp/{{.SKIASHARP_VERSION}}" --build=missing --no-remote --envs-generation=false
+        ROOTFS_DIR="{{.SYSROOT}}" CC=${CC:-clang} CXX=${CXX:-clang++} AR=${AR:-llvm-ar} uv run conan install --requires="skiasharp/{{.SKIASHARP_VERSION}}" --build=missing --no-remote --envs-generation=false
         -pr:b=native/skiasharp/profiles/linux-x64
         -pr:h=native/skiasharp/profiles/{{.TARGET_RID}}
         -s:h compiler.version={{first (splitList "." .CLANG_VERSION)}}
@@ -167,10 +171,12 @@ tasks:
     platforms: [windows]
     vars:
       ARCH: '{{.ARCH | default "x64"}}'
+      ANGLE_VERSION:
+        sh: uv run python scripts/repo_versions.py --get angle
     cmds:
       - uv run conan export native/angle
       - >-
-        uv run conan install --requires="angle/[>=0.0.0]" --build=missing --no-remote --envs-generation=false
+        uv run conan install --requires="angle/{{.ANGLE_VERSION}}" --build=missing --no-remote --envs-generation=false
         -pr:b=native/angle/profiles/windows-{{.ARCH}}
         -pr:h=native/angle/profiles/windows-{{.ARCH}}
         -c tools.build:jobs={{.JOBS}}
@@ -232,11 +238,9 @@ tasks:
     vars:
       SKIP_EXE_RUN: '{{.SKIP_EXE_RUN | default .HOSTFORGE_MATRIX_SKIP_EXE_RUN | default "false"}}'
       NO_CLEAN: '{{.NO_CLEAN | default .HOSTFORGE_MATRIX_NO_CLEAN | default "false"}}'
-    env:
-      HOSTFORGE_MATRIX_SKIP_EXE_RUN: "{{.SKIP_EXE_RUN}}"
-      HOSTFORGE_MATRIX_NO_CLEAN: "{{.NO_CLEAN}}"
     cmds:
       - >-
+        HOSTFORGE_MATRIX_SKIP_EXE_RUN={{.SKIP_EXE_RUN}} HOSTFORGE_MATRIX_NO_CLEAN={{.NO_CLEAN}}
         dotnet test
         --project tests/HostForge.StaticAppHost.Tests/HostForge.StaticAppHost.Tests.csproj
         -c Release
@@ -262,10 +266,9 @@ tasks:
 
   avalonia-test:
     desc: Run the Avalonia AppHost integration tests
-    env:
-      SkiaSharpVersion: '{{.SKIASHARP_VERSION}}'
     cmds:
       - >-
+        {{if .SKIASHARP_VERSION}}SkiaSharpVersion={{.SKIASHARP_VERSION}}{{end}}
         dotnet test
         --project tests/HostForge.AvaloniaAppHost.Tests/HostForge.AvaloniaAppHost.Tests.csproj
         -c Release
@@ -381,38 +384,32 @@ tasks:
         -v:{{.VERBOSITY}}
 
   matrix-nativeaot:
-    desc: Publish and run the NativeAOT static graphics matrix on the current OS
+    desc: Pack the static graphics packages of the .NET SDK's RID and publish and run the NativeAOT matrix with them (SKIASHARP_VERSION=<version in native/skiasharp/versions.json>)
+    vars:
+      SKIASHARP_VERSION:
+        sh: '{{if .SKIASHARP_VERSION}}echo {{.SKIASHARP_VERSION}}{{else}}uv run python scripts/repo_versions.py --get skiasharp{{end}}'
+      # The tests run on the SDK's runtime. Task's ARCH is the architecture of the Task binary and tells no libc apart.
+      RID:
+        sh: dotnet msbuild src/package-skiasharp-static/SkiaSharp.Static.csproj -getProperty:NETCoreSdkPortableRuntimeIdentifier
     cmds:
+      - task: pack-skia-static
+        vars: {RID: '{{.RID}}', SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
       - task: _matrix-nativeaot-windows
-      - task: _matrix-nativeaot-linux
-      - task: _matrix-nativeaot-macos
+        vars: {RID: '{{.RID}}'}
       - >-
+        HOSTFORGE_NATIVE_RID={{.RID}} HOSTFORGE_SKIA_VERSION={{.SKIASHARP_VERSION}}
         dotnet test
         --project tests/HostForge.NativeAot.Tests/HostForge.NativeAot.Tests.csproj
         -c Release
         -v:{{.VERBOSITY}}
 
+  # Task checks the required variables of a called task before the platforms of the call.
   _matrix-nativeaot-windows:
     internal: true
     platforms: [windows]
     cmds:
-      - task: pack-skia-static
-        vars: {RID: win-x64}
       - task: pack-angle-static
-
-  _matrix-nativeaot-linux:
-    internal: true
-    platforms: [linux]
-    cmds:
-      - task: pack-skia-static
-        vars: {RID: linux-x64}
-
-  _matrix-nativeaot-macos:
-    internal: true
-    platforms: [darwin]
-    cmds:
-      - task: pack-skia-static
-        vars: {RID: 'osx-{{if eq ARCH "arm64"}}arm64{{else}}x64{{end}}'}
+        vars: {RID: '{{.RID}}'}
 
   # ── Upstream tracking ─────────────────────────────────────────
 
@@ -427,6 +424,6 @@ tasks:
       - uv run --no-project python scripts/upstream.py apply {{.CLI_ARGS}}
 
   upstream-lock:
-    desc: Append the current package versions to package-inputs.lock.json (-- --check to verify)
+    desc: Write the current package versions to package-inputs.lock.json (-- --check to verify)
     cmds:
       - uv run --no-project python scripts/upstream.py lock {{.CLI_ARGS}}

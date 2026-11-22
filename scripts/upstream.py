@@ -1,12 +1,14 @@
 """Track the upstream releases HostForge packages are built from, and keep the package lock current.
 
-  lock    [--check [--base GIT_REF]] [--force]
-          Append the package versions computed from the repository to package-inputs.lock.json (offline), an
-          append-only history. Refuses (exit 1) when variants of a family share a version, when a locked
-          version would get other inputs, when a version moves backwards, or when an entry of the lock committed
-          in HEAD was changed. --force replaces or removes only entries that are not in the lock of HEAD.
-          --check changes nothing and also requires the entries of the lock at GIT_REF (default HEAD) unchanged;
-          a GIT_REF without a lock skips that comparison.
+  lock    [--check [--base GIT_REF]]
+          Write the package versions computed from the repository, with their inputs, to
+          package-inputs.lock.json (offline). Refuses (exit 1) when a version is not written as nuget.org
+          identifies it, when variants of a family share a version, when a version committed on the
+          first-parent history of HEAD would get other inputs than the first commit whose lock holds it, or when
+          a version moves below a version of its variant in those locks. --check changes nothing; it also
+          compares with the lock as it is and with the first-parent history of GIT_REF (default HEAD); a
+          history without a lock skips that comparison. Both read that history, so a shallow clone is an
+          error.
   check   [--json] [--fail-on-security]
           Read-only report: newer .NET runtimes (with CVEs and their VMR tag/commit), end-of-life .NET channels,
           Avalonia patch, minor and major releases with the SkiaSharp/HarfBuzzSharp/ANGLE versions they declare,
@@ -18,10 +20,10 @@
           [--dry-run]
           Update the files of one group, computed from the repository as it is (one pull request per group):
             inputs          (default) .NET runtime patch releases with the official Linux build
-                            containers of their VMR commit, the Avalonia patch release of the pinned
-                            minor, SkiaSharp patch releases of the pinned milestones and the head of the pinned
-                            ANGLE branch with the depot_tools revision of its DEPS. --dotnet, --avalonia,
-                            --skiasharp and --angle select a subset.
+                            containers of their VMR commit (a preview pin is report only), the Avalonia patch
+                            release of the pinned minor, SkiaSharp patch releases of the pinned milestones and the
+                            head of the pinned ANGLE branch with the depot_tools revision of its DEPS. --dotnet,
+                            --avalonia, --skiasharp and --angle select a subset.
             avalonia-minor  the newest release of the newest Avalonia minor of the pinned major, when it declares
                             the SkiaSharp, HarfBuzzSharp and ANGLE versions of the pinned Avalonia; otherwise
                             report only, like newer majors.
@@ -33,8 +35,8 @@
             llvm            the LLVM release installed by .github/actions/install-llvm; this changes the compiled
                             binaries but no package version.
           Groups that change package inputs give every package family whose locked version would get other
-          inputs a new version (<_Major> + 1 once, otherwise its revision or prerelease number + 1) and append
-          to the lock. Writes every file or none, and lists tracked files that still mention the old versions.
+          inputs a new version (<_Major> + 1 once, otherwise its revision or prerelease number + 1) and write
+          the lock. Writes every file or none, and lists tracked files that still mention the old versions.
           --keep-going records a failed lookup other than .NET and skips that item. --metadata FILE writes a
           JSON summary for the pull request (group, changed files, target, title, body, updates, notes, errors
           and, for inputs, the security verdict before and after), also when nothing changed, never on exit
@@ -244,17 +246,25 @@ class Client:
                 yield chunk
 
     def ls_remote(self, repository, *patterns):
+        """{ref: commit} of the refs matching `patterns`, retrying failures like the HTTP reads, except a timeout:
+        its limit covers the whole command, so retrying would make a hung git endpoint cost every lookup several
+        limits, and the workflow runs the check and all groups within one job timeout."""
         command = ["git", "ls-remote", repository, *patterns]
         environment = dict(os.environ, GIT_TERMINAL_PROMPT="0")
-        try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=self.timeout * 2,
-                                    env=environment, check=False)
-        except FileNotFoundError:
-            raise UpstreamError("git is required for ls-remote") from None
-        except subprocess.TimeoutExpired:
-            raise UpstreamError(f"git ls-remote {repository}: timed out") from None
-        if result.returncode != 0:
-            raise UpstreamError(f"git ls-remote {repository}: {result.stderr.strip() or result.returncode}")
+        for attempt in range(1, self.attempts + 1):
+            try:
+                result = subprocess.run(command, capture_output=True, text=True, timeout=self.timeout * 2,
+                                        env=environment, check=False)
+            except FileNotFoundError:
+                raise UpstreamError("git is required for ls-remote") from None
+            except subprocess.TimeoutExpired:
+                raise UpstreamError(f"git ls-remote {repository}: timed out after {self.timeout * 2}s") from None
+            if result.returncode == 0:
+                break
+            reason = result.stderr.strip() or f"exit code {result.returncode}"
+            if attempt == self.attempts:
+                raise UpstreamError(f"git ls-remote {repository}: {reason} (after {attempt} attempts)")
+            time.sleep(2 * attempt)
         refs = {}
         for line in result.stdout.splitlines():
             commit, _, ref = line.partition("\t")
@@ -263,8 +273,8 @@ class Client:
 
 
 class CachingClient:
-    """Remembers the successful reads of one apply run, so the security verdicts before and after the update and
-    the planners see the same upstream state and nothing is fetched twice."""
+    """Remembers the reads of one apply run, failed ones included, so the security verdicts before and after the
+    update and the planners see the same upstream state and nothing is fetched twice."""
 
     def __init__(self, client):
         self._client = client
@@ -272,8 +282,14 @@ class CachingClient:
 
     def _cached(self, key, read):
         if key not in self._cache:
-            self._cache[key] = read()
-        return copy.deepcopy(self._cache[key])
+            try:
+                self._cache[key] = read()
+            except UpstreamError as error:
+                self._cache[key] = error
+        value = self._cache[key]
+        if isinstance(value, UpstreamError):
+            raise copy.copy(value)
+        return copy.deepcopy(value)
 
     def get(self, url, accept=None):
         return self._cached(("get", url, accept), lambda: self._client.get(url, accept))
@@ -381,8 +397,11 @@ def vmr_source(client, runtime, release, channel):
     """VMR tag and commit that built `runtime`, cross-checked against Microsoft.NETCore.App.Ref.
 
     Of the 1xx SDKs the release lists, the one whose peeled tag commit is the commit in the Ref nuspec wins.
-    Lookup failures (a nuspec not published yet, a missing tag) end up in "problems"; nothing is raised."""
-    result = {"runtime": runtime, "tag": None, "commit": None, "nuget-commit": None, "problems": []}
+    "problems" say why the release cannot be pinned (a nuspec not published yet, a missing tag, commits that
+    disagree); "lookup-errors" are reads that failed otherwise (HTTP 5xx, timeouts, git ls-remote), which leave
+    it unknown. Nothing is raised, so that the security verdict does not depend on these lookups."""
+    result = {"runtime": runtime, "tag": None, "commit": None, "nuget-commit": None, "problems": [],
+              "lookup-errors": []}
     candidates = _sdk_1xx(release, channel) if release else []
     if not candidates:
         result["problems"].append(f"no 1xx SDK listed for runtime {runtime}")
@@ -391,8 +410,10 @@ def vmr_source(client, runtime, release, channel):
         result["nuget-commit"] = nuspec_commit(nuspec(client, "Microsoft.NETCore.App.Ref", runtime))
         if result["nuget-commit"] is None:
             result["problems"].append(f"Microsoft.NETCore.App.Ref {runtime} declares no repository commit")
-    except UpstreamError as error:
+    except NotFound as error:
         result["problems"].append(f"Microsoft.NETCore.App.Ref {runtime}: {error}")
+    except UpstreamError as error:
+        result["lookup-errors"].append(f"Microsoft.NETCore.App.Ref {runtime}: {error}")
     try:
         tags = []
         for sdk in candidates:
@@ -403,7 +424,8 @@ def vmr_source(client, runtime, release, channel):
                 result["tag"], result["commit"] = tag, commit
                 return result
     except UpstreamError as error:
-        result["problems"].append(str(error))
+        # A missing tag is not an error (tag_commit returns None), so this is a failed lookup.
+        result["lookup-errors"].append(str(error))
         return result
     if len(tags) == 1:
         result["tag"], result["commit"] = tags[0]
@@ -443,6 +465,16 @@ def build_containers(client, commit):
     return containers
 
 
+def channel_releases(client, url):
+    """{runtime version: release} of a channel's releases.json; the first release listing a runtime counts."""
+    releases = {}
+    for release in client.json(url)["releases"]:
+        version = (release.get("runtime") or {}).get("version")
+        if version and version not in releases:
+            releases[version] = release
+    return releases
+
+
 def dotnet_report(client, pinned):
     index = client.json(DOTNET_INDEX)["releases-index"]
     reports = []
@@ -451,11 +483,7 @@ def dotnet_report(client, pinned):
         entry = next((item for item in index if item.get("channel-version") == channel), None)
         if entry is None:
             raise UpstreamError(f"{DOTNET_INDEX} has no channel {channel}")
-        releases = {}
-        for release in client.json(entry["releases.json"])["releases"]:
-            version = (release.get("runtime") or {}).get("version")
-            if version and version not in releases:
-                releases[version] = release
+        releases = channel_releases(client, entry["releases.json"])
         newer = sorted((version for version in releases
                         if version_key(version) > version_key(runtime) and (is_stable(version) or not is_stable(runtime))),
                        key=version_key)
@@ -473,7 +501,8 @@ def dotnet_report(client, pinned):
             current["problems"].append(f"pinned commit {pinned_source.get('commit')} != {current['commit']}")
         latest = newer[-1] if newer else runtime
         reports.append({
-            "framework": framework, "channel": channel, "support-phase": entry.get("support-phase"),
+            "framework": framework, "channel": channel, "releases.json": entry["releases.json"],
+            "support-phase": entry.get("support-phase"),
             "eol-date": entry.get("eol-date"), "eol": entry.get("support-phase") == "eol",
             "pinned": runtime, "pinned-source": current,
             "latest": latest, "latest-source": vmr_source(client, latest, releases[latest], channel) if newer else current,
@@ -580,7 +609,8 @@ def avalonia_report(client, pinned):
 # --- SkiaSharp / HarfBuzzSharp -------------------------------------------------------------------
 
 def skiasharp_source(client, version):
-    """skia commit (externals/skia at tag v<version>) and HarfBuzzSharp version (SkiaSharp.HarfBuzz nuspec)."""
+    """skia commit (externals/skia at tag v<version>), HarfBuzzSharp version (SkiaSharp.HarfBuzz nuspec) and the
+    commit of the tag, from which the recipe downloads build files."""
     problems = []
     contents = client.json(f"{GITHUB_API}/repos/mono/SkiaSharp/contents/externals/skia?ref=v{version}")
     # The contents API answers with a list for a directory and an object for a file or submodule.
@@ -597,8 +627,10 @@ def skiasharp_source(client, version):
         problems.append(f"tag v{version} is {tag} but SkiaSharp {version} was built from {built_from}")
     harfbuzz_version = minimum(harfbuzz[0]) if len(harfbuzz) == 1 else None
     problems += _malformed(version=(version, _VERSION), **{"skia commit": (skia_commit, _COMMIT),
-                                                            "HarfBuzzSharp version": (harfbuzz_version, _VERSION)})
-    return {"version": version, "skia-commit": skia_commit, "harfbuzz": harfbuzz_version, "problems": problems}
+                                                            "HarfBuzzSharp version": (harfbuzz_version, _VERSION),
+                                                            "SkiaSharp commit": (tag, _COMMIT)})
+    return {"version": version, "skia-commit": skia_commit, "harfbuzz": harfbuzz_version, "skiasharp-commit": tag,
+            "problems": problems}
 
 
 def skiasharp_blob(client, path, version):
@@ -960,6 +992,11 @@ def run_check(client, root=ROOT):
     return report
 
 
+def _source_problems(source):
+    """The problems and failed lookups of a vmr_source result, for the report."""
+    return source["problems"] + [f"lookup failed: {error}" for error in source["lookup-errors"]]
+
+
 def _sections(report):
     """[(title, headers, rows, notes)] shared by the text and Markdown renderings."""
     sections = []
@@ -978,15 +1015,20 @@ def _sections(report):
             for release in item["security"]:
                 notes.append(f"{item['framework']} {release['version']} ({release['date']}): {', '.join(release['cves']) or 'no CVE ids'}")
             mapping = item["pinned-source"]
-            if mapping["problems"]:
-                notes.append(f"{item['framework']} pinned {item['pinned']}: " + "; ".join(mapping["problems"]))
+            if _source_problems(mapping):
+                notes.append(f"{item['framework']} pinned {item['pinned']}: " + "; ".join(_source_problems(mapping)))
             else:
                 notes.append(f"{item['framework']} pinned {item['pinned']} -> {mapping['tag']} {mapping['commit']}: "
                              "tag and Microsoft.NETCore.App.Ref commit agree with native/hostlibs/versions.json")
-            if item["newer"] and latest["problems"]:
-                notes.append(f"{item['framework']} latest {item['latest']}: " + "; ".join(latest["problems"]))
-        if any(item["newer"] for item in report["dotnet"]):
+            if item["newer"] and _source_problems(latest):
+                notes.append(f"{item['framework']} latest {item['latest']}: " + "; ".join(_source_problems(latest)))
+        if any(item["newer"] and is_stable(item["pinned"]) for item in report["dotnet"]):
             notes.append("newer patch releases: apply group inputs")
+        previews = [f"{item['framework']} {item['latest']}" for item in report["dotnet"]
+                    if item["newer"] and not is_stable(item["pinned"])]
+        if previews:
+            notes.append("newer releases of preview pins (report only; move a preview pin by hand): "
+                         + ", ".join(previews))
         sections.append((".NET runtimes", ["TFM", "pinned", "latest", "VMR tag", "VMR commit", "newer security", "support"],
                          rows, notes))
     if report.get("avalonia") is not None:
@@ -1111,31 +1153,63 @@ def command_check(args, client):
 
 # --- lock ----------------------------------------------------------------------------------------
 
-def _git(root, *arguments):
+def _git(root, *arguments, input=None):
     try:
-        return subprocess.run(["git", *arguments], cwd=root, capture_output=True, timeout=60, check=False)
+        return subprocess.run(["git", *arguments], cwd=root, input=input, capture_output=True, timeout=60, check=False)
     except (OSError, subprocess.SubprocessError):
         return None
 
 
-def lock_at(root, ref):
-    """The lock document at git revision `ref` of the repository at `root`: (lock, None) when read,
-    (None, "no-file") when that revision has no lock, (None, "no-ref") without git or without that revision."""
+def _git_failure(what, result):
+    return UpstreamError(f"git {what}: {result.stderr.decode('utf-8', 'replace').strip() if result else 'unavailable'}")
+
+
+def lock_history(root, ref):
+    """[(commit, lock document)] of every commit on the first-parent history of git revision `ref` that changed
+    the lock, oldest first; None without git or without that revision. A shallow clone is an error: its history
+    is cut off.
+
+    Commits that deleted the lock are left out, and so are commits whose lock is not JSON (conflict markers, say),
+    each with a line naming it: such a commit fails its own check, so nothing was published from it. A lock that
+    is JSON but that lock_entries() cannot read is an error, so that a change of the lock format cannot drop the
+    entries of older locks unnoticed."""
     resolved = _git(root, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
     if resolved is None or resolved.returncode != 0:
-        return None, "no-ref"
+        return None
     commit = resolved.stdout.decode("utf-8").strip()
-    # ls-tree and "<commit>:./<path>" resolve paths relative to `root`, which may be below the work tree root.
-    listed = _git(root, "ls-tree", "--name-only", commit, "--", package_inputs.LOCK)
+    shallow = _git(root, "rev-parse", "--is-shallow-repository")
+    if shallow is None or shallow.returncode != 0:
+        raise _git_failure("rev-parse --is-shallow-repository", shallow)
+    if shallow.stdout.strip() != b"false":
+        raise UpstreamError(f"{root} is a shallow clone, so the history of {package_inputs.LOCK} is incomplete; "
+                            "fetch the whole history (git fetch --unshallow)")
+    # The pathspec is relative to `root`, which may be below the work tree root; cat-file paths are not.
+    listed = _git(root, "rev-list", "--first-parent", "--reverse", commit, "--", package_inputs.LOCK)
+    prefix = _git(root, "rev-parse", "--show-prefix")
     if listed is None or listed.returncode != 0:
-        raise UpstreamError(f"git ls-tree {ref}: {listed.stderr.decode('utf-8', 'replace').strip() if listed else ''}")
-    if not listed.stdout.strip():
-        return None, "no-file"
-    shown = _git(root, "show", f"{commit}:./{package_inputs.LOCK}")
+        raise _git_failure(f"rev-list {ref}", listed)
+    if prefix is None or prefix.returncode != 0:
+        raise _git_failure("rev-parse --show-prefix", prefix)
+    commits = listed.stdout.decode("utf-8").split()
+    path = prefix.stdout.decode("utf-8").strip() + package_inputs.LOCK
+    shown = _git(root, "cat-file", "--batch", input="".join(f"{item}:{path}\n" for item in commits).encode("utf-8"))
     if shown is None or shown.returncode != 0:
-        raise UpstreamError(f"git show {ref}:{package_inputs.LOCK}: "
-                            f"{shown.stderr.decode('utf-8', 'replace').strip() if shown else ''}")
-    return package_inputs.parse(shown.stdout.decode("utf-8"), f"{package_inputs.LOCK} at {ref}"), None
+        raise _git_failure("cat-file --batch", shown)
+    locks, data, position = [], shown.stdout, 0
+    for item in commits:
+        end = data.index(b"\n", position)
+        header = data[position:end].split()
+        position = end + 1
+        if header[-1] == b"missing":
+            continue
+        size = int(header[2])
+        blob = data[position:position + size]
+        position += size + 1
+        try:
+            locks.append((item, package_inputs.parse(blob, f"{package_inputs.LOCK} at {item}")))
+        except package_inputs.Unreadable as error:
+            print(f"Skipped {error}: nothing is published from a commit whose lock is not JSON.")
+    return locks
 
 
 def _print_all(messages, stream=None):
@@ -1143,88 +1217,76 @@ def _print_all(messages, stream=None):
         print(message, file=stream or sys.stderr)
 
 
+def _history_problems(locks, lock, records):
+    """Messages for a `lock` and the computed `records` against the history `locks`: a version whose entry differs
+    from its first committed entry, or that moved below a committed version of its variant."""
+    changed = [package_inputs.describe_changed_entry(item, item["origin"])
+               for item in package_inputs.rewritten_entries(locks, lock)]
+    if changed:
+        changed.append("Entries of a committed lock never change: restore each from the lock of the commit named "
+                       "above. To publish other inputs, change the version instead.")
+    committed = package_inputs.committed_entries(locks)
+    return changed + [package_inputs.describe_regression(item)
+                      for item in package_inputs.regressions(committed, records)]
+
+
 def _lock_check(root, records, lock, base):
-    """lock --check: rules 1-4, and every entry of the lock at `base` (HEAD by default) unchanged."""
+    """lock --check: the rules against the lock, and against the locks on the first-parent history of `base`
+    (HEAD by default)."""
     problems = package_inputs.guard(lock, records)
-    _print_all(problems)
     ref = base or "HEAD"
-    base_lock, reason = lock_at(root, ref)
-    changed = []
-    if reason == "no-ref":
+    locks = lock_history(root, ref)
+    if locks is None:
         if base:
             raise UpstreamError(f"cannot resolve the git revision {base}")
-    elif reason == "no-file":
+    elif not locks:
         if base:
-            print(f"{base} has no {package_inputs.LOCK}; skipped the comparison with it.")
+            print(f"No commit on the first-parent history of {base} has {package_inputs.LOCK}; skipped the "
+                  "comparison with it.")
     else:
-        changed = package_inputs.changed_entries(base_lock, lock)
-        _print_all(package_inputs.describe_changed_entry(item, ref) for item in changed)
-        if changed:
-            print(f"Entries of a committed lock never change: restore them from {ref}. To publish other inputs, "
-                  "change the version instead.", file=sys.stderr)
-        elif base:
-            count = sum(len(versions) for versions in package_inputs.history(base_lock).values())
-            print(f"All {count} entries of the lock at {base} are unchanged.")
+        found = [message for message in _history_problems(locks, lock, records) if message not in problems]
+        if not found:
+            count = sum(len(versions) for versions in package_inputs.first_entries(locks).values())
+            print(f"All {count} versions on the first-parent history of {ref} keep their first committed entries, "
+                  "and no version moved back.")
+        problems += found
+    _print_all(problems)
     differences = package_inputs.stale(lock, records)
     if differences:
         print(f"{package_inputs.LOCK} is out of date:\n  " + "\n  ".join(differences)
               + "\nRun `python scripts/upstream.py lock` (task upstream-lock) and commit the result.", file=sys.stderr)
-    if problems or changed or differences:
+    if problems or differences:
         return 1
     print(f"{package_inputs.LOCK} is up to date.")
     return 0
 
 
-def _lock_write(root, records, lock, force):
-    """lock [--force]: append the computed versions; --force may replace or remove entries not committed in HEAD."""
-    conflicts = package_inputs.conflicts(records)
-    if conflicts:
-        _print_all(package_inputs.describe_conflict(item) for item in conflicts)
+def _lock_write(root, records, lock):
+    """lock: write the computed versions, unless the history of HEAD refuses them. Entries that no lock on that
+    history holds were never published, so they are replaced or removed freely."""
+    refused = ([package_inputs.describe_unnormalized(item) for item in package_inputs.unnormalized(records)]
+               + [package_inputs.describe_conflict(item) for item in package_inputs.conflicts(records)])
+    result = package_inputs.entries(records)
+    locks = lock_history(root, "HEAD") or []
+    if not refused:
+        committed = package_inputs.committed_entries(locks)
+        refused = ([package_inputs.describe_violation(item) for item in package_inputs.violations(committed, records)]
+                   + [package_inputs.describe_regression(item)
+                      for item in package_inputs.regressions(committed, records)])
+    if refused:
+        _print_all(refused)
         print(f"Not written: {package_inputs.LOCK}.", file=sys.stderr)
         return 1
-    committed, reason = lock_at(root, "HEAD")
-    if committed is not None:
-        changed = package_inputs.changed_entries(committed, lock)
-        if changed:
-            _print_all(package_inputs.describe_changed_entry(item, "HEAD") for item in changed)
-            print(f"Not written: {package_inputs.LOCK}. Committed entries never change; restore them with "
-                  f"`git checkout HEAD -- {package_inputs.LOCK}` and run lock again.", file=sys.stderr)
-            return 1
-    committed_versions = {(family, version) for family, versions in package_inputs.history(committed).items()
-                          for version in versions}
-
-    packages = {family: dict(versions) for family, versions in package_inputs.history(lock).items()}
-    violations = package_inputs.violations(lock, records)
-    regressions = package_inputs.regressions(lock, records)
-    replaced = sorted({(item["family"], item["version"]) for item in violations})
-    removed = sorted({(item["family"], version) for item in regressions for version in item["newer"]})
-    if violations or regressions:
-        _print_all(package_inputs.describe_violation(item) for item in violations)
-        _print_all(package_inputs.describe_regression(item) for item in regressions)
-        if not force:
-            print(f"Not written: {package_inputs.LOCK}. Change the versions above. --force replaces or removes only "
-                  "entries that are not committed yet (not in the lock of HEAD).", file=sys.stderr)
-            return 1
-        blocked = sorted(set(replaced + removed) & committed_versions)
-        if blocked:
-            print(f"Not written: {package_inputs.LOCK}. --force cannot change entries committed in HEAD: "
-                  + ", ".join(f"{family} {version}" for family, version in blocked)
-                  + ". Change the versions instead.", file=sys.stderr)
-            return 1
-        if reason is not None:
-            print(f"HEAD has no {package_inputs.LOCK} (or git is unavailable): every entry counts as uncommitted.")
-        for family, version in replaced + removed:
-            del packages[family][version]
-
-    result = package_inputs.append(packages, records)
     if lock is not None and package_inputs.document(result) == lock:
         print(f"{package_inputs.LOCK} is up to date.")
         return 0
-    locked = package_inputs.history(lock)
-    lines = [f"replaced {family} {version}" for family, version in replaced]
-    lines += [f"removed {family} {version}" for family, version in removed]
-    lines += [f"added {family} {version}" for family, versions in result.items() for version in versions
-              if version not in locked.get(family, {})]
+    locked = package_inputs.lock_entries(lock)
+    lines = []
+    for family in dict.fromkeys([*locked, *result]):
+        old, new = locked.get(family, {}), result.get(family, {})
+        lines += [f"removed {family} {version}" for version in old if version not in new]
+        lines += [f"replaced {family} {version}" for version in old if version in new and old[version] != new[version]]
+        lines += [f"added {family} {version}" for version in new if version not in old]
     if lock is not None and lock.get("comment") != package_inputs.COMMENT:
         lines.append("updated the comment")
     _write_files(root, {package_inputs.LOCK: package_inputs.render(result).encode("utf-8")})
@@ -1238,7 +1300,7 @@ def command_lock(args, client=None):
     lock = package_inputs.read_lock(root)
     if args.check:
         return _lock_check(root, records, lock, args.base)
-    return _lock_write(root, records, lock, args.force)
+    return _lock_write(root, records, lock)
 
 
 # --- apply: files --------------------------------------------------------------------------------
@@ -1400,7 +1462,7 @@ def bump_package_versions(stage, lock):
     stage = Path(stage)
     before = package_inputs.compute(stage)
     families = {}
-    for item in package_inputs.violations(lock, before):
+    for item in package_inputs.violations(package_inputs.lock_entries(lock), before):
         families.setdefault(item["family"], []).append(item["variant"])
     if not families:
         return []
@@ -1486,16 +1548,42 @@ class Run:
             return None
 
 
+def dotnet_target(run, item):
+    """(version, VMR source) of the newest newer release of a dotnet_report item whose VMR source is published, or
+    None; the newer releases passed over are noted. A failed lookup raises.
+
+    A preview pin is report only: a newer preview is no patch release, and the release itself would move the
+    version of ChsBuffer.AppHost.Static (<runtime>-alpha.N) back."""
+    if not is_stable(item["pinned"]):
+        if item["newer"]:
+            run.notes.append(f"{item['framework']} {item['latest']} not applied: {item['pinned']} is a preview; "
+                             "move a preview pin by hand")
+        return None
+    releases = None
+    for version in reversed(item["newer"]):
+        if version == item["latest"]:
+            source = item["latest-source"]
+        else:
+            releases = releases or channel_releases(run.client, item["releases.json"])
+            source = vmr_source(run.client, version, releases[version], item["channel"])
+        if source["lookup-errors"]:
+            raise UpstreamError(f".NET {item['framework']} {version}: " + "; ".join(source["lookup-errors"]))
+        if not source["problems"] and source["commit"]:
+            return version, source
+        run.notes.append(f"{item['framework']} {version} not applied: "
+                         + "; ".join(source["problems"] or ["no VMR commit"]))
+    return None
+
+
 def plan_dotnet(run):
-    """Newest patch release of each pinned .NET channel; a lookup failure always aborts (no --keep-going)."""
+    """The newest patch release of each pinned .NET channel whose Ref nuspec and VMR tag are published; a lookup
+    failure always aborts (no --keep-going)."""
     pinned, updates = run.pinned, []
     for item in dotnet_report(run.client, pinned):
-        if not item["newer"]:
+        found = dotnet_target(run, item)
+        if found is None:
             continue
-        old, new, source = item["pinned"], item["latest"], item["latest-source"]
-        if source["problems"] or not source["commit"]:
-            run.notes.append(f"{item['framework']} {new} not applied: " + "; ".join(source["problems"] or ["no VMR commit"]))
-            continue
+        old, (new, source) = item["pinned"], found
         _checked(new, _VERSION, f".NET {item['framework']} runtime")
         _checked(source["tag"], _TAG, f".NET {new} VMR tag")
         _checked(source["commit"], _COMMIT, f".NET {new} VMR commit")
@@ -1508,7 +1596,8 @@ def plan_dotnet(run):
             _edit(root, package_inputs.PROPS, lambda text: _set_property(text, f"HostLibsNet{number}Version", old, new))
             _edit(root, "native/hostlibs/versions.json", lambda text: _replace_entry(text, old, new, entry))
 
-        cves = sorted({cve for release in item["security"] for cve in release["cves"]})
+        cves = sorted({cve for release in item["security"] if version_key(release["version"]) <= version_key(new)
+                       for cve in release["cves"] if cve})
         description = (f".NET {item['framework']}: {old} -> {new} ({source['tag']} {source['commit']})"
                        + (f"; security: {', '.join(cves)}" if cves else ""))
         updates.append(Update("dotnet", description, [old, old_source["tag"][1:], old_source["commit"]], edit,
@@ -1560,10 +1649,12 @@ def avalonia_update(run, candidate):
             _edit(root, "native/avalonianative/conandata.yml",
                   lambda text: append_avalonia_source(text, version, url, sha256, commit))
 
-    olds = list(dict.fromkeys([current, native]))
-    return [Update("avalonia", f"Avalonia {', '.join(olds)} -> {version} ({commit}, sha256 {sha256})", olds, edit,
-                   name="Avalonia", version=version, target=f"Avalonia {version} ({commit})",
-                   new_strings=[version] * len(olds))]
+    versions = list(dict.fromkeys([current, native]))
+    # The package documentation names the source commit of the archives next to their version.
+    old_commit = pinned["avalonia-sources"].get(native, {}).get("commit")
+    return [Update("avalonia", f"Avalonia {', '.join(versions)} -> {version} ({commit}, sha256 {sha256})",
+                   [*versions, old_commit], edit, name="Avalonia", version=version,
+                   target=f"Avalonia {version} ({commit})", new_strings=[*[version] * len(versions), commit])]
 
 
 def plan_avalonia(run):
@@ -1637,7 +1728,8 @@ def skiasharp_update(run, line, source, build):
 
         _edit(root, package_inputs.PROPS, props)
         _edit(root, "native/skiasharp/versions.json",
-              lambda text: _replace_entry(text, line, new, [source["skia-commit"], source["harfbuzz"]]))
+              lambda text: _replace_entry(text, line, new, [source["skia-commit"], source["harfbuzz"],
+                                                            source["skiasharp-commit"]]))
         _edit(root, SKIASHARP_BUILD, record)
 
     return [Update("skiasharp", f"SkiaSharp {line} -> {new} (skia {source['skia-commit']}, HarfBuzzSharp "
@@ -1926,8 +2018,7 @@ def apply_group(client, root, group="inputs", selection=INPUT_KINDS, dry_run=Fal
             if problems:
                 raise UpstreamError("the planned changes leave the repository inconsistent; nothing was written:\n"
                                     + "\n".join(problems))
-            history = package_inputs.append(package_inputs.history(lock), after)
-            (stage / package_inputs.LOCK).write_bytes(package_inputs.render(history).encode("utf-8"))
+            (stage / package_inputs.LOCK).write_bytes(package_inputs.render(package_inputs.entries(after)).encode("utf-8"))
             versions = version_changes(before, after)
             update_docs(stage, [pair for update in updates for pair in zip(update.old_strings, update.new_strings)]
                         + version_pairs(before, after))
@@ -2166,14 +2257,11 @@ def main(argv=None, client=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--root", default=str(ROOT), help=argparse.SUPPRESS)
     commands = parser.add_subparsers(dest="command", required=True)
-    lock = commands.add_parser("lock", help="append the computed package versions to the lock (offline)")
+    lock = commands.add_parser("lock", help="write the computed package versions to the lock (offline)")
     lock.add_argument("--check", action="store_true", help="only report whether the lock is current")
-    lock.add_argument("--force", action="store_true",
-                      help="replace or remove entries that kept their version with other inputs or lie ahead of a "
-                           "version that moved back; only entries not committed in HEAD")
     lock.add_argument("--base", metavar="GIT_REF",
-                      help="with --check: require every entry of the lock at GIT_REF to be present unchanged "
-                           "(default: HEAD, skipped silently when unavailable)")
+                      help="with --check: compare with the locks on the first-parent history of GIT_REF instead of "
+                           "HEAD (without git, HEAD is skipped silently)")
     check = commands.add_parser("check", help="report newer upstream releases (read-only)")
     check.add_argument("--json", action="store_true", help="print the report as JSON")
     check.add_argument("--fail-on-security", action="store_true",

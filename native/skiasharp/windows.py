@@ -55,9 +55,6 @@ class WindowsBuild:
             env="conanbuild",
         )
 
-        template = (Path(self.source_folder) / "libHarfBuzzSharp.vcxproj.in").read_text(
-            encoding="utf-8-sig"
-        )
         values = {
             "VC_TOOLSET_VER": str(
                 self.settings.get_safe("compiler.runtime_version") or "v145"
@@ -67,17 +64,15 @@ class WindowsBuild:
             ),
             "SKIA_ROOT": str(self._skia_root),
         }
-        for key, value in values.items():
-            template = template.replace(f"$${key}$$", value)
-
         if self._modern:
+            # The HarfBuzzSharp project of the SkiaSharp tag, which source() downloads.
             template = (Path(self.source_folder) / "libHarfBuzzSharp.vcxproj").read_text(encoding="utf-8-sig")
             template = template.replace("..\\..\\..\\externals\\skia", str(self._skia_root))
             template = template.replace("DynamicLibrary", "StaticLibrary")
             template = template.replace("<WholeProgramOptimization>true", "<WholeProgramOptimization>false")
             template = template.replace("<ClCompile>", "<ClCompile><AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>")
-            # Upstream pins its own toolset and SDK (4.156: v145 / 10.0.28000.0) and enables
-            # Spectre mitigation, which requires the optional Spectre-mitigated libraries.
+            # Upstream pins its own toolset and SDK and enables Spectre mitigation,
+            # which requires the optional Spectre-mitigated libraries.
             template = re.sub(r"<PlatformToolset>v\d+</PlatformToolset>",
                               f"<PlatformToolset>{values['VC_TOOLSET_VER']}</PlatformToolset>", template)
             template = re.sub(r"<WindowsTargetPlatformVersion>[^<]*</WindowsTargetPlatformVersion>",
@@ -86,10 +81,19 @@ class WindowsBuild:
             wrapper = (Path(self.source_folder) / "harfbuzz-subset-msvc.cc").read_text()
             wrapper = wrapper.replace("../../../externals/skia", self._skia_root.as_posix())
             save(self, str(self._harfbuzz_build / "harfbuzz-subset-msvc.cc"), wrapper)
+        else:
+            template = (Path(self.source_folder) / "libHarfBuzzSharp.vcxproj.in").read_text(
+                encoding="utf-8-sig"
+            )
+            for key, value in values.items():
+                template = template.replace(f"$${key}$$", value)
         template = template.replace("$(SolutionDir)", "$(ProjectDir)")
         # A NuGet consumer cannot access the build machine's compiler PDB (/Zi).
         # Embed CodeView types in the archive's objects (/Z7) for portable linking.
-        template = template.replace("</ClCompile>", "<DebugInformationFormat>OldStyle</DebugInformationFormat></ClCompile>")
+        clcompile = "<DebugInformationFormat>OldStyle</DebugInformationFormat>"
+        if self._windows_ehcont:
+            clcompile += "<GuardEHContMetadata>true</GuardEHContMetadata>"
+        template = template.replace("</ClCompile>", f"{clcompile}</ClCompile>")
         project = self._harfbuzz_build / "libHarfBuzzSharp.vcxproj"
         if wrapper := os.environ.get("HOSTFORGE_COMPILER_CACHE"):
             launcher = self._harfbuzz_build / "cached-cl.cmd"
@@ -107,6 +111,13 @@ class WindowsBuild:
         )
 
 
+    @property
+    def _windows_ehcont(self):
+        # The .NET hosts link with /guard:ehcont on x64 (eng/native/configurecompiler.cmake), and so do
+        # the relinked ones. link.exe then fails with LNK1386 on any object with C++ EH that lacks the
+        # EH continuation metadata of /guard:ehcont.
+        return self._target_arch == "x64"
+
     def _windows_skia_args(self):
         cflags = [
             '"-DSKIA_C_DLL"',
@@ -114,6 +125,7 @@ class WindowsBuild:
             '"/EHsc"',
             '"/Z7"',
             '"/guard:cf"',
+            *(['"/guard:ehcont"'] if self._windows_ehcont else []),
             '"-D_HAS_AUTO_PTR_ETC=1"',
             '"-D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS=1"',
         ]

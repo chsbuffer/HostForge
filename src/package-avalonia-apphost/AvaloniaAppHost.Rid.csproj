@@ -29,10 +29,12 @@
     <PackageOutputPath>$(AvaloniaAppHostPackageOutputDir)\</PackageOutputPath>
     <AvaloniaAppHostArtifactRoot>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/avalonia-host/$(TargetAvaloniaVersion)'))</AvaloniaAppHostArtifactRoot>
     <_AvaloniaRidProps>$(BaseIntermediateOutputPath)$(PackageId).props</_AvaloniaRidProps>
+    <HostForgePackageNoticesDependsOn>_CollectAvaloniaHostTemplates</HostForgePackageNoticesDependsOn>
   </PropertyGroup>
 
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
   <Import Project="$(MSBuildProjectDirectory)\AvaloniaAppHost.Rids.targets" />
+  <Import Project="$(MSBuildProjectDirectory)\..\HostForge.Notices.targets" />
 
   <ItemGroup>
     <ProjectReference Include="AvaloniaAppHost.Build.csproj" />
@@ -43,6 +45,15 @@
                       Condition="'$(AvaloniaHostRid)' == 'win-x64' or '$(AvaloniaHostRid)' == 'win-arm64'" />
   </ItemGroup>
 
+  <!--
+    SkiaSharp and HarfBuzzSharp depend on their Windows and macOS native assets only. Without these, builds without
+    a matching template load the older Linux libraries that Avalonia.Skia depends on.
+  -->
+  <ItemGroup Condition="$(AvaloniaHostRid.StartsWith('linux-'))">
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="$(SkiaSharpVersion)" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" Version="$(HarfBuzzVersion)" />
+  </ItemGroup>
+
   <ItemGroup>
     <None Include="$(_AvaloniaRidProps)" Pack="true" PackagePath="buildTransitive/$(PackageId).props" />
     <None Include="README.$(AvaloniaHostRid).md" Pack="true" PackagePath="README.md" />
@@ -51,7 +62,8 @@
   <!--
     Packs template/<tfm>/<rid>/{apphost,singlefilehost}[.exe] for every AvaloniaTemplateTfms entry and
     registers each one with an AvaloniaAppHostRids item. The Build package activates the item whose
-    RID and TFM match the consuming project.
+    RID and TFM match the consuming project. The licenses/ directories that Link.proj writes next to
+    the templates become the package's THIRD-PARTY-NOTICES.txt.
   -->
   <Target Name="_CollectAvaloniaHostTemplates"
           BeforeTargets="_GetPackageFiles"
@@ -71,10 +83,23 @@
 
       <_AvaloniaMissingTemplateHostFile Include="@(_AvaloniaTemplateHostFileToPack)"
                                         Condition="!Exists('%(Identity)')" />
+      <!-- Link.proj copies the licenses of the linked inputs with the templates. -->
+      <_AvaloniaTemplateLicenseMarker Include="@(_AvaloniaPackTfm->'$(AvaloniaAppHostArtifactRoot)/%(Identity)/$(AvaloniaHostRid)/licenses/skiasharp/skia/LICENSE')" />
+      <_AvaloniaMissingTemplateHostFile Include="@(_AvaloniaTemplateLicenseMarker)"
+                                        Condition="!Exists('%(Identity)')" />
 
       <None Include="@(_AvaloniaTemplateHostFileToPack)"
             Pack="true"
             PackagePath="%(_AvaloniaTemplateHostFileToPack.PackagePath)" />
+    </ItemGroup>
+
+    <!-- Item transforms do not expand wildcards; a property does. -->
+    <PropertyGroup>
+      <_AvaloniaTemplateLicenses>@(_AvaloniaPackTfm->'$(AvaloniaAppHostArtifactRoot)/%(Identity)/$(AvaloniaHostRid)/licenses/**/*')</_AvaloniaTemplateLicenses>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <HostForgeThirdPartyLicense Include="$(_AvaloniaTemplateLicenses)" />
 
       <!-- %24 keeps the MSBuild expressions literal in the generated props. -->
       <_AvaloniaRidRegistration Include="@(_AvaloniaPackTfm)">

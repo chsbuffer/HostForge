@@ -23,8 +23,10 @@ its commits do not count as maintainer commits, so it is deleted or rebuilt like
   - a pull request from upstream/<group> that the bot did not open: left alone and reported.
   - lookup errors (metadata "errors"): an existing branch or pull request is kept as it is (no close, delete,
     push or edit) and the errors are reported; without either, a pull request is opened for what changed.
-  - no open pull request and a closed, unmerged one carries the same target: suppressed (declined by the
-    maintainer; a newer target opens a new pull request).
+  - no open pull request and a closed, unmerged one carries the same target and was last closed by someone
+    other than the bot (issue events): suppressed (declined by the maintainer; a newer target opens a new pull
+    request). The pull requests the workflow closes itself (nothing changed, group no longer planned) never
+    suppress their target.
   - maintainer commits: left alone; on an open pull request one comment per newer target.
   - nothing changed: the open pull request is closed with a comment and the branch deleted.
   - open pull request with the same patch and no conflict: no push (so no CI run to approve); its title and body
@@ -120,7 +122,7 @@ OUTCOMES = {
     "foreign": "pull request not opened by the workflow",
     "kept": "kept: lookup errors",
     "suppressed": "suppressed (declined target)",
-    "closed": "closed (main is up to date)",
+    "closed": "closed (no changes planned)",
     "retired": "closed (group no longer planned)",
     "stale": "stale plan (main moved; retried next run)",
     "nothing": "nothing to do",
@@ -459,6 +461,18 @@ class GitHub:
     def comments(self, number):
         return self.api("GET", f"issues/{number}/comments?per_page=100", paginate=True)
 
+    def closed_by(self, number):
+        """Login of whoever closed the pull request last; None when its events show no closing."""
+        # The events need only the pull-requests permission of the job; the closed_by field of issues/{number}
+        # needs the issues permission.
+        events = [event for event in self.api("GET", f"issues/{number}/events?per_page=100", paginate=True)
+                  if isinstance(event, dict) and event.get("event") == "closed"]
+        if not events:
+            return None
+        # ISO 8601 UTC timestamps sort as text; of events in the same second, the later one is listed later.
+        _, last = max(enumerate(events), key=lambda item: (str(item[1].get("created_at") or ""), item[0]))
+        return (last.get("actor") or {}).get("login")
+
     def comment(self, number, body):
         return self.api("POST", f"issues/{number}/comments", {"body": body})
 
@@ -551,11 +565,14 @@ class Processor:
 
         target_hash = sha256(meta["target"]) if meta["changed"] else None
         if meta["changed"] and open_pull is None:
-            declined = [pull for pull in ours if pull.get("state") == "closed" and not pull.get("merged_at")
-                        and (parse_marker(pull.get("body"), group) or (None,))[0] == target_hash]
+            # The workflow closes pull requests itself (nothing changed, group no longer planned); only a pull
+            # request that someone else closed last is declined.
+            declined = next((pull for pull in ours if pull.get("state") == "closed" and not pull.get("merged_at")
+                             and (parse_marker(pull.get("body"), group) or (None,))[0] == target_hash
+                             and self.github.closed_by(pull.get("number")) != BOT_LOGIN), None)
             if declined:
                 result.outcome = "suppressed"
-                result.url = declined[0].get("html_url")
+                result.url = declined.get("html_url")
                 return
 
         maintainers = self.git.maintainer_emails(self.main_sha, head) if head else []
@@ -570,7 +587,7 @@ class Processor:
             result.outcome = "maintainer"
             result.notes.append(f"commits by {', '.join(maintainers)} on {branch} are never overwritten or deleted")
             if not meta["changed"]:
-                result.notes.append("main is already up to date with the upstream versions of this group")
+                result.notes.append("the plan has no changes for this group")
             elif open_pull is None:
                 result.notes.append(f"no pull request is opened while {branch} has maintainer commits; delete the "
                                     "branch to let the workflow open one")
@@ -580,8 +597,11 @@ class Processor:
 
         if not meta["changed"]:
             if open_pull:
-                self.github.comment(open_pull["number"], "main is already up to date with the upstream versions "
-                                    f"of this group; closing. ([upstream run]({self.run_url}))")
+                # The plan also has no changes when the newest releases cannot be applied (yet), so the comment
+                # does not claim that main is up to date.
+                self.github.comment(open_pull["number"], "The upstream workflow plans no changes for this group "
+                                    f"any more; closing. The [upstream run]({self.run_url}) lists any updates it "
+                                    "could not apply.")
                 self.github.update_pull(open_pull["number"], state="closed")
                 result.open_target = None
             if head:

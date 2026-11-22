@@ -10,7 +10,7 @@
     <HostLibsFlavor>no-pgo</HostLibsFlavor>
     <HostLibsRoot>$([MSBuild]::NormalizePath('$(HostLibsBaseRoot)', '$(HostLibsFlavor)'))</HostLibsRoot>
     <PackageId>ChsBuffer.AppHost.Static.$(StaticAppHostRid)</PackageId>
-    <Version>$(HostLibsVersion)-alpha.1</Version>
+    <Version>$(HostLibsVersion)-alpha.2</Version>
     <Authors>ChsBuffer</Authors>
     <Description>Relink AppHost and SingleFileHost from NativeLibrary items with static .NET $(HostLibsVersion) host libs for $(HostLibsTargetFramework) $(StaticAppHostRid).</Description>
     <PackageTags>apphost;single-file;host-template</PackageTags>
@@ -47,12 +47,14 @@
   <Target Name="_GenerateStaticAppHostProps" BeforeTargets="_GetPackageFiles">
     <Error Condition="'$(HostLibsVersion)' == ''"
            Text="No host libs version is defined for HostLibsTargetFramework='$(HostLibsTargetFramework)'. Supported: $(HostForgeTargetFrameworks)." />
+    <Error Condition="!$(StaticAppHostRid.StartsWith('win-'))"
+           Text="StaticAppHostRid='$(StaticAppHostRid)' is not a Windows RID; the package carries only the Windows link targets." />
     <Error Condition="!Exists('$(PackageAssetsDir)')" Text="Host libs directory not found: $(PackageAssetsDir)" />
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_StaticAppHostProps)'))" />
     <WriteLinesToFile File="$(_StaticAppHostProps)"
                       Overwrite="true"
                       WriteOnlyWhenDifferent="true"
-                      Lines="&lt;Project&gt;;  &lt;PropertyGroup&gt;;    &lt;HostForgeStaticAppHostTargetFramework&gt;$(HostLibsTargetFramework)&lt;/HostForgeStaticAppHostTargetFramework&gt;;  &lt;/PropertyGroup&gt;;&lt;/Project&gt;" />
+                      Lines="&lt;Project&gt;;  &lt;PropertyGroup&gt;;    &lt;HostForgeStaticAppHostTargetFramework&gt;$(HostLibsTargetFramework)&lt;/HostForgeStaticAppHostTargetFramework&gt;;    &lt;HostForgeStaticAppHostRid&gt;$(StaticAppHostRid)&lt;/HostForgeStaticAppHostRid&gt;;  &lt;/PropertyGroup&gt;;&lt;/Project&gt;" />
   </Target>
 
 </Project>

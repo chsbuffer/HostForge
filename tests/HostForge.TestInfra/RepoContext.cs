@@ -1,5 +1,6 @@
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Locator;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
@@ -91,9 +92,33 @@ public static class RepoContext
     public static string ArtifactsTestRoot { get; } =
         Path.Combine(RepoRoot, "artifacts", "tmp", "build-tests");
 
+    private static readonly Lazy<string> TestPackages = new(CreateTestPackagesRoot);
+
+    /// <summary>
+    /// The NuGet package folder of the projects that tests restore, passed as <c>RestorePackagesPath</c> so that
+    /// neither <c>NUGET_PACKAGES</c> nor the <c>globalPackagesFolder</c> of NuGet.Config redirects the restore.
+    /// NuGet uses a package version found in this folder without reading the package sources, and development
+    /// repacks the repository's packages under unchanged versions, so each test run first removes them from it.
+    /// </summary>
+    public static string TestPackagesRoot => TestPackages.Value;
+
     public const string AvaloniaAppHostBuildPackageId = "ChsBuffer.Avalonia.AppHost.Build";
 
     public static string GetAvaloniaRidPackageId(string rid) => $"{AvaloniaAppHostBasePackageId}.{rid}";
+
+    private static string CreateTestPackagesRoot()
+    {
+        // One folder per test project, so that test projects running at the same time keep their own packages.
+        string testProject = Assembly.GetEntryAssembly()?.GetName().Name
+            ?? throw new InvalidOperationException("The test run has no entry assembly.");
+        string root = Path.Combine(ArtifactsTestRoot, "packages", testProject);
+        Directory.CreateDirectory(root);
+        // The repository's package IDs start with ChsBuffer.; the other packages are published versions,
+        // which never change and stay for the next run.
+        foreach (string package in Directory.EnumerateDirectories(root, "chsbuffer.*"))
+            Directory.Delete(package, recursive: true);
+        return root;
+    }
 
     private static string ReadRepoRoot()
     {
@@ -131,7 +156,7 @@ public static class RepoContext
 
     private static KeyValuePair<string, string>[] ReadSkiaSharpSources()
     {
-        // Each entry maps a SkiaSharp version to [mono/skia commit, HarfBuzzSharp version].
+        // Each entry maps a SkiaSharp version to [mono/skia commit, HarfBuzzSharp version, mono/SkiaSharp tag commit].
         string path = Path.Combine(RepoRoot, "native", "skiasharp", "versions.json");
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
         return document.RootElement.EnumerateObject()

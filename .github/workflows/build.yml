@@ -142,6 +142,9 @@ jobs:
         ]
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The package lock check reads the lock of every commit on the first-parent history.
+          fetch-depth: 0
       - name: Read pinned versions
         id: versions
         run: |
@@ -158,37 +161,25 @@ jobs:
               print(f"skiasharp-lines={json.dumps(versions, separators=(',', ':'))}", file=output)
           PY
       - run: python -m unittest discover -s tests/native -v
-      # Every entry of the package lock at the previous push must still be present unchanged, so a lock entry
-      # cannot be rewritten together with its inputs. The previous push is unreachable after a force push and
-      # may be garbage collected; the step then fails, because a force push is exactly what can rewrite
-      # published entries. Compare by hand (lock --check --base <commit>) and push again to publish.
-      - name: Check the package lock against the previous push
-        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+      # Every version keeps the lock entry of the first commit on the first-parent history that holds it, so a
+      # lock entry cannot be rewritten together with its inputs, also not by a push after one whose check failed.
+      # The first-parent history is main; for a pull request, the merge commit on top of its base. Runs after a
+      # failed unit test too, so that test failures do not hide a rewritten entry. A push that leaves the previous
+      # head of main off the first-parent history (a force push) changes the history the check reads, so it
+      # fails: compare by hand (lock --check --base <commit>) and push again.
+      - name: Check the package lock against the history of main
+        if: ${{ !cancelled() }}
         env:
-          BEFORE: ${{ github.event.before }}
+          BEFORE: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: |
-          for delay in 10 20 0; do
-            if git fetch --no-tags --depth=1 origin "$BEFORE"; then
-              exec python scripts/upstream.py lock --check --base FETCH_HEAD
-            fi
-            sleep "$delay"
-          done
-          echo "::error::Cannot fetch the previous push $BEFORE (force push?); the package lock was not compared with it."
-          exit 1
-      # The same comparison for a pull request, against the base commit it was last compared with.
-      - name: Check the package lock against the pull request base
-        if: github.event_name == 'pull_request'
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-        run: |
-          for delay in 10 20 0; do
-            if git fetch --no-tags --depth=1 origin "$BASE"; then
-              exec python scripts/upstream.py lock --check --base FETCH_HEAD
-            fi
-            sleep "$delay"
-          done
-          echo "::error::Cannot fetch the pull request base $BASE; the package lock was not compared with it."
-          exit 1
+          # grep without -q reads all of rev-list: -q would stop it early, and under pipefail the SIGPIPE of
+          # rev-list would look like a force push.
+          if [[ -n "$BEFORE" && "$BEFORE" != 0000000000000000000000000000000000000000 ]] &&
+             ! git rev-list --first-parent HEAD | grep -xF "$BEFORE" >/dev/null; then
+            echo "::error::The previous head of main $BEFORE is not on the first-parent history of $GITHUB_SHA (force push?); the package lock was not checked against the history it was published from."
+            exit 1
+          fi
+          python scripts/upstream.py lock --check
 
   build-angle-windows:
     needs: plan-all
@@ -381,7 +372,7 @@ jobs:
           dotnet-version: 11.0.x
       - name: Pack RID package
         run: dotnet pack src/package-skiasharp-static/SkiaSharp.Static.csproj -c Release -p:AvaloniaHostRid=linux-x64 -p:SkiaSharpVersion=${{ matrix.version }}
-      - name: Publish, run and audit NativeAOT against the target sysroot
+      - name: Publish, run and audit NativeAOT against the target sysroot; run the non-AOT consumer
         env:
           HOSTFORGE_SKIA_VERSION: ${{ matrix.version }}
           HOSTFORGE_CHECK_ANGLE: 'false'
@@ -510,13 +501,13 @@ jobs:
         if: matrix.target.rid == 'linux-arm64'
         with:
           dotnet-version: 11.0.x
-      - name: Publish, run and audit glibc NativeAOT
+      - name: Publish, run and audit glibc NativeAOT; run the non-AOT consumer
         if: matrix.target.rid == 'linux-arm64'
         run: |
           sudo apt-get update
           sudo apt-get install -y clang lld binutils fontconfig fonts-dejavu-core
           dotnet test --project tests/HostForge.NativeAot.Tests/HostForge.NativeAot.Tests.csproj -c Release
-      - name: Publish, run and audit musl NativeAOT in native Alpine
+      - name: Publish, run and audit musl NativeAOT and run the non-AOT consumer in native Alpine
         if: startsWith(matrix.target.rid, 'linux-musl-')
         run: |
           docker run --rm -v "$PWD:$PWD" -w "$PWD" \
@@ -671,10 +662,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang lld binutils fontconfig fonts-dejavu-core
-      - name: Build without RID and publish and run the three-meta consumer
+      - name: Build without RID and publish and run the three-meta consumer with and without NativeAOT
         if: ${{ !startsWith(matrix.target.rid, 'linux-musl-') }}
         run: dotnet test --project tests/HostForge.NativeAot.Tests -c Release
-      - name: Build and publish the three-meta consumer in native Alpine
+      - name: Build without RID and publish and run the three-meta consumer with and without NativeAOT in native Alpine
         if: startsWith(matrix.target.rid, 'linux-musl-')
         run: |
           docker run --rm -v "$PWD:$PWD" -w "$PWD" \
@@ -703,7 +694,6 @@ jobs:
         run: xvfb-run -a dotnet test --project tests/HostForge.NativeAot.Tests -c Release --treenode-filter '/*/*/AvaloniaSmokeTests/*'
       - name: Prove static Skia and ANGLE rendering with WARP
         if: runner.os == 'Windows'
-        continue-on-error: ${{ matrix.target.rid == 'win-arm64' }}
         env:
           HOSTFORGE_SMOKE_REQUIRED: '1'
           HOSTFORGE_SMOKE_SKIA_VERSION: ${{ matrix.version }}

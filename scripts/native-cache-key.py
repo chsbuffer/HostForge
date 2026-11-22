@@ -9,6 +9,12 @@ import subprocess
 import tomllib
 from pathlib import Path
 
+# The mono/SkiaSharp files that the SkiaSharp 4 recipe downloads and checks against their upstream-build.json
+# records: WINDOWS_HARFBUZZ of native/skiasharp/conanfile.py, which runs under conan and cannot be imported
+# here (tests/native keeps the two equal).
+SKIASHARP_CHECKED_DOWNLOADS = ("native/windows/libHarfBuzzSharp/libHarfBuzzSharp.vcxproj",
+                               "native/windows/libHarfBuzzSharp/harfbuzz-subset-msvc.cc")
+
 
 def fontconfig_checksums(rid):
     """The fontconfig packages that the SkiaSharp image of a Linux RID adds to its rootfs."""
@@ -24,6 +30,22 @@ def rootfs_key(root, rid):
     return f"target-rootfs-v2-{rid}-{digest}"
 
 
+def version_conandata(text, version):
+    """conandata.yml without the `sources` entries of other versions. The recipe builds from the entry of its
+    version and names the others only in errors; every other section stays, because the recipe may read it."""
+    kept, section, entry = [], None, None
+    for line in text.splitlines(keepends=True):
+        if line.strip() and not line.startswith(" "):
+            section, entry = line.split(":", 1)[0], None
+        elif section == "sources" and re.match(r"  \S", line):
+            entry = line.strip().rstrip(":").strip("\"'")
+        if section != "sources" or entry in (None, version):
+            kept.append(line)
+    if not any(re.fullmatch(rf"  [\"']?{re.escape(version)}[\"']?:\s*", line) for line in kept):
+        raise ValueError(f"conandata.yml has no source for {version}")
+    return "".join(kept)
+
+
 def fingerprint(root, component, version, rid, toolchain, generator=""):
     platform, arch = rid.rsplit("-", 1)
     profile_os = {"win": "windows", "osx": "macos"}.get(platform, platform)
@@ -36,8 +58,16 @@ def fingerprint(root, component, version, rid, toolchain, generator=""):
         values["source"] = json.loads((root / directory / "versions.json").read_text())[version]
         files += [f"{directory}/git-sync-deps", f"{directory}/{profile_os.split('-')[0]}.py"]
         tasks = [f"_skiasharp-{profile_os.split('-')[0]}"]
+        if version.startswith("4."):
+            # source() fails on every platform when these records do not match the downloads. Only they are
+            # keyed: the other records, and those of other versions, describe files the build does not read.
+            records = json.loads((root / directory / "upstream-build.json").read_text()).get(version, {})
+            values["checked-downloads"] = {path: records.get(path) for path in SKIASHARP_CHECKED_DOWNLOADS}
         if platform == "win":
-            files += [f"{directory}/profiles/windows-x64", "scripts/libHarfBuzzSharp.vcxproj.in"]
+            files += [f"{directory}/profiles/windows-x64"]
+            # SkiaSharp 4 builds the HarfBuzzSharp project of its upstream tag instead (windows.py).
+            if not version.startswith("4."):
+                files += ["scripts/libHarfBuzzSharp.vcxproj.in"]
         if platform.startswith("linux"):
             files += [f"{directory}/profiles/linux-x64", f"{directory}/{rid}.Dockerfile", fontconfig_checksums(rid)]
     elif component == "angle":
@@ -55,7 +85,8 @@ def fingerprint(root, component, version, rid, toolchain, generator=""):
         values["generator"] = generator
     elif component == "avalonianative":
         profile = rid
-        files += [f"{directory}/conandata.yml"]
+        conandata = f"{directory}/conandata.yml"
+        files += [conandata]
         tasks = ["build-avalonianative"]
     else:
         raise ValueError(component)
@@ -70,6 +101,8 @@ def fingerprint(root, component, version, rid, toolchain, generator=""):
     dependencies = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["dependencies"]
     values["build-tools"] = sorted(d for d in dependencies if d.startswith(("conan==", "ninja==")))
     inputs = {path: (root / path).read_text(encoding="utf-8").replace("\r\n", "\n") for path in sorted(set(files))}
+    if component == "avalonianative":
+        inputs[conandata] = version_conandata(inputs[conandata], version)
     digest = hashlib.sha256(json.dumps([values, inputs], sort_keys=True).encode()).hexdigest()[:24]
     tools = hashlib.sha256(toolchain.encode()).hexdigest()[:12]
     return {"key": f"native-v3-{component}-{version}-{rid}-{tools}-{digest}",

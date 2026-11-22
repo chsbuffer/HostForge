@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -18,12 +19,19 @@ from windows import WindowsBuild
 from linux import LinuxBuild
 from macos import MacosBuild
 
+# Each version: [mono/skia commit, HarfBuzzSharp version, commit of the mono/SkiaSharp tag].
 VERSIONS = json.loads((Path(__file__).parent / "versions.json").read_text())
+# The git blob SHAs of the mono/SkiaSharp build files that the recipes were checked against.
+UPSTREAM_BUILD = json.loads((Path(__file__).parent / "upstream-build.json").read_text())
+# The HarfBuzzSharp project and the translation unit it compiles, which the SkiaSharp 4 Windows build uses.
+WINDOWS_HARFBUZZ = ("native/windows/libHarfBuzzSharp/libHarfBuzzSharp.vcxproj",
+                    "native/windows/libHarfBuzzSharp/harfbuzz-subset-msvc.cc")
 
 class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
     name = "skiasharp"
     package_type = "static-library"
-    license = "MIT"
+    # SkiaSharp and Skia; licenses/ in the payload holds the license files of every component in the archives.
+    license = ("MIT", "BSD-3-Clause")
     homepage = "https://github.com/mono/skia"
     description = "SkiaSharp and HarfBuzzSharp static libraries"
 
@@ -34,7 +42,7 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
     # instead of Conan's revision-dependent ../skias<hash>/s paths.
     # https://github.com/google/skia/blob/chrome/m150/tools/git-sync-deps
     exports_sources = "git-sync-deps"
-    exports = "windows.py", "linux.py", "macos.py", "versions.json"
+    exports = "windows.py", "linux.py", "macos.py", "versions.json", "upstream-build.json"
 
     def set_version(self):
         # No default here: Taskfile.yml always passes --version, defaulting to the version scripts/repo_versions.py reads.
@@ -62,6 +70,28 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
         "x86_64": "x64",
         "armv8": "arm64",
     }
+    # License files of the third_party/externals checkouts, at the revisions that Skia's DEPS pins.
+    _external_licenses = {
+        "d3d12allocator": ("LICENSE.txt",),
+        "dng_sdk": ("LICENSE",),
+        "expat": ("expat/COPYING",),
+        "freetype": ("LICENSE.TXT", "docs/FTL.TXT"),
+        "harfbuzz": ("COPYING",),
+        "libjpeg-turbo": ("LICENSE.md", "README.ijg"),
+        "libpng": ("LICENSE",),
+        "libwebp": ("COPYING", "PATENTS"),
+        "piex": ("LICENSE",),
+        "spirv-cross": ("LICENSE",),
+        "vulkanmemoryallocator": ("LICENSE.txt",),
+        "wuffs": ("LICENSE",),
+        "zlib": ("LICENSE",),
+    }
+    # Skia directories whose objects compile a header-only external.
+    _external_wrappers = {
+        "third_party/vulkanmemoryallocator": "vulkanmemoryallocator",
+        "src/gpu/vk/vulkanmemoryallocator": "vulkanmemoryallocator",
+    }
+
     @property
     def _skia_libraries(self):
         libraries = ("SkiaSharp", "skia", "skottie", "sksg", "skshaper", "skresources")
@@ -128,9 +158,18 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
         else:
             raise ConanException("git-sync-deps failed")
         if self._modern:
-            upstream = f"https://raw.githubusercontent.com/mono/SkiaSharp/v{self.version}/native/windows/libHarfBuzzSharp"
-            for name in ("libHarfBuzzSharp.vcxproj", "harfbuzz-subset-msvc.cc"):
-                download(self, f"{upstream}/{name}", str(Path(self.source_folder) / name))
+            self._download_windows_harfbuzz()
+
+    def _download_windows_harfbuzz(self):
+        commit, reviewed = VERSIONS[str(self.version)][2], UPSTREAM_BUILD.get(str(self.version), {})
+        for path in WINDOWS_HARFBUZZ:
+            target = Path(self.source_folder) / Path(path).name
+            download(self, f"https://raw.githubusercontent.com/mono/SkiaSharp/{commit}/{path}", str(target))
+            data = target.read_bytes()
+            blob = hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+            if blob != reviewed.get(path):
+                raise ConanException(f"mono/SkiaSharp {path} at {commit} is blob {blob}, but "
+                                     f"upstream-build.json records {reviewed.get(path)} for {self.version}")
 
     def generate(self):
         env = Environment()
@@ -155,7 +194,9 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
             self.run(f'"{clang}" --version', stdout=versions, env="conanbuild")
             self.run("cl", stdout=versions, stderr=versions, ignore_errors=True, env="conanbuild")
         else:
-            self.run("clang --version", stdout=versions, env="conanbuild")
+            # GN compiles Linux with $CC (linux.py); macOS always uses the clang of the Command Line Tools.
+            compiler = os.environ.get("CC") if self.settings.os == "Linux" else None
+            self.run(f"{compiler or 'clang'} --version", stdout=versions, env="conanbuild")
             if self.settings.os == "Macos":
                 self.run("xcrun --sdk macosx --show-sdk-version", stdout=versions)
         save(self, str(Path(self.build_folder) / "toolchain.txt"), versions.getvalue())
@@ -206,8 +247,16 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
             copy(self, "gn-*.json", src=str(self._skia_build), dst=str(output))
             copy(self, "gn-*.json", src=str(self._harfbuzz_build), dst=str(output / "harfbuzz"))
         copy(self, "toolchain.txt", src=self.build_folder, dst=str(output), keep_path=False)
-        copy(self, "LICENSE", src=str(self._skia_root), dst=str(output / "licenses"), keep_path=True)
-        copy(self, "COPYING", src=str(self._skia_root / "third_party/externals/harfbuzz"), dst=str(output / "licenses/harfbuzz"))
+        licenses = {"skia/LICENSE": self._skia_root / "LICENSE"}
+        for external in sorted(self._compiled_externals()):
+            for path in self._external_licenses[external]:
+                licenses[f"{external}/{Path(path).name}"] = self._skia_root / "third_party/externals" / external / path
+        for name, source in licenses.items():
+            if not source.is_file():
+                raise ConanException(f"License file not found: {source}")
+            target = output / "licenses" / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
         hashes = {}
         for file in sorted(output.glob("**/*")):
             if file.is_file():
@@ -216,12 +265,52 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
                     for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                         digest.update(chunk)
                 hashes[file.relative_to(output).as_posix()] = digest.hexdigest()
+        toolchain = (Path(self.build_folder) / "toolchain.txt").read_text()
         manifest = {"skiaSharp": str(self.version), "harfBuzzSharp": VERSIONS[str(self.version)][1],
                     "sourceCommit": VERSIONS[str(self.version)][0], "arch": self._target_arch,
-                    "compiler": str(self.settings.compiler), "compilerVersion": str(self.settings.compiler.version), "sha256": hashes}
+                    "compiler": str(self.settings.compiler), "compilerVersion": self._clang_major(toolchain),
+                    "sha256": hashes}
         if self.settings.os == "Linux":
             manifest["libc"] = str(self.options.libc)
         save(self, str(output / "manifest.json"), json.dumps(manifest, indent=2) + "\n")
+
+    @staticmethod
+    def _clang_major(toolchain):
+        # The major version of the clang that build() ran, from the toolchain.txt it wrote: the Windows profiles
+        # do not follow the LLVM that install-llvm provides (Linux and macOS Task pass the same major as
+        # compiler.version).
+        clang = re.search(r"clang version (\d+)\.", toolchain)
+        if clang is None:
+            raise ConanException(f"toolchain.txt names no clang version:\n{toolchain}")
+        return clang.group(1)
+
+    def _compiled_externals(self):
+        # GN writes each object below obj/ at the directory of its source, so the objects of a build name
+        # the externals that the archives contain for this version, platform and set of GN arguments.
+        # libHarfBuzzSharp is HarfBuzz on every platform, but on Windows MSBuild writes its object to
+        # obj/<platform>/Release/libHarfBuzzSharp/, a path that does not name the harfbuzz checkout.
+        externals = {"harfbuzz"}
+        unmapped = set()
+        for build in (self._skia_build, self._harfbuzz_build):
+            objects = build / "obj"
+            for file in objects.rglob("*"):
+                if file.suffix not in (".o", ".obj") or not file.is_file():
+                    continue
+                directory = file.parent.relative_to(objects).as_posix()
+                parts = directory.split("/")
+                wrapper = next((name for prefix, name in self._external_wrappers.items()
+                                if directory == prefix or directory.startswith(prefix + "/")), None)
+                if parts[:2] == ["third_party", "externals"] and len(parts) > 2:
+                    externals.add(parts[2])
+                elif wrapper is not None:
+                    externals.add(wrapper)
+                elif "third_party" in parts:
+                    unmapped.add(directory)
+        unmapped |= {f"third_party/externals/{name}" for name in externals - self._external_licenses.keys()}
+        if unmapped:
+            raise ConanException("The archives contain third-party objects without a license in "
+                                 f"_external_licenses or _external_wrappers: {', '.join(sorted(unmapped))}")
+        return externals
 
     def package_info(self):
         self.cpp_info.includedirs = []

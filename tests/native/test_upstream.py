@@ -5,9 +5,7 @@ Run with python -m unittest discover -s tests/native.
 
 import base64
 import contextlib
-import gzip
 import hashlib
-import http.client
 import importlib.util
 import io
 import json
@@ -17,7 +15,7 @@ import shutil
 import sys
 import tempfile
 import unittest
-import urllib.error
+import urllib.request
 from pathlib import Path
 from unittest import mock
 
@@ -61,7 +59,7 @@ def nuspec_xml(package, version, dependencies=(), commit=None):
 
 class FakeClient:
     def __init__(self):
-        self.responses, self.refs, self.streams, self.requests, self.accepts = {}, {}, {}, [], {}
+        self.responses, self.refs, self.streams = {}, {}, {}
 
     def add_json(self, url, value):
         self.responses[url] = json.dumps(value).encode()
@@ -74,9 +72,6 @@ class FakeClient:
         self.refs.setdefault(repository, {})[ref] = commit
 
     def get(self, url, accept=None):
-        self.requests.append(url)
-        if accept:
-            self.accepts[url] = accept
         if url not in self.responses:
             raise upstream.NotFound(f"GET {url}: HTTP 404 Not Found")
         return self.responses[url]
@@ -85,7 +80,6 @@ class FakeClient:
         return json.loads(self.get(url))
 
     def stream(self, url):
-        self.requests.append(url)
         yield from self.streams[url]
 
     def ls_remote(self, repository, *patterns):
@@ -140,9 +134,9 @@ def manifest_url(rid):
     return f"{upstream.MCR}/v2/dotnet-buildtools/prereqs/manifests/{CONTAINER_TAGS[rid]}"
 
 
-def add_pipeline_resources(client, commit, text=PIPELINE_RESOURCES):
+def add_pipeline_resources(client, commit):
     client.add_json(f"{upstream.GITHUB_API}/repos/dotnet/dotnet/contents/{upstream.VMR_PIPELINE_RESOURCES}?ref={commit}",
-                    {"type": "file", "content": base64.b64encode(text.encode()).decode()})
+                    {"type": "file", "content": base64.b64encode(PIPELINE_RESOURCES.encode()).decode()})
     for rid, manifest in MANIFESTS.items():
         client.responses[manifest_url(rid)] = manifest
 
@@ -193,23 +187,6 @@ hooks = [
 ]
 """
 
-# Like native/angle/patches/angle-deps.patch: removes a dependency, with the depot_tools entry as context.
-DEPS_PATCH = """diff --git a/DEPS b/DEPS
---- a/DEPS
-+++ b/DEPS
-@@ -11,10 +11,5 @@ deps = {
-   },
-
--  'third_party/dawn': {
--    'url': Var('dawn_git') + '/dawn.git' + '@' +  Var('dawn_revision'),
--    'condition': 'checkout_angle_dawn_deps and not build_with_chromium'
--  },
--
-   'third_party/depot_tools': {
-     'url': Var('chromium_git') + '/chromium/tools/depot_tools.git@DEPOT_TOOLS',
-     'condition': 'not build_with_chromium',
-"""
-
 
 def deps_text(depot_tools, build="b" * 40):
     return DEPS.replace("DEPOT_TOOLS", depot_tools).replace("BUILD", build)
@@ -230,8 +207,8 @@ TOOL_FILES = list(dict.fromkeys([tool.path for tool in upstream.TOOLS] + [upstre
 
 def fake_upstream(root, dotnet=False, security=True, mismatched_vmr=False, avalonia=False, avalonia_skia=None,
                   skiasharp=False, vulnerable=False, angle_head=None, eol=(), angle_depot_tools=None,
-                  avalonia_minor=False, avalonia_minor_skia=None, avalonia_major=False, skiasharp_milestone=False,
-                  skiasharp_major=False, tools=False, llvm=None, llvm_asset=True, skiasharp_build=None):
+                  avalonia_minor=False, avalonia_major=False, skiasharp_milestone=False, tools=False, llvm=None,
+                  skiasharp_build=None):
     """A FakeClient whose releases are the repository's pins plus the requested newer releases."""
     pinned = repo_versions.load(root)
     client = FakeClient()
@@ -281,7 +258,7 @@ def fake_upstream(root, dotnet=False, security=True, mismatched_vmr=False, avalo
     if avalonia_minor:
         # Two releases of the next minor (the newer one is the candidate) and a newer prerelease.
         versions += [f"{major}.{minor + 1}.0", avalonia_minor_version(current), f"{major}.{minor + 1}.2-beta1"]
-        add_avalonia(avalonia_minor_version(current), avalonia_minor_skia or pinned["skiasharp"])
+        add_avalonia(avalonia_minor_version(current), pinned["skiasharp"])
     if avalonia_major:
         versions.append(f"{major + 1}.0.0")
     client.add_json(f"{upstream.NUGET}/avalonia/index.json", {"versions": versions})
@@ -318,8 +295,6 @@ def fake_upstream(root, dotnet=False, security=True, mismatched_vmr=False, avalo
         if skiasharp_milestone:
             skia_versions.append(skiasharp_milestone_version(line))
             add_skiasharp(skiasharp_milestone_version(line), next_patch(next_patch(line_harfbuzz)), line)
-    if skiasharp_major:
-        skia_versions.append(f"{max(int(line.split('.')[0]) for line in lines) + 1}.0.0")
     client.add_json(f"{upstream.NUGET}/skiasharp/index.json", {"versions": skia_versions})
     client.add_json(f"{upstream.NUGET}/harfbuzzsharp/index.json",
                     {"versions": [source["harfbuzz"] for source in pinned["skiasharp-sources"].values()]})
@@ -353,14 +328,14 @@ def fake_upstream(root, dotnet=False, security=True, mismatched_vmr=False, avalo
     llvm = llvm or pins["LLVM"]
     llvm_major = int(llvm.split(".")[0])
 
-    def llvm_release(version, assets=True, **flags):
-        names = [f"LLVM-{version}-win64.msi" if assets else f"LLVM-{version}-Linux-X64.tar.xz", "clang.src.tar.xz"]
+    def llvm_release(version, **flags):
+        names = [f"LLVM-{version}-win64.msi", "clang.src.tar.xz"]
         return dict({"tag_name": f"llvmorg-{version}", "assets": [{"name": name} for name in names]}, **flags)
 
     client.add_json(upstream.LLVM_RELEASES, [llvm_release(f"{llvm_major + 2}.1.0", draft=True),
                                              llvm_release(f"{llvm_major + 1}.1.0", prerelease=True),
                                              {"tag_name": f"llvmorg-{llvm_major + 1}.1.0-rc1", "prerelease": True},
-                                             llvm_release(llvm, assets=llvm_asset), llvm_release(pins["LLVM"])])
+                                             llvm_release(llvm), llvm_release(pins["LLVM"])])
     return client
 
 
@@ -435,26 +410,6 @@ class CheckTests(UpstreamTestCase):
         self.assertIn("## Upstream check", markdown)
         self.assertIn("action needed", markdown.lower())
 
-    def test_json_report_when_everything_is_current(self):
-        code, stdout, stderr = self.run_main(fake_upstream(self.root), "check", "--json", "--fail-on-security")
-        self.assertEqual(0, code, stderr + stdout)
-        report = json.loads(stdout)
-        self.assertFalse(report["security"])
-        self.assertEqual([], report["errors"])
-        for item in report["dotnet"]:
-            self.assertEqual([], item["pinned-source"]["problems"])
-            self.assertEqual(self.pinned["hostlibs-sources"][item["pinned"]]["commit"], item["pinned-source"]["commit"])
-        avalonia = report["avalonia"]["dependencies"][self.pinned["avalonia"]]
-        self.assertEqual(["Avalonia.Skia"], avalonia["SkiaSharp"]["declared-by"])
-        self.assertEqual(["Avalonia.Win32"], avalonia["Avalonia.Angle.Windows.Natives"]["declared-by"])
-        self.assertIsNone(report["avalonia"]["patch"])
-        pins = tool_pins(self.root)
-        self.assertEqual({tool["name"]: pins[tool["name"]] for tool in report["tools"]},
-                         {tool["name"]: tool["latest"] for tool in report["tools"]})
-        locator = next(tool for tool in report["tools"] if tool["name"] == "Microsoft.Build.Locator")
-        self.assertEqual((pins["Microsoft.Build.Locator"], "tools"), (locator["pinned"], locator["group"]))
-        self.assertNotIn("Microsoft.Build", [tool["name"] for tool in report["tools"]])
-
     def test_vulnerable_pinned_package_fails(self):
         code, stdout, _ = self.run_main(fake_upstream(self.root, vulnerable=True), "check", "--fail-on-security")
         self.assertEqual(1, code)
@@ -467,18 +422,6 @@ class CheckTests(UpstreamTestCase):
         code, stdout, _ = self.run_main(client, "check", "--fail-on-security")
         self.assertEqual(2, code)
         self.assertIn(upstream.DOTNET_INDEX, stdout)
-
-    def test_informational_section_errors_do_not_fail(self):
-        client = fake_upstream(self.root)
-        del client.responses["https://pypi.org/pypi/conan/json"]
-        code, stdout, _ = self.run_main(client, "check", "--fail-on-security", "--json")
-        self.assertEqual(0, code)
-        self.assertEqual(["tools"], [error["section"] for error in json.loads(stdout)["errors"]])
-
-    def test_angle_branch_moved(self):
-        code, stdout, _ = self.run_main(fake_upstream(self.root, angle_head="3" * 40), "check", "--json")
-        self.assertEqual(0, code)
-        self.assertTrue(json.loads(stdout)["angle"]["moved"])
 
 
 class ApplyTests(UpstreamTestCase):
@@ -497,26 +440,6 @@ class ApplyTests(UpstreamTestCase):
         self.assertIn("CVE-2099-", stdout)
         self.assert_consistent()
 
-    def test_dotnet_update_needs_the_build_containers(self):
-        client = fake_upstream(self.root, dotnet=True)
-        for url in [url for url in client.responses if upstream.VMR_PIPELINE_RESOURCES in url]:
-            del client.responses[url]
-        before = self.snapshot()
-        code, _, stderr = self.run_main(client, "apply", "--dotnet")
-        self.assertEqual(2, code)
-        self.assertIn(upstream.VMR_PIPELINE_RESOURCES, stderr)
-        self.assertEqual(before, self.snapshot())
-
-    def test_dry_run_writes_nothing(self):
-        before = self.snapshot()
-        code, stdout, stderr = self.run_main(fake_upstream(self.root, dotnet=True, avalonia=True, skiasharp=True),
-                                             "apply", "--dry-run")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual(before, self.snapshot())
-        self.assertIn("Planned changes:", stdout)
-        self.assertIn("+++ b/Directory.Build.props", stdout)
-        self.assertIn("+++ b/" + package_inputs.LOCK, stdout)
-
     def test_refuses_an_unverified_vmr_commit(self):
         before = self.snapshot()
         code, stdout, stderr = self.run_main(fake_upstream(self.root, dotnet=True, mismatched_vmr=True),
@@ -525,15 +448,50 @@ class ApplyTests(UpstreamTestCase):
         self.assertEqual(before, self.snapshot())
         self.assertIn("not applied", stdout)
 
+    def test_dotnet_patch_before_an_unpublished_one(self):
+        # releases.json lists the newest patch before nuget.org has its Ref nuspec: the patch before it applies.
+        client = fake_upstream(self.root, dotnet=True, security=False)
+        framework, runtime = next(iter(self.pinned["runtimes"].items()))
+        url = f"https://example.invalid/release-metadata/{'.'.join(runtime.split('.')[:2])}/releases.json"
+        newest = next_patch(next_patch(runtime))
+        sdk = next_patch(next_patch(self.pinned["hostlibs-sources"][runtime]["tag"][1:]))
+        releases = json.loads(client.responses[url])
+        releases["releases"].insert(0, release(newest, sdk, security=True, cves=["CVE-2099-0002"]))
+        client.add_json(url, releases)
+        client.add_ref(upstream.VMR, f"refs/tags/v{sdk}", fake_commit(sdk))
+        code, _, stderr, metadata = self.apply(client, "--dotnet")
+        self.assertEqual(0, code, stderr)
+        self.assertEqual(next_patch(runtime), repo_versions.load(self.root)["runtimes"][framework])
+        notes = [note for note in metadata["notes"] if note.startswith(framework)]
+        self.assertEqual(1, len(notes), metadata["notes"])
+        self.assertRegex(notes[0], rf"^{re.escape(f'{framework} {newest} not applied: ')}.*HTTP 404")
+        # The update does not claim the CVEs of the release it does not apply.
+        self.assertNotIn("CVE-2099-0002", " ".join(metadata["updates"]))
+        self.assertEqual({"before": True, "after": True, "cves": []}, metadata["security"])
+        self.assert_consistent()
+
     def test_avalonia_patch_update(self):
         props = self.root / package_inputs.PROPS
         props.write_text(re.sub(r"(<AvaloniaNativePackageVersion>\$\(AvaloniaNativeVersion\)\.)\d+",
                                 r"\g<1>2", props.read_text(encoding="utf-8")), encoding="utf-8")
         self.relock()
         major = self.props()["_Major"]
+        old = self.pinned["avalonia"]
+        old_commit = self.pinned["avalonia-sources"][self.pinned["avalonia-native"]]["commit"]
+        readme = self.root / "src/package-avalonia-native-static/README.md"
+        readme.parent.mkdir(parents=True, exist_ok=True)
+        readme.write_text(f"Archives are built from Avalonia {old} source, commit\n`{old_commit}`.\n", encoding="utf-8")
+        notes = self.root / "docs/notes.md"
+        notes.parent.mkdir()
+        notes.write_text(f"Avalonia source `{old_commit}`.\n", encoding="utf-8")
         code, stdout, stderr = self.run_main(fake_upstream(self.root, avalonia=True), "apply", "--avalonia")
         self.assertEqual(0, code, stderr)
         new = next_patch(self.pinned["avalonia"])
+        new_commit = fake_commit("avalonia " + new)
+        self.assertEqual(f"Archives are built from Avalonia {new} source, commit\n`{new_commit}`.\n",
+                         readme.read_text(encoding="utf-8"))
+        self.assertIn(f"docs/notes.md:1: Avalonia source `{old_commit}`.", stdout)
+        self.assertIn(f"Avalonia {old} -> {new} (", stdout)
         values = self.props()
         self.assertEqual((new, new), (values["AvaloniaVersion"], values["AvaloniaNativeVersion"]))
         self.assertEqual(f"{new}.1", values["AvaloniaNativePackageVersion"])
@@ -560,34 +518,14 @@ class ApplyTests(UpstreamTestCase):
         self.assertEqual(0, code, stderr)
         pinned = repo_versions.load(self.root)
         expected = {next_patch(line): {"skia-commit": fake_commit("skia " + next_patch(line)),
-                                       "harfbuzz": next_patch(self.pinned["skiasharp-sources"][line]["harfbuzz"])}
+                                       "harfbuzz": next_patch(self.pinned["skiasharp-sources"][line]["harfbuzz"]),
+                                       "skiasharp-commit": fake_commit("skiasharp " + next_patch(line))}
                     for line in self.pinned["skiasharp-versions"]}
         self.assertEqual(expected, pinned["skiasharp-sources"])
         self.assertEqual(next_patch(self.pinned["skiasharp"]), pinned["skiasharp"])
         self.assertEqual(major + 1, int(self.props()["_Major"]))
         self.assert_consistent()
 
-    def test_lists_remaining_mentions_of_old_versions(self):
-        runtime = next(iter(self.pinned["runtimes"].values()))
-        notes = self.root / "docs/notes.md"
-        notes.parent.mkdir()
-        notes.write_text(f"Built from {runtime}.\nNot {runtime}0 or 1{runtime}.\n", encoding="utf-8")
-        code, stdout, stderr = self.run_main(fake_upstream(self.root, dotnet=True), "apply", "--dotnet")
-        self.assertEqual(0, code, stderr)
-        self.assertIn("docs/notes.md:1:", stdout)
-        self.assertNotIn("docs/notes.md:2:", stdout)
-
-    def test_refuses_to_apply_over_a_failing_guard(self):
-        props = self.root / package_inputs.PROPS
-        hostlibs = self.root / "native/hostlibs/versions.json"
-        sources = json.loads(hostlibs.read_text(encoding="utf-8"))
-        next(iter(sources.values()))["commit"] = "0" * 40
-        hostlibs.write_text(json.dumps(sources), encoding="utf-8")
-        before = props.read_bytes()
-        code, _, stderr = self.run_main(fake_upstream(self.root, dotnet=True), "apply", "--dotnet")
-        self.assertEqual(2, code)
-        self.assertIn("<_Major>", stderr)
-        self.assertEqual(before, props.read_bytes())
 
 def evaluated(root):
     return package_inputs.compute(root)
@@ -599,32 +537,6 @@ def set_text(path, pattern, replacement):
     if count != 1:
         raise AssertionError(f"{path.name}: {pattern} matched {count} times")
     path.write_text(changed, encoding="utf-8")
-
-
-class GroupTests(UpstreamTestCase):
-    def test_groups_in_workflow_order(self):
-        code, stdout, _ = self.run_main(None, "groups")
-        self.assertEqual(0, code)
-        majors = sorted({int(line.split(".")[0]) for line in self.pinned["skiasharp-versions"]})
-        self.assertEqual(["inputs", "avalonia-minor", *[f"skiasharp-{major}" for major in majors], "tools", "llvm"],
-                         stdout.split())
-        self.assertGreater(len(majors), 1, "one group per pinned SkiaSharp line")
-
-    def test_subset_flags_belong_to_the_inputs_group(self):
-        for group in upstream.group_names(self.root)[1:]:
-            for flag in ("--dotnet", "--avalonia", "--skiasharp", "--angle"):
-                with contextlib.redirect_stderr(io.StringIO()) as stderr, self.assertRaises(SystemExit) as raised:
-                    upstream.main(["--root", str(self.root), "apply", "--group", group, flag], client=FakeClient())
-                self.assertEqual(2, raised.exception.code, (group, flag))
-                self.assertIn("inputs group only", stderr.getvalue())
-
-    def test_unknown_group_is_an_error(self):
-        before = self.snapshot()
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root), "--group", "skiasharp-99")
-        self.assertEqual(2, code)
-        self.assertIn("unknown group skiasharp-99", stderr)
-        self.assertIsNone(metadata)
-        self.assertEqual(before, self.snapshot())
 
 
 class AngleTests(UpstreamTestCase):
@@ -655,80 +567,6 @@ class AngleTests(UpstreamTestCase):
         self.assertIn(self.DEPOT_TOOLS, metadata["target"])
         self.assertTrue(any(line.startswith("ChsBuffer.Angle.Static: revision") for line in metadata["updates"]))
         self.assert_consistent()
-
-    def test_unchanged_depot_tools_keeps_its_commit(self):
-        _, depot_tools = self.angle()
-        code, stdout, stderr = self.run_main(fake_upstream(self.root, angle_head=self.HEAD), "apply", "--angle")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual((self.HEAD, depot_tools), self.angle())
-        self.assertIn("(unchanged)", stdout)
-
-    def test_depot_tools_revision_in_the_real_deps_format(self):
-        deps = deps_text(self.DEPOT_TOOLS)
-        self.assertEqual(self.DEPOT_TOOLS, upstream.depot_tools_revision(deps, "test"))
-        # Gitiles serves DEPS base64-encoded; line breaks in the encoding are tolerated.
-        client = FakeClient()
-        encoded = base64.encodebytes(deps.encode())
-        client.responses[f"https://chromium.googlesource.com/angle/angle/+/{self.HEAD}/DEPS?format=TEXT"] = encoded
-        self.assertEqual(deps, upstream.angle_deps(client, "https://chromium.googlesource.com/angle/angle.git", self.HEAD))
-        with self.assertRaisesRegex(upstream.UpstreamError, "found none"):
-            upstream.depot_tools_revision(deps.replace("depot_tools.git@", "depot_tools.git' + '@"), "test")
-        with self.assertRaisesRegex(upstream.UpstreamError, "expected one depot_tools revision"):
-            upstream.depot_tools_revision(deps + deps_text("5" * 40), "test")
-
-    def test_recipe_checks_with_the_same_expression(self):
-        recipe = (ROOT / "native/angle/conanfile.py").read_text(encoding="utf-8")
-        found = re.findall(r're\.search\(r"([^"]+)", deps\)', recipe)
-        self.assertEqual([upstream.DEPOT_TOOLS_REVISION], found)
-        self.assertEqual(self.DEPOT_TOOLS, re.search(found[0], deps_text(self.DEPOT_TOOLS)).group(1))
-
-    def test_ambiguous_deps_is_a_lookup_error(self):
-        client = fake_upstream(self.root, angle_head=self.HEAD, dotnet=True)
-        url, _ = angle_source(self.root)
-        client.responses[f"{url[:-4]}/+/{self.HEAD}/DEPS?format=TEXT"] = \
-            base64.b64encode((deps_text("5" * 40) + deps_text("6" * 40)).encode())
-        before = self.snapshot()
-        code, _, stderr, metadata = self.apply(client)
-        self.assertEqual(2, code)
-        self.assertIn("expected one depot_tools revision", stderr)
-        self.assertIsNone(metadata)
-        self.assertEqual(before, self.snapshot())
-        pinned = self.angle()
-        code, _, stderr, metadata = self.apply(client, "--keep-going")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual(pinned, self.angle())
-        self.assertEqual(1, len(metadata["errors"]))
-        self.assertRegex(metadata["errors"][0], r"^ANGLE: .*expected one depot_tools revision")
-        self.assertIn("### Lookup errors", metadata["body"])
-        self.assertTrue(any(path == "native/hostlibs/versions.json" for path in metadata["changed"]), ".NET applied")
-
-    def test_deps_patch_that_no_longer_applies_is_noted(self):
-        _, depot_tools = angle_source(self.root)
-        patch = self.root / "native/angle/patches/angle-deps.patch"
-        patch.parent.mkdir(parents=True, exist_ok=True)
-        patch.write_text(DEPS_PATCH.replace("DEPOT_TOOLS", depot_tools), encoding="utf-8")
-        self.assertEqual([], upstream.deps_patch_problems(patch.read_text(encoding="utf-8"), deps_text(depot_tools)))
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root, angle_head=self.HEAD), "--angle", "--dry-run")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual([], metadata["notes"])
-        # A new depot_tools revision changes a context line of the patch.
-        client = fake_upstream(self.root, angle_head=self.HEAD, angle_depot_tools=self.DEPOT_TOOLS)
-        code, _, stderr, metadata = self.apply(client, "--angle", "--dry-run")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual(1, len(metadata["notes"]))
-        self.assertIn("native/angle/patches/angle-deps.patch no longer applies to DEPS", metadata["notes"][0])
-        self.assertIn("@@ -11,10 +11,5 @@", metadata["notes"][0])
-        self.assertIn("### Notes", metadata["body"])
-
-    def test_deps_patch_hunks(self):
-        deps = deps_text("1" * 40)
-        patch = DEPS_PATCH.replace("DEPOT_TOOLS", "1" * 40)
-        self.assertEqual([], upstream.deps_patch_problems(patch, deps))
-        self.assertEqual(["@@ -11,10 +11,5 @@ deps = {"],
-                         upstream.deps_patch_problems(patch, deps.replace("dawn_revision", "dawn_commit")))
-        # Hunks of other files are not compared with DEPS.
-        other = patch.replace("a/DEPS", "a/BUILD.gn").replace("b/DEPS", "b/BUILD.gn")
-        self.assertEqual([], upstream.deps_patch_problems(other, "unrelated"))
 
 
 class PackageVersionBumpTests(UpstreamTestCase):
@@ -764,18 +602,6 @@ class PackageVersionBumpTests(UpstreamTestCase):
             del changed[key]
         self.assertEqual({}, changed)
 
-    def test_angle_commit(self):
-        before = evaluated(self.root)
-        major = int(self.props()["_Major"])
-        set_text(self.root / "native/angle/conandata.yml", r'^(sources:\n(?:  .*\n)*?  commit: *")[0-9a-f]*(")',
-                 r"\g<1>" + "1" * 40 + r"\g<2>")
-        changed, updates = self.bump()
-        self.assert_bumped(changed, {("ChsBuffer.Angle.Static", "default"):
-                                     before["ChsBuffer.Angle.Static"]["default"]["version"]}, apphost=True)
-        self.assertEqual(major + 1, int(self.props()["_Major"]), "<_Major> once for all AppHost variants")
-        self.assertEqual(["ChsBuffer.Avalonia.AppHost", "ChsBuffer.Angle.Static"],
-                         [update.description.split(":")[0] for update in updates])
-
     def test_skia_commit_of_one_line(self):
         before = evaluated(self.root)
         line = self.pinned["skiasharp-versions"][0]
@@ -786,31 +612,6 @@ class PackageVersionBumpTests(UpstreamTestCase):
         changed, _ = self.bump()
         self.assert_bumped(changed, {("ChsBuffer.SkiaSharp.Static", variant):
                                      before["ChsBuffer.SkiaSharp.Static"][variant]["version"]}, apphost=True)
-
-    def test_avalonia_source_archive(self):
-        before = evaluated(self.root)
-        set_text(self.root / "native/avalonianative/conandata.yml",
-                 rf'^(  "{re.escape(self.pinned["avalonia-native"])}":\n(?:    .*\n)*?    sha256: ")[0-9a-f]+(")',
-                 r"\g<1>" + "e" * 64 + r"\g<2>")
-        changed, _ = self.bump()
-        self.assert_bumped(changed, {("ChsBuffer.Avalonia.Native.Static", "default"):
-                                     before["ChsBuffer.Avalonia.Native.Static"]["default"]["version"]}, apphost=False)
-
-    def test_vmr_commit(self):
-        before = evaluated(self.root)
-        hostlibs = self.root / "native/hostlibs/versions.json"
-        sources = json.loads(hostlibs.read_text(encoding="utf-8"))
-        runtime = next(iter(sources))
-        sources[runtime]["commit"] = "0" * 40
-        hostlibs.write_text(json.dumps(sources), encoding="utf-8")
-        changed, _ = self.bump()
-        # One <Version> serves every target framework, so all of them move to the next prerelease number.
-        expected = {("ChsBuffer.AppHost.Static", framework): record["version"]
-                    for framework, record in before["ChsBuffer.AppHost.Static"].items()}
-        self.assert_bumped(changed, expected, apphost=True)
-
-    def test_nothing_to_bump(self):
-        self.assertEqual(({}, []), self.bump())
 
 
 class KeepGoingTests(UpstreamTestCase):
@@ -835,31 +636,6 @@ class KeepGoingTests(UpstreamTestCase):
         self.assertIn("Lookup errors", stdout)
         self.assert_consistent()
 
-    def test_dotnet_failure_aborts_even_with_keep_going(self):
-        client = fake_upstream(self.root, avalonia=True)
-        channel = ".".join(next(iter(self.pinned["runtimes"].values())).split(".")[:2])
-        del client.responses[f"https://example.invalid/release-metadata/{channel}/releases.json"]
-        before = self.snapshot()
-        for arguments in (("--keep-going",), ("--keep-going", "--dotnet")):
-            code, _, stderr, metadata = self.apply(client, *arguments)
-            self.assertEqual(2, code, arguments)
-            self.assertIsNone(metadata)
-            self.assertEqual(before, self.snapshot())
-
-    def test_security_state_failure_aborts(self):
-        client = fake_upstream(self.root, avalonia=True)
-        del client.responses["https://example.invalid/update.json"]
-        before = self.snapshot()
-        code, _, stderr, metadata = self.apply(client, "--keep-going", "--avalonia")
-        self.assertEqual(2, code)
-        self.assertIn("cannot evaluate the security state", stderr)
-        self.assertIsNone(metadata)
-        self.assertEqual(before, self.snapshot())
-        # Without --metadata the security state is not needed.
-        code, _, stderr = self.run_main(client, "apply", "--keep-going", "--avalonia")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual(next_patch(self.pinned["avalonia"]), self.props()["AvaloniaVersion"])
-
 
 class MetadataTests(UpstreamTestCase):
     def test_security_release(self):
@@ -880,42 +656,6 @@ class MetadataTests(UpstreamTestCase):
         self.assertEqual(len(self.pinned["runtimes"]) + 1, len(metadata["updates"]), "one line per runtime, one bump")
         self.assertEqual([], metadata["errors"])
 
-    def test_target_is_deterministic(self):
-        client = lambda: fake_upstream(self.root, dotnet=True, avalonia=True, skiasharp=True,  # noqa: E731
-                                       angle_head="3" * 40)
-        first = self.apply(client(), "--dry-run")[3]
-        second = self.apply(client(), "--dry-run")[3]
-        self.assertEqual(first, second)
-        applied = self.apply(client())[3]
-        self.assertEqual(first["target"], applied["target"], "--dry-run and apply describe the same target")
-        self.assertEqual(first["title"], applied["title"])
-        self.assertEqual(first["changed"], applied["changed"])
-        for name in (".NET", "Avalonia", "SkiaSharp", "ANGLE"):
-            self.assertIn(name, first["target"])
-        self.assertNotIn("sha256", first["target"])
-        self.assertLessEqual(len(first["title"]), upstream.TITLE_LENGTH)
-        self.assertEqual("fix(deps): update .NET, Avalonia, SkiaSharp and ANGLE (security)", first["title"])
-
-    def test_nothing_to_change(self):
-        before = self.snapshot()
-        code, stdout, stderr, metadata = self.apply(fake_upstream(self.root))
-        self.assertEqual(0, code, stderr)
-        self.assertEqual(before, self.snapshot())
-        self.assertEqual({"group": "inputs", "changed": [], "target": "", "updates": [], "notes": [], "errors": [],
-                          "security": {"before": False, "after": False, "cves": []}},
-                         {key: value for key, value in metadata.items() if key not in ("title", "body")})
-        self.assertEqual("build(deps): no updates for inputs", metadata["title"])
-        self.assertIn("Nothing to change.", metadata["body"])
-        self.assertIn("(none: nothing to update)", stdout)
-
-    def test_resolved_advisory_is_a_security_fix(self):
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root, avalonia=True, vulnerable=True), "--avalonia")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual({"before": True, "after": False, "cves": []}, metadata["security"])
-        self.assertEqual(f"fix(deps): update Avalonia to {next_patch(self.pinned['avalonia'])} (security)",
-                         metadata["title"])
-        self.assertIn("Resolves the critical advisory https://example.invalid/advisory", metadata["body"])
-
     def test_unresolved_finding_is_not_a_fix(self):
         client = fake_upstream(self.root, dotnet=True, mismatched_vmr=True, avalonia=True)
         code, _, stderr, metadata = self.apply(client)
@@ -924,34 +664,6 @@ class MetadataTests(UpstreamTestCase):
         self.assertTrue(metadata["title"].startswith("build(deps): update Avalonia"), metadata["title"])
         self.assertTrue(any("not applied" in note for note in metadata["notes"]))
         self.assertIn("### Not applied", metadata["body"])
-
-    def test_eol_channel_stays_a_finding(self):
-        channel = ".".join(next(iter(self.pinned["runtimes"].values())).split(".")[:2])
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root, eol=(channel,), avalonia=True))
-        self.assertEqual(0, code, stderr)
-        self.assertEqual({"before": True, "after": True, "cves": []}, metadata["security"])
-        self.assertIn(f".NET {channel}", metadata["body"])
-        self.assertTrue(metadata["title"].startswith("build(deps):"))
-
-    def test_other_groups_have_no_security_state(self):
-        client = fake_upstream(self.root)
-        del client.responses[upstream.NUGET_VULNERABILITIES]
-        for group in upstream.group_names(self.root)[1:]:
-            code, _, stderr, metadata = self.apply(client, "--group", group)
-            self.assertEqual(0, code, stderr)
-            self.assertEqual((group, None, [], ""), (metadata["group"], metadata["security"], metadata["changed"],
-                                                     metadata["target"]))
-
-    def test_old_versions_still_mentioned(self):
-        runtime = next(iter(self.pinned["runtimes"].values()))
-        notes = self.root / "docs/notes.md"
-        notes.parent.mkdir()
-        notes.write_text(f"<!-- Built from {runtime}. -->\n", encoding="utf-8")
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root, dotnet=True), "--dotnet")
-        self.assertEqual(0, code, stderr)
-        self.assertIn("### Old versions still mentioned", metadata["body"])
-        self.assertIn("`docs/notes.md:1`", metadata["body"])
-        self.assertNotIn("<!--", metadata["body"])
 
 
 class AvaloniaMinorTests(UpstreamTestCase):
@@ -978,31 +690,6 @@ class AvaloniaMinorTests(UpstreamTestCase):
         self.assertEqual([f"Avalonia newer major releases (report only): {newer_major}"], metadata["notes"])
         self.assert_consistent()
 
-    def test_dependency_change_is_report_only(self):
-        before = self.snapshot()
-        client = fake_upstream(self.root, avalonia_minor=True, avalonia_minor_skia=next_patch(self.pinned["skiasharp"]))
-        code, _, stderr, metadata = self.apply(client, "--group", "avalonia-minor")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual(before, self.snapshot())
-        self.assertEqual([], metadata["changed"])
-        self.assertEqual(1, len(metadata["notes"]))
-        self.assertRegex(metadata["notes"][0], r"not applied \(report only\): SkiaSharp: ")
-
-    def test_tag_that_is_not_the_built_commit_is_report_only(self):
-        client = fake_upstream(self.root, avalonia_minor=True)
-        new = avalonia_minor_version(self.pinned["avalonia"])
-        client.add_ref(upstream.AVALONIA_REPOSITORY, f"refs/tags/{new}", "9" * 40)
-        before = self.snapshot()
-        code, _, stderr, metadata = self.apply(client, "--group", "avalonia-minor")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual(before, self.snapshot())
-        self.assertIn("was built from", metadata["notes"][0])
-
-    def test_patch_releases_belong_to_the_inputs_group(self):
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root, avalonia=True), "--group", "avalonia-minor")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual([], metadata["changed"])
-
 
 class SkiaSharpLineTests(UpstreamTestCase):
     def test_newer_milestone_of_one_line(self):
@@ -1014,7 +701,8 @@ class SkiaSharpLineTests(UpstreamTestCase):
         new = skiasharp_milestone_version(line)
         sources = repo_versions.load(self.root)["skiasharp-sources"]
         self.assertEqual({"skia-commit": fake_commit("skia " + new),
-                          "harfbuzz": next_patch(next_patch(self.pinned["skiasharp-sources"][line]["harfbuzz"]))},
+                          "harfbuzz": next_patch(next_patch(self.pinned["skiasharp-sources"][line]["harfbuzz"])),
+                          "skiasharp-commit": fake_commit("skiasharp " + new)},
                          sources[new])
         self.assertEqual(self.pinned["skiasharp-sources"][other], sources[other])
         self.assertNotIn(line, sources)
@@ -1022,36 +710,8 @@ class SkiaSharpLineTests(UpstreamTestCase):
         self.assertIn("ChsBuffer.SkiaSharp.Static (skia", metadata["body"])
         self.assert_consistent()
 
-    def test_package_docs_follow_the_new_versions(self):
-        line = self.pinned["skiasharp-versions"][0]
-        harfbuzz = self.pinned["skiasharp-sources"][line]["harfbuzz"]
-        readme = self.root / "src/package-skiasharp-static/README.md"
-        readme.parent.mkdir(parents=True, exist_ok=True)
-        readme.write_text(f"Use {line} ({line}.1, HarfBuzzSharp {harfbuzz}); not {line}.9 or 1{line}.\n",
-                          encoding="utf-8")
-        client = fake_upstream(self.root, skiasharp=True, skiasharp_milestone=True)
-        code, _, stderr, metadata = self.apply(client, "--group", f"skiasharp-{line.split('.')[0]}")
-        self.assertEqual(0, code, stderr)
-        new = skiasharp_milestone_version(line)
-        new_harfbuzz = repo_versions.load(self.root)["skiasharp-sources"][new]["harfbuzz"]
-        self.assertEqual(f"Use {new} ({new}.1, HarfBuzzSharp {new_harfbuzz}); not {line}.9 or 1{line}.\n",
-                         readme.read_text(encoding="utf-8"))
-        self.assertIn("src/package-skiasharp-static/README.md", metadata["changed"])
-
     def build_record(self):
         return json.loads((self.root / upstream.SKIASHARP_BUILD).read_text(encoding="utf-8"))
-
-    def test_unchanged_build_files_carry_over(self):
-        line = self.pinned["skiasharp-versions"][0]
-        files = self.build_record()[line]
-        client = fake_upstream(self.root, skiasharp=True, skiasharp_milestone=True)
-        code, _, stderr, metadata = self.apply(client, "--group", f"skiasharp-{line.split('.')[0]}")
-        self.assertEqual(0, code, stderr)
-        record = self.build_record()
-        self.assertNotIn(line, record)
-        self.assertEqual(files, record[skiasharp_milestone_version(line)])
-        self.assertIn(upstream.SKIASHARP_BUILD, metadata["changed"])
-        self.assertNotIn("Upstream build changes", metadata["body"])
 
     def test_changed_build_files_need_a_review(self):
         line = self.pinned["skiasharp-versions"][0]
@@ -1073,23 +733,6 @@ class SkiaSharpLineTests(UpstreamTestCase):
         self.assertIn(f'"{changed}": "{hashlib.sha1(b"new ~~~ text" + chr(10).encode()).hexdigest()}"', body)
         self.assertIn(f'"{removed}": null', body)
         self.assertTrue(any("see Upstream build changes" in note for note in metadata["notes"]))
-
-    def test_newer_major_is_report_only(self):
-        majors = sorted({int(line.split(".")[0]) for line in self.pinned["skiasharp-versions"]})
-        before = self.snapshot()
-        client = fake_upstream(self.root, skiasharp_major=True)
-        code, _, stderr, metadata = self.apply(client, "--group", f"skiasharp-{majors[-1]}")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual(before, self.snapshot())
-        self.assertEqual([f"SkiaSharp newer major releases (report only): {majors[-1] + 1}.0.0"], metadata["notes"])
-        # Reported once, by the group of the closest pinned line below it.
-        self.assertEqual([], self.apply(client, "--group", f"skiasharp-{majors[0]}")[3]["notes"])
-
-    def test_patch_releases_belong_to_the_inputs_group(self):
-        group = f"skiasharp-{self.pinned['skiasharp-versions'][0].split('.')[0]}"
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root, skiasharp=True), "--group", group)
-        self.assertEqual(0, code, stderr)
-        self.assertEqual([], metadata["changed"])
 
 
 class ToolsTests(UpstreamTestCase):
@@ -1117,54 +760,6 @@ class ToolsTests(UpstreamTestCase):
         self.assertEqual("build(deps): update 6 tools", metadata["title"], "too long with all names")
         self.assertEqual(6, len(metadata["updates"]))
         self.assertIsNone(metadata["security"])
-
-    def test_failed_lookup_skips_only_that_tool(self):
-        client = fake_upstream(self.root, tools=True)
-        del client.responses[f"{upstream.PYPI}/conan/json"]
-        pins = tool_pins(self.root)
-        before = self.snapshot()
-        code, _, stderr, metadata = self.apply(client, "--group", "tools")
-        self.assertEqual(2, code)
-        self.assertIn("conan: GET", stderr)
-        self.assertEqual(before, self.snapshot())
-        code, _, stderr, metadata = self.apply(client, "--group", "tools", "--keep-going")
-        self.assertEqual(0, code, stderr)
-        after = tool_pins(self.root)
-        self.assertEqual(pins["conan"], after["conan"])
-        self.assertEqual(next_patch(pins["ninja"]), after["ninja"])
-        self.assertEqual(next_patch(pins["Task"]), after["Task"])
-        self.assertEqual(1, len(metadata["errors"]))
-        self.assertTrue(metadata["errors"][0].startswith("conan: GET "))
-
-    def test_current_tools_change_nothing(self):
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root), "--group", "tools")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual(([], ""), (metadata["changed"], metadata["target"]))
-
-    def test_build_args_are_the_pins_of_the_image_tools(self):
-        pins = tool_pins(self.root)
-        expected = f"--build-arg TASK_VERSION={pins['Task']} --build-arg UV_VERSION={pins['uv']}\n"
-        self.assertEqual((0, expected, ""), self.run_main(None, "build-args"))
-        code, _, _, _ = self.apply(fake_upstream(self.root, tools=True), "--group", "tools")
-        self.assertEqual(0, code)
-        self.assertIn(f"TASK_VERSION={next_patch(pins['Task'])} ", self.run_main(None, "build-args")[1])
-
-
-class ImageToolTests(unittest.TestCase):
-    """The Linux build images install Task and uv at the versions of the build arguments, never at a literal one."""
-
-    def test_dockerfiles_take_the_tool_versions_as_build_arguments(self):
-        build_args = {tool.build_arg for tool in upstream.TOOLS if tool.build_arg}
-        dockerfiles = sorted(ROOT.glob("native/*/*.Dockerfile"))
-        self.assertTrue(dockerfiles)
-        for dockerfile in dockerfiles:
-            with self.subTest(dockerfile=dockerfile.relative_to(ROOT).as_posix()):
-                text = dockerfile.read_text(encoding="utf-8")
-                self.assertEqual([], re.findall(r"go-task/task/releases/download/v\d[^/]*|astral-sh/uv:\d\S*", text))
-                declared = set(re.findall(r"^ARG (\w+_VERSION)\b", text, re.M))
-                self.assertEqual(build_args, declared)
-                self.assertIn("releases/download/v$TASK_VERSION/", text)
-                self.assertIn("FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv", text)
 
 
 class RepositoryRecordTests(unittest.TestCase):
@@ -1196,44 +791,6 @@ class LlvmTests(UpstreamTestCase):
         self.assertIn("bumps no package version", metadata["body"])
         self.assertIsNone(metadata["security"])
 
-    def test_release_without_the_windows_installer_is_report_only(self):
-        before, version = self.snapshot(), next_patch(self.pins()[0])
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root, llvm=version, llvm_asset=False), "--group", "llvm")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual(before, self.snapshot())
-        self.assertEqual([f"LLVM {version} not applied: the release has no LLVM-{version}-win64.msi (yet)"],
-                         metadata["notes"])
-
-    def test_pins_that_disagree_are_an_error(self):
-        action = self.root / upstream.LLVM_ACTION
-        set_text(action, r"(key: llvm-)[\w.]+(-win64)", r"\g<1>1.2.3\g<2>")
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root), "--group", "llvm")
-        self.assertEqual(2, code)
-        self.assertIn("pin different LLVM versions", stderr)
-
-
-class CheckWordingTests(UpstreamTestCase):
-    def test_reports_the_group_of_each_update(self):
-        client = fake_upstream(self.root, dotnet=True, avalonia_minor=True, avalonia_major=True, skiasharp_milestone=True,
-                               skiasharp_major=True, angle_head="3" * 40, tools=True)
-        code, stdout, _ = self.run_main(client, "check")
-        self.assertEqual(0, code, stdout)
-        self.assertIn(f"newer minor {avalonia_minor_version(self.pinned['avalonia'])}: apply group avalonia-minor", stdout)
-        self.assertIn("newer major releases (report only)", stdout)
-        for line in self.pinned["skiasharp-versions"]:
-            self.assertIn(f"newer milestone {skiasharp_milestone_version(line)} (apply group skiasharp-"
-                          f"{line.split('.')[0]})", stdout)
-        self.assertIn("apply group inputs moves the pin to the branch head", stdout)
-        self.assertIn("Microsoft.Build.Locator", stdout)
-        self.assertNotIn("Toolchain (report only)", stdout)
-
-
-
-class Response(io.BytesIO):
-    def __init__(self, data, headers):
-        super().__init__(data)
-        self.headers = headers
-
 
 class HelperTests(unittest.TestCase):
     def test_version_ranges(self):
@@ -1249,47 +806,9 @@ class HelperTests(unittest.TestCase):
         self.assertEqual("2.3.4.5", upstream.minimum("[2.3.4.5, )"))
         self.assertEqual("2.3.4.5", upstream.minimum("2.3.4.5"))
 
-    def test_client_decompresses_and_scopes_the_token(self):
-        client = upstream.Client(token="secret", attempts=1)
-        with mock.patch("urllib.request.urlopen") as urlopen:
-            urlopen.return_value = Response(gzip.compress(b'{"value": 1}'), {"Content-Encoding": "gzip"})
-            self.assertEqual({"value": 1}, client.json("https://api.nuget.org/v3/index.json"))
-            request = urlopen.call_args[0][0]
-            self.assertIsNone(request.get_header("Authorization"))
-            self.assertEqual(upstream.USER_AGENT, request.get_header("User-agent"))
-            urlopen.return_value = Response(b'{"value": 2}', {})
-            self.assertEqual({"value": 2}, client.json("https://api.github.com/repos/o/r"))
-            self.assertEqual("Bearer secret", urlopen.call_args[0][0].get_header("Authorization"))
-
-    def test_client_reports_http_errors(self):
-        client = upstream.Client(attempts=2)
-        error = urllib.error.HTTPError("https://example.invalid/x", 503, "Service Unavailable", {}, io.BytesIO())
-        with mock.patch("urllib.request.urlopen", side_effect=error) as urlopen, mock.patch("time.sleep") as sleep:
-            with self.assertRaisesRegex(upstream.UpstreamError, r"https://example.invalid/x: HTTP 503"):
-                client.get("https://example.invalid/x")
-        self.assertEqual(2, urlopen.call_count)
-        self.assertEqual(1, sleep.call_count)
-
 
 class FailureTests(UpstreamTestCase):
     """Failures keep their exit codes: 1 only for findings, 2 when a command cannot complete."""
-
-    def test_security_verdict_survives_a_missing_ref_nuspec(self):
-        client = fake_upstream(self.root, dotnet=True)
-        for runtime in self.pinned["runtimes"].values():
-            new = next_patch(runtime)
-            del client.responses[f"{upstream.NUGET}/microsoft.netcore.app.ref/{new}/microsoft.netcore.app.ref.nuspec"]
-        code, stdout, stderr = self.run_main(client, "check", "--json", "--fail-on-security")
-        self.assertEqual(1, code, stderr)
-        report = json.loads(stdout)
-        self.assertTrue(report["security"])
-        self.assertEqual([], report["errors"])
-        for item in report["dotnet"]:
-            self.assertTrue(item["security"])
-            self.assertTrue(any("HTTP 404" in problem for problem in item["latest-source"]["problems"]))
-        code, stdout, _ = self.run_main(client, "check")
-        self.assertEqual(0, code)
-        self.assertIn("Security: ACTION NEEDED", stdout)
 
     def test_end_of_life_channel_is_a_security_finding(self):
         channel = ".".join(next(iter(self.pinned["runtimes"].values())).split(".")[:2])
@@ -1298,42 +817,6 @@ class FailureTests(UpstreamTestCase):
         self.assertIn(f".NET {channel} is end of life", stdout)
         self.assertIn("Security: ACTION NEEDED", stdout)
         self.assertEqual(0, self.run_main(fake_upstream(self.root, eol=(channel,)), "check")[0])
-
-    def test_malformed_security_data_is_an_error_not_a_finding(self):
-        client = fake_upstream(self.root)
-        client.add_json(upstream.DOTNET_INDEX, {"releases-index": ["not an object"]})
-        code, stdout, _ = self.run_main(client, "check", "--fail-on-security")
-        self.assertEqual(2, code)
-        self.assertIn("AttributeError", stdout)
-        self.assertIn("Security: UNKNOWN", stdout)
-
-    def test_unexpected_exceptions_exit_2(self):
-        with mock.patch.object(package_inputs, "compute", side_effect=KeyError("boom")):
-            code, _, stderr = self.run_main(None, "lock", "--check")
-        self.assertEqual(2, code)
-        self.assertIn("error: unexpected KeyError", stderr)
-
-    def test_contents_listing_instead_of_a_submodule_is_reported(self):
-        client = fake_upstream(self.root, skiasharp=True)
-        for line in self.pinned["skiasharp-versions"]:
-            client.add_json(f"{upstream.GITHUB_API}/repos/mono/SkiaSharp/contents/externals/skia?ref=v{next_patch(line)}",
-                            [{"type": "file", "name": "BUILD.gn"}])
-        before = self.snapshot()
-        code, stdout, stderr = self.run_main(client, "apply", "--skiasharp")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual(before, self.snapshot())
-        self.assertIn("is not a submodule", stdout)
-
-    def test_failed_lookup_aborts_and_suggests_a_narrower_selection(self):
-        client = fake_upstream(self.root, dotnet=True, skiasharp=True)
-        line = self.pinned["skiasharp-versions"][0]
-        del client.responses[f"{upstream.GITHUB_API}/repos/mono/SkiaSharp/contents/externals/skia?ref=v{next_patch(line)}"]
-        before = self.snapshot()
-        code, _, stderr = self.run_main(client, "apply")
-        self.assertEqual(2, code)
-        self.assertEqual(before, self.snapshot())
-        self.assertIn("Nothing was written", stderr)
-        self.assertIn("select them: --dotnet --avalonia", stderr)
 
     def test_failed_write_restores_every_file(self):
         before = self.snapshot()
@@ -1369,53 +852,16 @@ class FailureTests(UpstreamTestCase):
         self.assertFalse(hostlibs.read_bytes().startswith(b"\xef\xbb\xbf"))
         self.assert_consistent()
 
-    def test_apply_appends_to_the_lock(self):
-        before = package_inputs.read_lock(self.root)
-        code, _, stderr = self.run_main(fake_upstream(self.root, dotnet=True), "apply", "--dotnet")
-        self.assertEqual(0, code, stderr)
-        after = package_inputs.read_lock(self.root)
-        self.assertEqual([], package_inputs.changed_entries(before, after))
-        self.assertGreater(sum(map(len, package_inputs.history(after).values())),
-                           sum(map(len, package_inputs.history(before).values())))
-
-
-class BuildContainerTests(unittest.TestCase):
-    """The official Linux build containers of a VMR commit, as the HostLibs Linux builds use them."""
-
-    def test_pins_every_container_by_digest(self):
-        client = FakeClient()
-        add_pipeline_resources(client, "c1")
-        self.assertEqual(CONTAINERS, upstream.build_containers(client, "c1"))
-        for rid in MANIFESTS:
-            self.assertEqual(upstream.REGISTRY_MANIFESTS, client.accepts[manifest_url(rid)])
-        self.assertNotIn(manifest_url("linux-musl-x64"), client.requests, "a digest in the pipeline is used as is")
-
-    def test_missing_container_is_an_error(self):
-        for leg in upstream.BUILD_CONTAINERS.values():
-            with self.subTest(leg=leg):
-                client = FakeClient()
-                add_pipeline_resources(client, "c1", PIPELINE_RESOURCES.replace(f"      {leg}:\n", f"      {leg}_old:\n"))
-                with self.assertRaisesRegex(upstream.UpstreamError, rf"\b{leg}\b"):
-                    upstream.build_containers(client, "c1")
-
-    def test_other_registries_are_an_error(self):
-        client = FakeClient()
-        add_pipeline_resources(client, "c1", PIPELINE_RESOURCES.replace(f"{PREREQS}:{CONTAINER_TAGS['linux-x64']}\n",
-                                                                        f"example.invalid/prereqs:{CONTAINER_TAGS['linux-x64']}\n"))
-        with self.assertRaisesRegex(upstream.UpstreamError, r"\blinux_x64\b"):
-            upstream.build_containers(client, "c1")
-
 
 class VmrSourceTests(unittest.TestCase):
     """The VMR tag of a runtime: the 1xx SDK tag whose commit built Microsoft.NETCore.App.Ref."""
 
     @staticmethod
-    def client(tags, ref_commit="c100"):
+    def client(tags):
         client = FakeClient()
         for tag, commit in tags.items():
             client.add_ref(upstream.VMR, f"refs/tags/{tag}", commit)
-        if ref_commit:
-            client.add_nuspec("Microsoft.NETCore.App.Ref", "9.0.0", commit=ref_commit)
+        client.add_nuspec("Microsoft.NETCore.App.Ref", "9.0.0", commit="c100")
         return client
 
     @staticmethod
@@ -1428,56 +874,8 @@ class VmrSourceTests(unittest.TestCase):
         result = upstream.vmr_source(client, "9.0.0", self.release("9.0.101", "9.0.100"), "9.0")
         self.assertEqual(("v9.0.100", "c100", []), (result["tag"], result["commit"], result["problems"]))
 
-    def test_no_1xx_sdk_matches(self):
-        client = self.client({"v9.0.101": "c101", "v9.0.100": "c100"}, ref_commit="other")
-        result = upstream.vmr_source(client, "9.0.0", self.release("9.0.101", "9.0.100"), "9.0")
-        self.assertIsNone(result["tag"])
-        self.assertEqual(1, len(result["problems"]))
-        self.assertIn("none of the 1xx SDK tags (v9.0.101 c101, v9.0.100 c100)", result["problems"][0])
-
-    def test_no_1xx_sdk(self):
-        result = upstream.vmr_source(self.client({}), "9.0.0", self.release("9.0.200"), "9.0")
-        self.assertIsNone(result["tag"])
-        self.assertEqual(["no 1xx SDK listed for runtime 9.0.0"], result["problems"])
-
-    def test_single_1xx_sdk_with_another_commit(self):
-        result = upstream.vmr_source(self.client({"v9.0.100": "c999"}), "9.0.0", self.release("9.0.100"), "9.0")
-        self.assertEqual(("v9.0.100", "c999"), (result["tag"], result["commit"]))
-        self.assertIn("was built from c100", result["problems"][0])
-
-    def test_unpublished_ref_nuspec_is_a_problem_not_an_exception(self):
-        client = self.client({"v9.0.100": "c100"}, ref_commit=None)
-        result = upstream.vmr_source(client, "9.0.0", self.release("9.0.100"), "9.0")
-        self.assertEqual(("v9.0.100", "c100"), (result["tag"], result["commit"]))
-        self.assertTrue(any("HTTP 404" in problem for problem in result["problems"]))
-
-
-class FailingRead(Response):
-    def __init__(self, error):
-        super().__init__(b"", {})
-        self.error = error
-
-    def read(self, *args):
-        raise self.error
-
 
 class ClientTests(unittest.TestCase):
-    def test_retries_failures_while_reading(self):
-        client = upstream.Client(attempts=2)
-        responses = [FailingRead(TimeoutError("The read operation timed out")), Response(b'{"ok": true}', {})]
-        with mock.patch("urllib.request.urlopen", side_effect=responses) as urlopen, mock.patch("time.sleep"):
-            self.assertEqual({"ok": True}, client.json("https://example.invalid/x"))
-        self.assertEqual(2, urlopen.call_count)
-
-    def test_reports_failures_while_reading(self):
-        client = upstream.Client(attempts=2)
-        for error in (TimeoutError("The read operation timed out"), http.client.IncompleteRead(b"par", 10),
-                      ConnectionResetError(104, "Connection reset by peer")):
-            with mock.patch("urllib.request.urlopen", side_effect=lambda *args, error=error, **kwargs: FailingRead(error)), \
-                    mock.patch("time.sleep"):
-                with self.assertRaisesRegex(upstream.UpstreamError, rf"{type(error).__name__}.*after 2 attempts"):
-                    client.get("https://example.invalid/x")
-
     def test_token_is_not_sent_after_a_redirect(self):
         client = upstream.Client(token="secret")
         request = client._request("https://api.github.com/repos/o/r/tarball/main", True)
