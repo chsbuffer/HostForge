@@ -11,14 +11,14 @@ Reference `ChsBuffer.SkiaSharp.Static`, `ChsBuffer.Angle.Static` and
 </PropertyGroup>
 <ItemGroup>
   <PackageReference Include="Avalonia.Desktop" Version="12.1.6" />
-  <PackageReference Include="ChsBuffer.SkiaSharp.Static" Version="3.119.4.1" />
-  <PackageReference Include="ChsBuffer.Angle.Static" Version="2.1.27548.1" />
+  <PackageReference Include="ChsBuffer.SkiaSharp.Static" Version="3.119.4.2" />
+  <PackageReference Include="ChsBuffer.Angle.Static" Version="2.1.27548.2" />
   <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="12.1.6.1" />
 </ItemGroup>
 ```
 
 Run `dotnet publish -c Release -r <RID>`. Change only the SkiaSharp static package
-version to `4.157.0.2` to use SkiaSharp 4.
+version to `4.157.0.3` to use SkiaSharp 4.
 
 The SkiaSharp meta package selects compatible managed SkiaSharp and HarfBuzzSharp
 versions, and Linux native assets of the same versions, through its RID package

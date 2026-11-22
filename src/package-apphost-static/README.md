@@ -17,8 +17,8 @@ Each package version contains the host libraries of one .NET runtime and activat
 
 | Package version | Target framework | .NET runtime |
 |---|---|---|
-| `10.0.15-alpha.1` | `net10.0` | 10.0.15 |
-| `11.0.0-alpha.1` | `net11.0` | 11.0.0 |
+| `10.0.15-alpha.2` | `net10.0` | 10.0.15 |
+| `11.0.0-alpha.2` | `net11.0` | 11.0.0 |
 
 Use this package when you want the generated executable to contain native code directly, instead of deploying separate native DLLs alongside it.
 

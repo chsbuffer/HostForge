@@ -9,12 +9,12 @@ package alongside Avalonia; graphics package dependencies are selected automatic
 </PropertyGroup>
 <ItemGroup>
   <PackageReference Include="Avalonia.Desktop" Version="12.1.6" />
-  <PackageReference Include="ChsBuffer.SkiaSharp.Static" Version="3.119.4.1" />
+  <PackageReference Include="ChsBuffer.SkiaSharp.Static" Version="3.119.4.2" />
 </ItemGroup>
 ```
 
 Publish with an explicit RID, for example `dotnet publish -c Release -r linux-x64`.
-Use version `4.157.0.2` for SkiaSharp 4. A single architecture can instead reference
+Use version `4.157.0.3` for SkiaSharp 4. A single architecture can instead reference
 `ChsBuffer.SkiaSharp.Static.<RID>`.
 
 Both versions support `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`,

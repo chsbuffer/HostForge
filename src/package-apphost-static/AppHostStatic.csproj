@@ -10,7 +10,7 @@
     <HostLibsFlavor>no-pgo</HostLibsFlavor>
     <HostLibsRoot>$([MSBuild]::NormalizePath('$(HostLibsBaseRoot)', '$(HostLibsFlavor)'))</HostLibsRoot>
     <PackageId>ChsBuffer.AppHost.Static.$(StaticAppHostRid)</PackageId>
-    <Version>$(HostLibsVersion)-alpha.1</Version>
+    <Version>$(HostLibsVersion)-alpha.2</Version>
     <Authors>ChsBuffer</Authors>
     <Description>Relink AppHost and SingleFileHost from NativeLibrary items with static .NET $(HostLibsVersion) host libs for $(HostLibsTargetFramework) $(StaticAppHostRid).</Description>
     <PackageTags>apphost;single-file;host-template</PackageTags>
