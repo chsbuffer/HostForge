@@ -59,7 +59,8 @@ The Build package's `.targets` matches `$(RuntimeIdentifier)` and the project's 
 silent: its output is portable, and the publish step removes the native libraries by file name, which
 would drop them for every RID. NativeAOT and `UseAppHost=false` builds stay inactive as well, because
 no apphost loads the libraries; the NativeAOT warning is omitted when the static graphics packages
-(`HostForgeStaticGraphicsImported`) link them instead. Each RID package depends on the Build package, so consumers install only the RID packages they need. The meta-package `ChsBuffer.Avalonia.AppHost` installs every supported RID package.
+(`HostForgeStaticGraphicsImported`) link them instead. Projects whose `$(Language)` is not C# stay
+inactive, because the resolver is the C# source `ModuleInitializer.cs` compiled into the application. Each RID package depends on the Build package, so consumers install only the RID packages they need. The meta-package `ChsBuffer.Avalonia.AppHost` installs every supported RID package.
 
 ## SkiaSharp variants and package versions
 

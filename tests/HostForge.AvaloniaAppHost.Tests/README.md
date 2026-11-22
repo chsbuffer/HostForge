@@ -21,6 +21,7 @@ Current coverage:
   libraries of every RID stay under `runtimes/`, and the portable output runs on `dotnet`
 - Windows `UseAppHost=false` and NativeAOT publishes: inactive with the matching warning, the dynamic libraries stay in
   the publish directory, and the output runs on `dotnet` or as the NativeAOT executable
+- Windows F# project: builds and publishes inactive with the language warning, keeping the dynamic libraries
 - Linux ELF audit of the linked templates: architecture, the glibc or musl program interpreter, no glibc
   dependency in the musl templates, and the diagnostics exports of the upstream singlefilehost
 - Linux Skia/HarfBuzz native runtime copy suppression switch behavior

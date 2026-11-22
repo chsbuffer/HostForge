@@ -293,6 +293,54 @@ public class AvaloniaAppHostTests
     }
 
     [Test]
+    public async Task FSharpProject_StaysInactiveAndKeepsNativeLibraries_WinX64()
+    {
+        string targetFramework = RepoContext.AvaloniaTemplateTfms[0];
+        string projectName = $"FSharpTest_{Guid.NewGuid():N}"[..19];
+        string projectDirectory = Path.Combine(RepoContext.ArtifactsTestRoot, projectName);
+        string projectFilePath = Path.Combine(projectDirectory, $"{projectName}.fsproj");
+        Directory.CreateDirectory(projectDirectory);
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(projectDirectory, "Program.fs"),
+                "printfn \"SkiaSharpVersion.Native=%O\" SkiaSharp.SkiaSharpVersion.Native\n");
+            await File.WriteAllTextAsync(projectFilePath, $$"""
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <OutputType>Exe</OutputType>
+                    <TargetFramework>{{targetFramework}}</TargetFramework>
+                    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+                    <RestoreAdditionalProjectSources>$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)</RestoreAdditionalProjectSources>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <Compile Include="Program.fs" />
+                    <PackageReference Include="{{RepoContext.GetAvaloniaRidPackageId("win-x64")}}" Version="$(AvaloniaAppHostPackageVersion)" />
+                    <PackageReference Include="SkiaSharp" Version="$(SkiaSharpVersion)" />
+                    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="$(SkiaSharpVersion)" />
+                  </ItemGroup>
+                </Project>
+                """);
+
+            CommandResult result = await RunDotNetCommandAsync("publish", projectFilePath, projectDirectory);
+            AssertEx.Success(result, "fsharp:publish");
+            AssertActivationState(result.CombinedOutput, expectedActive: false, targetFramework, "win-x64");
+            AssertEx.Contains(result.CombinedOutput, "because the project language is F#");
+
+            string outputDirectory = Path.Combine(projectDirectory, "bin", "Release", targetFramework, "win-x64", "publish");
+            AssertEx.FileExists(Path.Combine(outputDirectory, "libSkiaSharp.dll"));
+            CommandResult runResult = await CommandRunner.RunAsync(
+                Path.Combine(outputDirectory, $"{projectName}.exe"), string.Empty, outputDirectory);
+            AssertEx.Success(runResult, "fsharp:run");
+            AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        }
+        finally
+        {
+            Directory.Delete(projectDirectory, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task DisableSkiaHarfBuzzRuntimeCopy_AffectsPublishOutputs_WinX64()
     {
         SwitchRuleCase[] cases =

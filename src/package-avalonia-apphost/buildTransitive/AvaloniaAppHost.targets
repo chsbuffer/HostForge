@@ -39,10 +39,11 @@
     <!--
       NativeAOT and UseAppHost=false run without an apphost, so nothing would load the libraries that the
       publish step removes. ChsBuffer.SkiaSharp.Static and ChsBuffer.Angle.Static link them into NativeAOT
-      executables instead.
+      executables instead. The module initializer that resolves them from the executable is C#.
     -->
     <PropertyGroup Condition="'$(AvaloniaAppHostActive)' == '' and '$(TargetFramework)' != '' and '$(_AvaloniaTemplateRid)' != ''">
       <_AvaloniaAppHostInactiveReason Condition="'$(PublishAot)' == 'true'">PublishAot</_AvaloniaAppHostInactiveReason>
+      <_AvaloniaAppHostInactiveReason Condition="'$(_AvaloniaAppHostInactiveReason)' == '' and '$(Language)' != 'C#'">Language</_AvaloniaAppHostInactiveReason>
       <_AvaloniaAppHostInactiveReason Condition="'$(_AvaloniaAppHostInactiveReason)' == ''
           and !('@(_AvaloniaMatchedRid)' != ''
                 and Exists('@(_AvaloniaMatchedRid->'%(AppHostTemplatePath)')')
@@ -89,6 +90,8 @@
     <!-- NativeAOT with the static graphics packages is a normal setup. -->
     <Warning Condition="'$(_AvaloniaAppHostInactiveReason)' == 'PublishAot' and '$(HostForgeStaticGraphicsImported)' != 'true'"
              Text="$(_AvaloniaAppHostInactive) because PublishAot is true. NativeAOT executables do not use the apphost templates, so the ANGLE, Skia and HarfBuzz dynamic libraries are published. ChsBuffer.SkiaSharp.Static and, on Windows, ChsBuffer.Angle.Static link them into NativeAOT executables." />
+    <Warning Condition="'$(_AvaloniaAppHostInactiveReason)' == 'Language'"
+             Text="$(_AvaloniaAppHostInactive) because the project language is $(Language). The executable resolves ANGLE, Skia and HarfBuzz through a C# module initializer, so only C# projects use the templates; this project publishes the dynamic libraries." />
     <Warning Condition="'$(_AvaloniaAppHostInactiveReason)' == 'NoTemplate'"
              Text="$(_AvaloniaAppHostInactive). No matching AvaloniaAppHostRids item for TFM '$(_AvaloniaTemplateTfm)' and RID '$(_AvaloniaTemplateRid)'. Registered: @(AvaloniaAppHostRids->'%(AppHostTemplateTfm)/%(Identity)', ', '). Host replacement and ANGLE/Skia/HarfBuzz runtime copy suppression are disabled." />
     <Warning Condition="'$(_AvaloniaAppHostInactiveReason)' == 'UseAppHost'"

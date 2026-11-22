@@ -26,6 +26,7 @@ Compatibility and fallback
 - OS-specific TFMs (e.g. net11.0-windows) use the template of their .NET version
 - builds without a runtime identifier: inactive, without a warning
 - NativeAOT (PublishAot=true) and UseAppHost=false: inactive, the dynamic native libraries are published
+- C# projects only; F# and Visual Basic projects stay inactive
 - unsupported target framework & runtime identifier combinations: inactive fallback
 
 Learn more
