@@ -90,7 +90,10 @@ class WindowsBuild:
         template = template.replace("$(SolutionDir)", "$(ProjectDir)")
         # A NuGet consumer cannot access the build machine's compiler PDB (/Zi).
         # Embed CodeView types in the archive's objects (/Z7) for portable linking.
-        template = template.replace("</ClCompile>", "<DebugInformationFormat>OldStyle</DebugInformationFormat></ClCompile>")
+        clcompile = "<DebugInformationFormat>OldStyle</DebugInformationFormat>"
+        if self._windows_ehcont:
+            clcompile += "<GuardEHContMetadata>true</GuardEHContMetadata>"
+        template = template.replace("</ClCompile>", f"{clcompile}</ClCompile>")
         project = self._harfbuzz_build / "libHarfBuzzSharp.vcxproj"
         if wrapper := os.environ.get("HOSTFORGE_COMPILER_CACHE"):
             launcher = self._harfbuzz_build / "cached-cl.cmd"
@@ -108,6 +111,13 @@ class WindowsBuild:
         )
 
 
+    @property
+    def _windows_ehcont(self):
+        # The .NET hosts link with /guard:ehcont on x64 (eng/native/configurecompiler.cmake), and so do
+        # the relinked ones. link.exe then fails with LNK1386 on any object with C++ EH that lacks the
+        # EH continuation metadata of /guard:ehcont.
+        return self._target_arch == "x64"
+
     def _windows_skia_args(self):
         cflags = [
             '"-DSKIA_C_DLL"',
@@ -115,6 +125,7 @@ class WindowsBuild:
             '"/EHsc"',
             '"/Z7"',
             '"/guard:cf"',
+            *(['"/guard:ehcont"'] if self._windows_ehcont else []),
             '"-D_HAS_AUTO_PTR_ETC=1"',
             '"-D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS=1"',
         ]

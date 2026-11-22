@@ -16,6 +16,11 @@ build compiles two of them, the HarfBuzzSharp project and its `harfbuzz-subset-m
 the recipe downloads them at the tag commit and fails when their blob SHAs differ from
 the record.
 
+On `win-x64` the recipe also compiles Skia (clang-cl) and HarfBuzzSharp (MSVC, `GuardEHContMetadata`)
+with `/guard:ehcont`, which upstream does not: the .NET hosts link with `/guard:ehcont` on x64, and
+`link.exe` fails with `LNK1386` on objects with C++ exception handling that lack its EH continuation
+metadata.
+
 SkiaSharp 4 also packages the separate `jsonreader` archive required by Skottie.
 Linux SkiaSharp 4 includes the matching target `cxx/libc++.a` archive.
 

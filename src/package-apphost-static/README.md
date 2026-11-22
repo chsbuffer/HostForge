@@ -84,3 +84,25 @@ internal static class ModuleInitializer
         StaticLibraryNames.Contains(libraryName) ? NativeLibrary.GetMainProgramHandle() : IntPtr.Zero;
 }
 ```
+
+## Control Flow Guard and EH continuation metadata
+
+The relinked hosts keep the hardening of the official ones, from the link flags recorded with the bundled
+host libraries: Control Flow Guard (`/guard:cf`), CET compatibility (`/CETCOMPAT`) and an EH continuation
+table (`/guard:ehcont`), against which Windows checks where exception handling resumes when CET shadow stacks
+are enforced.
+
+`link.exe` builds that table only when every object with C++ exception handling was compiled with
+`/guard:ehcont` (MSVC and clang-cl; `<GuardEHContMetadata>true</GuardEHContMetadata>` in a `.vcxproj`).
+A `NativeLibrary` with C++ exception handling compiled without it fails the relink with `LNK2047` and
+`LNK1386`. Rebuild such libraries with `/guard:ehcont`; if you cannot, link the hosts without the table:
+
+```xml
+<PropertyGroup>
+  <StaticHostGuardEHCont>false</StaticHostGuardEHCont>
+</PropertyGroup>
+```
+
+Do not pass `/force:guardehcont` through `@(LinkerArg)` instead: the table would lack the continuation
+targets of those libraries, and a process with enforced CET shadow stacks terminates when an exception is
+caught in them.

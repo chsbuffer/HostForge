@@ -26,27 +26,53 @@
                                      Condition="'%(Identity)' == '$(StaticHostRid)'" />
     </ItemGroup>
 
+    <PropertyGroup>
+      <_StaticHostLinkMachine>%(_StaticHostWindowsRid.Machine)</_StaticHostLinkMachine>
+      <_StaticHostVcVarsArch>%(_StaticHostWindowsRid.VcVarsArch)</_StaticHostVcVarsArch>
+    </PropertyGroup>
+
     <!--
-      Delay-load the same DLLs as the runtime's own singlefilehost link, which the host libs record
-      (.NET 10 delay-loads WinRT and version.dll with delayimp.lib; .NET 11 links neither).
+      Harden and delay-load like the runtime's own host links, which the host libs record: /guard:cf, plus
+      /guard:ehcont and /CETCOMPAT on x64; .NET 10's singlefilehost also delay-loads WinRT and version.dll with
+      delayimp.lib, .NET 11 links neither. Host libs without these records get the flags of .NET 10.
     -->
+    <ReadLinesFromFile File="$(StaticHostAssetsDir)\apphost.linkflags"
+                       Condition="Exists('$(StaticHostAssetsDir)\apphost.linkflags')">
+      <Output TaskParameter="Lines" ItemName="_AppHostRecordedLinkFlags" />
+    </ReadLinesFromFile>
     <ReadLinesFromFile File="$(StaticHostAssetsDir)\singlefilehost.linkflags"
                        Condition="Exists('$(StaticHostAssetsDir)\singlefilehost.linkflags')">
       <Output TaskParameter="Lines" ItemName="_SingleFileHostRecordedLinkFlags" />
     </ReadLinesFromFile>
 
     <PropertyGroup>
+      <_StaticHostRecordedLinkFlagPattern>(?i)\s*(?:([/-](?:guard:|CETCOMPAT|DELAYLOAD:)\S*)|\S+)</_StaticHostRecordedLinkFlagPattern>
+      <_StaticHostDefaultHardeningFlags>/guard:cf</_StaticHostDefaultHardeningFlags>
+      <_StaticHostDefaultHardeningFlags Condition="'$(_StaticHostLinkMachine)' == 'X64'">/guard:cf /guard:ehcont /CETCOMPAT</_StaticHostDefaultHardeningFlags>
+
+      <_AppHostRecordedLinkFlagsText>@(_AppHostRecordedLinkFlags, ' ')</_AppHostRecordedLinkFlagsText>
+      <_AppHostUpstreamLinkFlags>$([System.Text.RegularExpressions.Regex]::Replace('$(_AppHostRecordedLinkFlagsText)', '$(_StaticHostRecordedLinkFlagPattern)', '$1 ').Trim())</_AppHostUpstreamLinkFlags>
+      <_AppHostUpstreamLinkFlags Condition="'@(_AppHostRecordedLinkFlags)' == ''">$(_StaticHostDefaultHardeningFlags)</_AppHostUpstreamLinkFlags>
+
       <_SingleFileHostRecordedLinkFlagsText>@(_SingleFileHostRecordedLinkFlags, ' ')</_SingleFileHostRecordedLinkFlagsText>
-      <_SingleFileHostDelayLoadFlags>$([System.Text.RegularExpressions.Regex]::Replace('$(_SingleFileHostRecordedLinkFlagsText)', '\s*(?:(/DELAYLOAD:\S+)|\S+)', '$1 ').Trim())</_SingleFileHostDelayLoadFlags>
-      <_SingleFileHostDelayLoadFlags Condition="'@(_SingleFileHostRecordedLinkFlags)' == ''">/DELAYLOAD:api-ms-win-core-winrt-l1-1-0.dll /DELAYLOAD:version.dll</_SingleFileHostDelayLoadFlags>
+      <_SingleFileHostUpstreamLinkFlags>$([System.Text.RegularExpressions.Regex]::Replace('$(_SingleFileHostRecordedLinkFlagsText)', '$(_StaticHostRecordedLinkFlagPattern)', '$1 ').Trim())</_SingleFileHostUpstreamLinkFlags>
+      <_SingleFileHostUpstreamLinkFlags Condition="'@(_SingleFileHostRecordedLinkFlags)' == ''">$(_StaticHostDefaultHardeningFlags) /DELAYLOAD:api-ms-win-core-winrt-l1-1-0.dll /DELAYLOAD:version.dll</_SingleFileHostUpstreamLinkFlags>
+    </PropertyGroup>
+
+    <!--
+      With /guard:ehcont, link.exe fails with LNK1386 on any object that has C++ EH but was compiled without
+      /guard:ehcont. StaticHostGuardEHCont=false links such libraries without the EH continuation table.
+      /force:guardehcont is not used: it leaves their continuation targets out of the table, so a process
+      with enforced CET shadow stacks terminates when an exception is caught in them.
+    -->
+    <PropertyGroup Condition="'$(StaticHostGuardEHCont)' == 'false'">
+      <_AppHostUpstreamLinkFlags>$([System.Text.RegularExpressions.Regex]::Replace('$(_AppHostUpstreamLinkFlags)', '(?i)[/-]guard:ehcont\S*', ''))</_AppHostUpstreamLinkFlags>
+      <_SingleFileHostUpstreamLinkFlags>$([System.Text.RegularExpressions.Regex]::Replace('$(_SingleFileHostUpstreamLinkFlags)', '(?i)[/-]guard:ehcont\S*', ''))</_SingleFileHostUpstreamLinkFlags>
     </PropertyGroup>
 
     <PropertyGroup>
-      <_StaticHostLinkMachine>%(_StaticHostWindowsRid.Machine)</_StaticHostLinkMachine>
-      <_StaticHostVcVarsArch>%(_StaticHostWindowsRid.VcVarsArch)</_StaticHostVcVarsArch>
-      <_StaticHostCetCompatFlag Condition="'$(_StaticHostLinkMachine)' == 'X64'">/CETCOMPAT</_StaticHostCetCompatFlag>
-      <_AppHostLinkFlags>/DEPENDENTLOADFLAG:0x800 /DEBUG /DEBUGTYPE:CV,FIXUP /PDBCOMPRESS /STACK:0x180000 /MANIFEST:NO $(_StaticHostCetCompatFlag) /INCREMENTAL:NO /OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /subsystem:console /guard:cf /LTCG </_AppHostLinkFlags>
-      <_SingleFileHostLinkFlags>/DEPENDENTLOADFLAG:0x800 /DEBUG /DEBUGTYPE:CV,FIXUP /PDBCOMPRESS /STACK:0x180000 /MANIFEST:NO $(_StaticHostCetCompatFlag) /INCREMENTAL:NO $(_SingleFileHostDelayLoadFlags) /OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /subsystem:console /guard:cf /LTCG </_SingleFileHostLinkFlags>
+      <_AppHostLinkFlags>/DEPENDENTLOADFLAG:0x800 /DEBUG /DEBUGTYPE:CV,FIXUP /PDBCOMPRESS /STACK:0x180000 /MANIFEST:NO /INCREMENTAL:NO /OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /subsystem:console $(_AppHostUpstreamLinkFlags) /LTCG </_AppHostLinkFlags>
+      <_SingleFileHostLinkFlags>/DEPENDENTLOADFLAG:0x800 /DEBUG /DEBUGTYPE:CV,FIXUP /PDBCOMPRESS /STACK:0x180000 /MANIFEST:NO /INCREMENTAL:NO /OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /subsystem:console $(_SingleFileHostUpstreamLinkFlags) /LTCG </_SingleFileHostLinkFlags>
     </PropertyGroup>
 
     <Error Condition="'$(_StaticHostLinkMachine)' == ''"

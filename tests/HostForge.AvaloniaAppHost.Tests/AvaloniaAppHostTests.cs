@@ -131,6 +131,29 @@ public class AvaloniaAppHostTests
     }
 
     [Test]
+    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
+    public void LinkedTemplates_KeepTheGuardsOfTheOfficialHosts(string targetFramework)
+    {
+        var packedRids = GetPackedRids();
+        if (packedRids.Count == 0)
+            throw new InvalidOperationException("No RID packages found.");
+
+        foreach (string rid in packedRids)
+        {
+            string templateDirectory = Path.Combine(
+                RepoContext.RepoRoot, "artifacts", "avalonia-host", RepoContext.TargetAvaloniaVersion, targetFramework, rid);
+            foreach (string template in new[] { "apphost.exe", "singlefilehost.exe" })
+            {
+                string path = Path.Combine(templateDirectory, template);
+                PeGuardFlags.AssertSet(path, PeGuardFlags.CfInstrumented, "Control Flow Guard");
+                // The official hosts carry an EH continuation table on x64 only.
+                if (rid == "win-x64")
+                    PeGuardFlags.AssertSet(path, PeGuardFlags.EHContinuationTablePresent, "the EH continuation table");
+            }
+        }
+    }
+
+    [Test]
     public async Task BuildPackage_ContainsTargetsAndModuleInitializer()
     {
         string packageId = RepoContext.AvaloniaAppHostBuildPackageId;

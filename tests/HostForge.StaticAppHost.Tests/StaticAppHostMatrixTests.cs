@@ -97,6 +97,31 @@ public class StaticAppHostMatrixTests
             AssertEx.Success(runResult, $"{targetFramework} 07-run-exe");
             AssertEx.Contains(runResult.CombinedOutput, "Hello, World!2");
         }
+
+        if (OperatingSystem.IsWindows())
+        {
+            await AssertWindowsGuardsAsync(consumerProject, properties, Path.Combine(consumerDir, "obj", configuration, targetFramework, rid), targetFramework, rid);
+        }
+    }
+
+    private static async Task AssertWindowsGuardsAsync(string consumerProject, string properties, string intermediateDirectory, string targetFramework, string rid)
+    {
+        // The relinked x64 hosts keep the Control Flow Guard and EH continuation table of the official ones.
+        string appHost = Path.Combine(intermediateDirectory, "apphost.static.exe");
+        foreach (string host in new[] { appHost, Path.Combine(intermediateDirectory, "singlefilehost.static.exe") })
+        {
+            PeGuardFlags.AssertSet(host, PeGuardFlags.CfInstrumented, "Control Flow Guard");
+            PeGuardFlags.AssertSet(host, PeGuardFlags.EHContinuationTablePresent, "the EH continuation table");
+        }
+
+        CommandResult result = await CommandRunner.RunAsync(
+            "dotnet",
+            $"build \"{consumerProject}\" {properties} -r {rid} -p:StaticHostGuardEHCont=false",
+            RepoContext.RepoRoot);
+        AssertEx.Success(result, $"{targetFramework} 08-build-rid-without-ehcont");
+        AssertEx.Contains(result.CombinedOutput, LinkAppHostMessageMarker);
+        PeGuardFlags.AssertSet(appHost, PeGuardFlags.CfInstrumented, "Control Flow Guard");
+        PeGuardFlags.AssertClear(appHost, PeGuardFlags.EHContinuationTablePresent, "an EH continuation table");
     }
 
     private static string GetCurrentOsX64Rid()

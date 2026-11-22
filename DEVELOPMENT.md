@@ -132,6 +132,8 @@ task build-skiasharp ARCH=arm64
 
 SkiaSharp 3 的 Windows HarfBuzzSharp 项目由 [`scripts/libHarfBuzzSharp.vcxproj.in`](scripts/libHarfBuzzSharp.vcxproj.in) 原样导出后实例化，仓库中的模板不由 recipe 修改。SkiaSharp 4 使用 mono/SkiaSharp 对应标签的 `native/windows/libHarfBuzzSharp` 工程及其 `harfbuzz-subset-msvc.cc`，两者按 `versions.json` 记录的标签 commit 下载，内容与 [`upstream-build.json`](native/skiasharp/upstream-build.json) 记录的 git blob SHA 不符时构建失败；recipe 把工程改为静态库并关闭全程序优化，换用 profile 的工具集与 Windows SDK，去掉需要可选 Spectre 库的 Spectre 缓解。两个版本都以 `/Z7` 把调试信息嵌入对象。只有 SkiaSharp 3 的 Windows 原生库缓存键包含该模板。
 
+`win-x64` 的 Skia（clang-cl）与 HarfBuzzSharp（MSVC 工程的 `GuardEHContMetadata`，SkiaSharp 4 的上游工程同样在实例化时加入）以 `/guard:ehcont` 编译：.NET 在 x64 上以 `/guard:ehcont` 链接宿主，Static AppHost 沿用 HostLibs 记录的这一参数，而带 C++ EH 却没有 EH continuation 元数据的对象会让 `link.exe` 以 `LNK1386` 失败。
+
 ### 3. 构建 ANGLE
 
 ```powershell

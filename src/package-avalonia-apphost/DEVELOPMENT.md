@@ -114,6 +114,20 @@ CI uses separate jobs and `avalonia-host-skia4-windows` / `avalonia-host-skia4-l
 `avalonia-host-skia4-linux-musl-<arch>` artifacts, then uploads the seven Skia 4 packages
 as `nuget-avalonia-apphost-skia4`.
 
+## Windows templates
+
+The Windows templates link with the `/guard:*`, `/CETCOMPAT` and `/DELAYLOAD` options that the host libs
+record from the runtime's own host links (see `src/StaticAppHost.Windows.targets`). On `win-x64` this
+includes `/guard:ehcont`, so every linked object with C++ exception handling must carry EH continuation
+metadata, or `link.exe` stops with `LNK2047` and `LNK1386`: the SkiaSharp recipe compiles Skia and
+HarfBuzzSharp for `win-x64` with `/guard:ehcont`. ANGLE has no C++ exception handling; for its structured
+exception handlers `link.exe` generates the metadata itself and warns with `LNK4291`.
+
+`dumpbin /loadconfig <template>.exe` shows the result: the `win-x64` templates list
+`EH Continuation table present` under `Guard Flags` (`IMAGE_GUARD_EH_CONTINUATION_TABLE_PRESENT`, 0x00400000)
+and a nonzero `Guard EH continuation count`, as the official hosts do; the official `win-arm64` hosts have no
+such table. `task avalonia-test` asserts these guard flags on the linked templates.
+
 ## Linux templates
 
 The Linux templates link in the `link` stage of

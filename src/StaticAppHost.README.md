@@ -44,6 +44,12 @@ Each host has an input stamp next to it (`*.inputs.stamp`) that records the RID,
 commands, and the paths and timestamps of the response file, `@(NativeLibrary)`, `@(LinkerInput)` and module
 definitions. A host is relinked only when its stamp changes or the host is missing; a failed link deletes the host.
 
+The hardening and delay-load options (`/guard:*`, `/CETCOMPAT`, `/DELAYLOAD:*`) come from the `<host>.linkflags`
+that the host libs record, so the relinked hosts match the official ones: on x64 they link with
+`/guard:ehcont`, which fails with `LNK1386` when a `NativeLibrary` has C++ exception handling but was not
+compiled with `/guard:ehcont`. Set `StaticHostGuardEHCont=false` to link such libraries without the EH
+continuation table.
+
 ## Usage
 
 Import the targets after the SDK targets:

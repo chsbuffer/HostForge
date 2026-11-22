@@ -16,6 +16,8 @@ Current coverage:
 - RID package license file on Windows and Linux: `THIRD-PARTY-NOTICES.txt` has sections for the .NET runtime
   of every template TFM, Skia and HarfBuzz, ANGLE on Windows only, and libc++ for Linux SkiaSharp 4, and
   reproduces each file in the `licenses/` directories of the packed templates as a section headed by its path
+- Windows PE audit of the linked templates: Control Flow Guard for every RID and, as in the official hosts, the
+  EH continuation table (`/guard:ehcont`) for `win-x64`
 - Windows Skia/HarfBuzz native runtime copy suppression switch behavior
 - Windows ANGLE P/Invoke resolution from the apphost and runtime copy suppression for every template TFM: the
   consumer references Avalonia.Win32 and calls its `EGL_GetProcAddress` import, which the module initializer

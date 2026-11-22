@@ -45,6 +45,11 @@ reproduces them together with the libc++ license where it applies and the licens
 the package's MSBuild files. Executables that link the archives contain this code, and
 these licenses ask binary distributions to reproduce their notices.
 
+Windows libraries are compiled with Control Flow Guard (`/guard:cf`), and the `win-x64`
+libraries also with EH continuation metadata (`/guard:ehcont`), so they link into
+executables that require it: NativeAOT with `ControlFlowGuard=Guard`, which links with
+`/guard:ehcont` on x64, and the relinked hosts of `ChsBuffer.AppHost.Static`.
+
 Conflicting native lines fail with `HFG0001`; incompatible managed SkiaSharp
 major.minor or HarfBuzzSharp major.minor.patch fail with `HFG0002` or `HFG0003`.
 An incomplete selected payload fails with `HFG0005`. `HFG1001` warns when an AOT

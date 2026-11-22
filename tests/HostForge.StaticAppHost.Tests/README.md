@@ -4,7 +4,9 @@ TUnit matrix tests for the source-based `StaticAppHost.targets` integration. The
 `HostForgeTargetFrameworks` entry in `Directory.Build.props`, relinking `samples/simple-pinvoke` against the
 host libs of that runtime, so build HostLibs for every runtime version first. On Linux the .NET 11 host libs
 contain LLVM bitcode: run the matrix with a Clang and LLD at least as new as the LLVM of the runtime's build
-container, as CI does in the `build` stage of `native/hostlibs/linux.Dockerfile`.
+container, as CI does in the `build` stage of `native/hostlibs/linux.Dockerfile`. On Windows the matrix also
+checks that the relinked hosts keep Control Flow Guard and the EH continuation table of the official x64 hosts,
+and that `StaticHostGuardEHCont=false` relinks without the table.
 
 Run:
 
