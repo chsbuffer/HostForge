@@ -51,6 +51,11 @@ link rules when it collects link inputs, and ends the explicit inputs at any Nin
 dependency separator (`|`, `||`, `|@`). Libraries passed inside
 `/WHOLEARCHIVE:<lib>` (.NET 11 links `runtimeinfo.lib` that way) are packaged too.
 
+On Windows the recipe rewrites the Runtime's `/Zi` compiles to `/Z7`, precompiled
+headers included, so every packaged object carries its own debug information: the
+relink runs outside the build tree, where the compiler PDBs that `/Zi` writes do not
+exist.
+
 Each payload records the runtime's own compile and link flags in
 `<host>.linkflags`; the Windows relink reads the `/DELAYLOAD` options from
 `singlefilehost.linkflags`, because .NET 10 and .NET 11 delay-load different DLLs.
