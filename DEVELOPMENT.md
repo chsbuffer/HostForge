@@ -52,7 +52,7 @@ Windows 构建环境：
 - [LLVM](https://github.com/llvm/llvm-project/releases)，版本与 CI 的 [`install-llvm`](.github/actions/install-llvm/action.yml) 一致，默认路径为 `C:\Program Files\LLVM`
 - Git for Windows（ANGLE 构建需要；depot_tools 由 recipe 自行获取，无需安装）
 
-Linux 构建使用 Clang，并通过 sysroot 对齐 .NET Host、SkiaSharp 和 HarfBuzzSharp 的目标 ABI。背景和工具链说明见 [Linux 构建方法](docs/roadmap/2026-03-13-linux-build-methodology.md)。Linux 的原生库构建、Avalonia 模板链接和 Static AppHost 矩阵在容器中进行，需要 Docker 或 Podman。
+Linux 与官方 .NET 构建一样交叉编译：在 Azure Linux amd64 容器中，用容器自带的 LLVM（Clang / LLD）面向 `/crossrootfs/<arch>` 中的目标 rootfs 编译和链接，.NET Host、SkiaSharp 和 HarfBuzzSharp 因此使用同一 ABI 基线。glibc RID 的 rootfs 为 Ubuntu 18.04，产物与官方运行时一样只要求 glibc 2.27；musl RID 的 rootfs 为 Alpine。HostLibs 与 Avalonia 模板使用 `versions.json` 记录的官方构建容器，SkiaSharp 使用 `native/skiasharp/*.Dockerfile` 中以 digest 固定的同类镜像。Linux 的原生库构建、Avalonia 模板链接和 Static AppHost 矩阵在容器中进行，需要 Docker 或 Podman。
 
 macOS 的 SkiaSharp 构建需要 Command Line Tools；AvaloniaNative 构建需要完整的 Xcode 26.0.1，以及满足 Avalonia 源码 `global.json` 的 .NET 10 SDK（10.0.201 及以上）。
 
