@@ -50,6 +50,15 @@
     <PackageReference Include="HarfBuzzSharp" Version="$(HarfBuzzVersion)" />
   </ItemGroup>
 
+  <!--
+    SkiaSharp and HarfBuzzSharp depend on their Windows and macOS native assets only. Without these, builds that
+    load the dynamic libraries (no NativeAOT or no RID) get the older Linux ones that Avalonia.Skia depends on.
+  -->
+  <ItemGroup Condition="$(AvaloniaHostRid.StartsWith('linux-'))">
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="$(SkiaSharpVersion)" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" Version="$(HarfBuzzVersion)" />
+  </ItemGroup>
+
   <Target Name="_ValidateAvaloniaNativeLibsDir"
           BeforeTargets="_GetPackageFiles"
           DependsOnTargets="_ValidateAvaloniaHostRid">

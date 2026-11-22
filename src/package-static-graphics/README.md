@@ -21,8 +21,9 @@ Run `dotnet publish -c Release -r <RID>`. Change only the SkiaSharp static packa
 version to `4.157.0` to use SkiaSharp 4.
 
 The SkiaSharp meta package selects compatible managed SkiaSharp and HarfBuzzSharp
-versions through its RID package dependencies. No additional managed graphics
-package references are required. Only the matching RID contributes native inputs.
+versions, and Linux native assets of the same versions, through its RID package
+dependencies. No additional graphics package references are required. Only the
+matching RID contributes native inputs.
 ANGLE applies to Windows; Avalonia.Native applies to macOS.
 
 SkiaSharp 3.119.4 and 4.157.0 each include eight RIDs: `win-x64`, `win-arm64`,
@@ -42,4 +43,5 @@ All packages share the same build integration and error codes:
 | HFG1001 | An AOT build selects a nonempty RID within a referenced component's platform scope, but no payload matches |
 
 Without a RID, outside the component's platform, or without NativeAOT, packages
-remain inactive and emit no missing-payload warning.
+remain inactive and emit no missing-payload warning; the application then loads the
+dynamic libraries of the restored native asset packages.

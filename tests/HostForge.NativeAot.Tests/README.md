@@ -1,10 +1,11 @@
 # NativeAOT static graphics matrix
 
-Tests package layout, AOT/RID activation, version protection, executable
-architecture, software pixels, HarfBuzz shaping and absence of dynamic graphics
-libraries. The publish-and-run matrix covers every `HostForgeTargetFrameworks`
+Tests package layout and dependencies, AOT/RID activation, version protection,
+executable architecture, software pixels, HarfBuzz shaping and absence of dynamic
+graphics libraries. The publish-and-run matrix covers every `HostForgeTargetFrameworks`
 entry; `NativeAotMatrixTargetFramework` selects the TFM of
-`samples/nativeaot-matrix`. Build the native artifacts first; Windows also requires ANGLE.
+`samples/nativeaot-matrix`. A self-contained non-AOT publish of the same sample checks
+that the dynamic libraries it loads report the versions of the managed packages. Build the native artifacts first; Windows also requires ANGLE.
 
 ```sh
 task matrix-nativeaot
