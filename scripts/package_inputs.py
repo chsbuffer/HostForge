@@ -19,7 +19,8 @@ the default (empty) _Preview, so the lock follows the real version formulas, rev
 Rules, enforced by `python scripts/upstream.py lock [--check]` and tests/native/test_package_inputs.py:
 the variants of a family compute distinct versions; a version already in the history keeps its variant and
 inputs; every computed version is in the history (`lock` appends it); versions of a variant never move
-below its highest version in the history. A committed entry never changes: `lock` and `lock --check [--base
+below its highest version in the history; versions are written in the form nuget.org identifies them by, so
+that the version strings of the lock are the versions on nuget.org. A committed entry never changes: `lock` and `lock --check [--base
 <ref>]` require every version to keep the entry of the first commit on the first-parent history of HEAD (or
 <ref>) whose lock holds it. Every commit on main counts as published: any push may publish, and a push whose
 check failed still becomes the parent of the next one.
@@ -174,6 +175,26 @@ def version_key(version):
     labels = tuple((0, int(label), "") if label.isdigit() else (1, 0, label.lower())
                    for label in prerelease.split(".")) if prerelease else ()
     return (tuple(numbers), 0 if prerelease else 1, labels)
+
+
+_NUGET_VERSION = re.compile(r"(\d+(?:\.\d+){0,3})(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z.-]*)?")
+
+
+def normalized_version(version):
+    """The version string nuget.org identifies `version` by: no leading zeros, three or four numeric parts (no
+    fourth part 0), no build metadata, and lower-case prerelease labels, which nuget.org compares ignoring case."""
+    match = _NUGET_VERSION.fullmatch(version)
+    if match is None:
+        raise ValueError(f"{version!r} is not a NuGet version")
+    numbers = [str(int(part)) for part in match.group(1).split(".")]
+    numbers += ["0"] * (3 - len(numbers))
+    if numbers[3:] == ["0"]:
+        numbers.pop()
+    release = ".".join(numbers)
+    if match.group(2) is None:
+        return release
+    labels = [str(int(label)) if label.isdigit() else label.lower() for label in match.group(2).split(".")]
+    return f"{release}-{'.'.join(labels)}"
 
 
 def is_stable(version):
@@ -355,6 +376,8 @@ def _changes(old, new):
 # 2. violations:  a computed version is in the history with another variant or other inputs.
 # 3. missing:     a computed version is not in the history yet (`lock` appends it).
 # 4. regressions: a computed version is below the highest version of its family and variant in the history.
+# 5. unnormalized: a computed version is not written as nuget.org identifies it, so the lock, keyed by the
+#                  string, would take a version already on nuget.org for a new one.
 # rewritten_entries() compares a lock with the history of committed locks: a committed entry is never removed or
 # changed.
 
@@ -400,6 +423,17 @@ def regressions(lock, records):
             if newer:
                 found.append({"family": family, "variant": variant, "version": record["version"],
                               "locked": newer[-1], "newer": newer})
+    return found
+
+
+def unnormalized(records):
+    found = []
+    for family, variants in records.items():
+        for variant, record in variants.items():
+            normalized = normalized_version(record["version"])
+            if normalized != record["version"]:
+                found.append({"family": family, "variant": variant, "version": record["version"],
+                              "normalized": normalized})
     return found
 
 
@@ -481,6 +515,12 @@ def describe_regression(regression):
             f"{regression['version']}; nuget.org keeps the earlier upload of a version, so versions only move forward.")
 
 
+def describe_unnormalized(item):
+    return (f"{_label(item['family'], item['variant'])} {item['version']}: nuget.org identifies this version as "
+            f"{item['normalized']}. Change its version formula so that it yields {item['normalized']} (no leading "
+            "zeros, no fourth part 0, no build metadata, lower-case prerelease labels).")
+
+
 def describe_changed_entry(item, origin):
     if item["changes"] is None:
         return f"{item['family']} {item['version']}: in the lock of {origin} but removed"
@@ -489,7 +529,8 @@ def describe_changed_entry(item, origin):
 
 
 def guard(lock, records):
-    """Messages for rules 1, 2 and 4: computed versions that cannot be published as they are."""
-    return ([describe_conflict(item) for item in conflicts(records)]
+    """Messages for rules 1, 2, 4 and 5: computed versions that cannot be published as they are."""
+    return ([describe_unnormalized(item) for item in unnormalized(records)]
+            + [describe_conflict(item) for item in conflicts(records)]
             + [describe_violation(item) for item in violations(lock, records)]
             + [describe_regression(item) for item in regressions(lock, records)])

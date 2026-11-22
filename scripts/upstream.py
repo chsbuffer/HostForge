@@ -2,12 +2,13 @@
 
   lock    [--check [--base GIT_REF]] [--force]
           Append the package versions computed from the repository to package-inputs.lock.json (offline), an
-          append-only history. Refuses (exit 1) when variants of a family share a version, when a locked
-          version would get other inputs, when a version moves backwards, or when a committed entry was
-          changed: every version keeps the entry of the first commit on the first-parent history of HEAD whose
-          lock holds it. --force replaces or removes only entries that no lock on that history holds. --check
-          changes nothing and compares with the first-parent history of GIT_REF (default HEAD) instead; a
-          history without a lock skips that comparison. Both read that history, so a shallow clone is an error.
+          append-only history. Refuses (exit 1) when a version is not written as nuget.org identifies it, when
+          variants of a family share a version, when a locked version would get other inputs, when a version
+          moves backwards, or when a committed entry was changed: every version keeps the entry of the first
+          commit on the first-parent history of HEAD whose lock holds it. --force replaces or removes only
+          entries that no lock on that history holds. --check changes nothing and compares with the
+          first-parent history of GIT_REF (default HEAD) instead; a history without a lock skips that
+          comparison. Both read that history, so a shallow clone is an error.
   check   [--json] [--fail-on-security]
           Read-only report: newer .NET runtimes (with CVEs and their VMR tag/commit), end-of-life .NET channels,
           Avalonia patch, minor and major releases with the SkiaSharp/HarfBuzzSharp/ANGLE versions they declare,
@@ -1206,7 +1207,7 @@ def _print_all(messages, stream=None):
 
 
 def _lock_check(root, records, lock, base):
-    """lock --check: rules 1-4, and every version keeps the entry of the first commit on the first-parent history of
+    """lock --check: rules 1-5, and every version keeps the entry of the first commit on the first-parent history of
     `base` (HEAD by default) whose lock holds it."""
     problems = package_inputs.guard(lock, records)
     _print_all(problems)
@@ -1242,9 +1243,10 @@ def _lock_check(root, records, lock, base):
 def _lock_write(root, records, lock, force):
     """lock [--force]: append the computed versions; --force may replace or remove entries never committed on the
     first-parent history of HEAD."""
-    conflicts = package_inputs.conflicts(records)
-    if conflicts:
-        _print_all(package_inputs.describe_conflict(item) for item in conflicts)
+    refused = ([package_inputs.describe_unnormalized(item) for item in package_inputs.unnormalized(records)]
+               + [package_inputs.describe_conflict(item) for item in package_inputs.conflicts(records)])
+    if refused:
+        _print_all(refused)
         print(f"Not written: {package_inputs.LOCK}.", file=sys.stderr)
         return 1
     locks = lock_history(root, "HEAD") or []

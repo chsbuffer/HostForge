@@ -546,12 +546,13 @@ SkiaSharp 的 recipe 按 mono/SkiaSharp 对应标签的构建文件（各平台 
 
 ### 包输入锁
 
-根目录的 [`package-inputs.lock.json`](package-inputs.lock.json) 由 `scripts/package_inputs.py` 计算，按包族记录每个版本的变体与上游输入。它只增不减，也是每个已发布版本的源码清单，不要手动编辑。`tests/native/test_package_inputs.py` 检查四条规则，失败时给出要修改的属性：
+根目录的 [`package-inputs.lock.json`](package-inputs.lock.json) 由 `scripts/package_inputs.py` 计算，按包族记录每个版本的变体与上游输入。它只增不减，也是每个已发布版本的源码清单，不要手动编辑。`tests/native/test_package_inputs.py` 检查五条规则，失败时给出要修改的属性：
 
 1. 同一包族内，各变体的当前版本互不相同。
 2. 已记录的版本，其变体与输入不能改变；输入变了就递增版本。
 3. 当前版本必须已记录；未记录表示锁过期，运行 `task upstream-lock` 追加。
 4. 同一变体的版本不能倒退。
+5. 版本按 nuget.org 识别它的形式书写：数字段没有前导零，第四段不为 0，不带构建元数据，预发布标签小写。锁按版本字符串记录，而 `1.2.3.01` 在 nuget.org 上就是 `1.2.3.1`，会被 `--skip-duplicate` 当作已发布的版本跳过。
 
 各包族的输入与要递增的属性：
 

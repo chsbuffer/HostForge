@@ -135,6 +135,24 @@ class RuleTests(unittest.TestCase):
         self.assertEqual([("a", "1.1.0", ["1.1.0"])],
                          [(item["variant"], item["locked"], item["newer"]) for item in found])
 
+    def test_versions_are_written_as_nuget_identifies_them(self):
+        for version, normalized in (("1.0.0.01", "1.0.0.1"), ("01.0.0", "1.0.0"), ("1.0.0.0", "1.0.0"), ("1.0", "1.0.0"),
+                                    ("1.0.0-A", "1.0.0-a"), ("1.0.0-Beta.Skia4", "1.0.0-beta.skia4"),
+                                    ("1.0.0-alpha.01", "1.0.0-alpha.1"), ("1.0.0+meta", "1.0.0")):
+            with self.subTest(version=version):
+                self.assertEqual(normalized, package_inputs.normalized_version(version))
+                # Locked as 1.0.0.1 with other inputs: the unnormalized string would be appended as a new version.
+                lock = self.lock({"F": {normalized: entry("a", x=1)}})
+                records = {"F": {"a": record(version, x=2)}}
+                self.assertEqual([(version, normalized)], [(item["version"], item["normalized"])
+                                                           for item in package_inputs.unnormalized(records)])
+                self.assertIn(f"identifies this version as {normalized}", package_inputs.guard(lock, records)[0])
+        for version in ("1.0.0", "1.0.0.1", "12.0.6-skia4", "10.0.15-alpha.1", "12.0.6-beta.skia4", "2.1.27548.1"):
+            with self.subTest(version=version):
+                self.assertEqual(version, package_inputs.normalized_version(version))
+        with self.assertRaisesRegex(ValueError, "not a NuGet version"):
+            package_inputs.normalized_version("1.0.0-")
+
     def test_changed_entries_of_a_base_lock(self):
         base = self.lock({"F": {"1.0.0": entry("a", x=1), "1.0.1": entry("a", x=2)}})
         self.assertEqual([], package_inputs.changed_entries(
@@ -260,6 +278,25 @@ class LockMechanicsTests(unittest.TestCase):
             code, output = self.lock_command(*arguments)
             self.assertEqual(1, code, arguments)
             self.assertIn("skia3, skia4", output)
+        self.assertEqual(before, self.lock_text())
+
+    def test_unnormalized_version_is_refused(self):
+        # 12.1.6.01 is 12.1.6.1 on nuget.org, which --skip-duplicate would skip with the new source.
+        avalonia = package_inputs.repo_versions.load(self.root)["avalonia-native"]
+        version = package_inputs.compute(self.root)["ChsBuffer.Avalonia.Native.Static"]["default"]["version"]
+        replace(self.root / "native/avalonianative/conandata.yml",
+                rf'^(  "{re.escape(avalonia)}":\n(?:    .*\n)*?    sha256: ")[0-9a-f]+(")', r"\g<1>" + "3" * 64 + r"\g<2>")
+        replace(self.props, r"(<AvaloniaNativePackageVersion>\$\(AvaloniaNativeVersion\)\.)(\d+)(<)", r"\g<1>0\2\3")
+        records = package_inputs.compute(self.root)
+        self.assertEqual(re.sub(r"\.(\d+)$", r".0\1", version),
+                         records["ChsBuffer.Avalonia.Native.Static"]["default"]["version"])
+        self.assertEqual([], package_inputs.violations(package_inputs.read_lock(self.root), records),
+                         "the string is not in the lock")
+        before = self.lock_text()
+        for arguments in ((), ("--force",), ("--check",)):
+            code, output = self.lock_command(*arguments)
+            self.assertEqual(1, code, arguments)
+            self.assertIn(f"nuget.org identifies this version as {version}", output)
         self.assertEqual(before, self.lock_text())
 
     def test_edited_existing_entry_fails_the_guard(self):
