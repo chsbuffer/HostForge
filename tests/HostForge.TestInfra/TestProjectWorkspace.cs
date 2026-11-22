@@ -111,8 +111,6 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
             "RestoreAdditionalProjectSources",
             "$(RestoreAdditionalProjectSources);$(AvaloniaAppHostPackageOutputDir)");
 
-        propertyGroup.AddProperty("DetectAvaloniaDesigner", "false");
-
         if (publishSingleFile)
         {
             // Self-contained single-file publishing uses the prelinked singlefilehost template. Pin the

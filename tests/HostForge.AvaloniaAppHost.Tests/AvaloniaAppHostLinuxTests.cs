@@ -101,6 +101,36 @@ public class AvaloniaAppHostLinuxTests
 
     [Test]
     [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
+    public async Task BuildOutput_RunsOnTheTemplateAndOnDotNet_Linux(string targetFramework)
+    {
+        await using var project = await TestProjectWorkspace.CreateAsync(
+            targetFramework: targetFramework,
+            runtimeIdentifier: Rid,
+            includeNativeAssetsPackages: true);
+
+        CommandResult result = await CommandRunner.RunAsync(
+            "dotnet",
+            $"build \"{project.ProjectFilePath}\" -c Release -v:minimal",
+            project.ProjectDirectory);
+
+        AssertEx.Success(result, $"{Rid} build ({targetFramework})");
+        AssertEx.NotContains(result.CombinedOutput, "ChsBuffer.Avalonia.AppHost is inactive");
+
+        string outputDirectory = GetBuildOutputDirectory(project, targetFramework, Rid);
+        CommandResult templateRun = await CommandRunner.RunAsync(
+            Path.Combine(outputDirectory, project.ProjectName), string.Empty, outputDirectory);
+        AssertEx.Success(templateRun, $"{Rid} build output run ({targetFramework})");
+        AssertLoadedSkiaSharpNativeVersion(templateRun.CombinedOutput);
+
+        // Under dotnet the main program exports none of the libraries, so the resolver of the application
+        // assembly leaves them to the files in the build output, as for a test project that references it.
+        CommandResult dotnetRun = await CommandRunner.RunAsync("dotnet", $"\"{project.ProjectName}.dll\"", outputDirectory);
+        AssertEx.Success(dotnetRun, $"{Rid} build output on dotnet ({targetFramework})");
+        AssertLoadedSkiaSharpNativeVersion(dotnetRun.CombinedOutput);
+    }
+
+    [Test]
+    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
     public async Task PublishWithoutRuntimeIdentifier_KeepsTheNativeLibraries_Linux(string targetFramework)
     {
         await using var project = await TestProjectWorkspace.CreateAsync(

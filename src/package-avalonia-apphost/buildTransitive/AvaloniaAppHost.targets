@@ -2,7 +2,6 @@
   <PropertyGroup>
     <DisableSkiaHarfBuzzRuntimeCopy Condition="'$(DisableSkiaHarfBuzzRuntimeCopy)' == ''">true</DisableSkiaHarfBuzzRuntimeCopy>
     <DisableAngleRuntimeCopy Condition="'$(DisableAngleRuntimeCopy)' == ''">true</DisableAngleRuntimeCopy>
-    <DetectAvaloniaDesigner Condition="'$(DetectAvaloniaDesigner)' == ''">true</DetectAvaloniaDesigner>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -70,7 +69,6 @@
           DependsOnTargets="ResolveAvaloniaAppHostActivation"
           Condition="Exists('$(_AvaloniaModuleInitializer)')">
     <PropertyGroup Condition="'$(AvaloniaAppHostActive)' == 'true'">
-        <DefineConstants Condition="'$(DetectAvaloniaDesigner)' == 'true'">$(DefineConstants);DETECT_AVALONIA_DESIGNER</DefineConstants>
         <DefineConstants Condition="'$(_AvaloniaTemplateRidIsWindows)' != 'True'">$(DefineConstants);HOSTFORGE_DISABLE_AVALONIA_WIN32_IMPORT_RESOLVER</DefineConstants>
     </PropertyGroup>
 

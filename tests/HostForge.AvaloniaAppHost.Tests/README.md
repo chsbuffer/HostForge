@@ -17,6 +17,8 @@ Current coverage:
   symbol files) in the publish directory or extracted from the bundle (`DOTNET_BUNDLE_EXTRACT_BASE_DIR` points extraction into the test project)
 - Linux publish-and-run output validation for every template TFM, on the RID of the test system (`linux-x64` on
   glibc, `linux-musl-x64` / `linux-musl-arm64` on Alpine; `HOSTFORGE_NATIVE_RID` overrides it)
+- Build output on Windows and Linux for every template TFM: runs on the template, and on `dotnet`, whose main
+  program exports no native library, the resolver of the application assembly leaves them to the build output
 - Publish without a RuntimeIdentifier on Windows and Linux for every template TFM: no inactive warning, the native
   libraries of every RID stay under `runtimes/`, and the portable output runs on `dotnet`
 - Windows `UseAppHost=false` and NativeAOT publishes: inactive with the matching warning, the dynamic libraries stay in

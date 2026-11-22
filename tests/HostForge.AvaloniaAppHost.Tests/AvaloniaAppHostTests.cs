@@ -236,6 +236,31 @@ public class AvaloniaAppHostTests
 
     [Test]
     [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
+    public async Task BuildOutput_RunsOnTheTemplateAndOnDotNet_WinX64(string targetFramework)
+    {
+        string caseName = $"{targetFramework}_build_win-x64";
+        await using var project = await TestProjectWorkspace.CreateAsync(
+            targetFramework: targetFramework,
+            runtimeIdentifier: "win-x64",
+            includeNativeAssetsPackages: true);
+
+        CommandResult result = await RunDotNetCommandAsync("build", project.ProjectFilePath, project.ProjectDirectory);
+        AssertEx.Success(result, caseName);
+        AssertActivationState(result.CombinedOutput, expectedActive: true, targetFramework, "win-x64");
+
+        string outputDirectory = Path.Combine(project.ProjectDirectory, "bin", "Release", targetFramework, "win-x64");
+        await RunExeAndAssertSuccess(caseName, Path.Combine(outputDirectory, $"{project.ProjectName}.exe"));
+
+        // Under dotnet the main program exports none of the libraries, so the resolver of the application
+        // assembly leaves them to the files in the build output, as for a test project that references it.
+        CommandResult runResult = await CommandRunner.RunAsync("dotnet", $"\"{project.ProjectName}.dll\"", outputDirectory);
+        AssertEx.Success(runResult, $"{caseName}:dotnet");
+        AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        AssertEx.Contains(runResult.CombinedOutput, "AngleError=0x");
+    }
+
+    [Test]
+    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
     public async Task PublishWithoutRuntimeIdentifier_KeepsTheNativeLibrariesOfEveryRid(string targetFramework)
     {
         await using var project = await TestProjectWorkspace.CreateAsync(
