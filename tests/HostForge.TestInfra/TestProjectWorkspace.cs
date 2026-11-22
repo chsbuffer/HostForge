@@ -26,6 +26,7 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         bool? disableAngleRuntimeCopy = null,
         bool publishSingleFile = false,
         bool setRuntimeIdentifier = true,
+        bool referenceAvaloniaWin32 = false,
         CancellationToken cancellationToken = default)
     {
         string guid = Guid.NewGuid().ToString("N");
@@ -50,7 +51,8 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
             disableSkiaHarfBuzzRuntimeCopy,
             disableAngleRuntimeCopy,
             publishSingleFile,
-            setRuntimeIdentifier);
+            setRuntimeIdentifier,
+            referenceAvaloniaWin32);
 
         return new TestProjectWorkspace(rootDirectory, projectDirectory, projectFilePath, projectName);
     }
@@ -91,7 +93,8 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         bool? disableSkiaHarfBuzzRuntimeCopy,
         bool? disableAngleRuntimeCopy,
         bool publishSingleFile,
-        bool setRuntimeIdentifier)
+        bool setRuntimeIdentifier,
+        bool referenceAvaloniaWin32)
     {
         ProjectRootElement project = ProjectRootElement.Create();
         project.Sdk = "Microsoft.NET.Sdk";
@@ -118,6 +121,12 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
             propertyGroup.AddProperty("RuntimeFrameworkVersion", RepoContext.GetHostLibsVersion(targetFramework));
         }
 
+        if (referenceAvaloniaWin32)
+        {
+            // Compiles the call to the ANGLE import of Avalonia.Win32 into the program.
+            propertyGroup.AddProperty("DefineConstants", "$(DefineConstants);REFERENCES_AVALONIA_WIN32");
+        }
+
         if (disableSkiaHarfBuzzRuntimeCopy is not null)
         {
             propertyGroup.AddProperty(
@@ -139,6 +148,8 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         // Skottie also brings SkiaSharp.SceneGraph and SkiaSharp.Resources, each with its own libSkiaSharp imports.
         AddPackageReference(itemGroup, "SkiaSharp.Skottie", "$(SkiaSharpVersion)");
         AddPackageReference(itemGroup, "HarfBuzzSharp", "$(HarfBuzzVersion)");
+        if (referenceAvaloniaWin32)
+            AddPackageReference(itemGroup, "Avalonia.Win32", "$(AvaloniaVersion)");
 
         if (includeNativeAssetsPackages)
         {
@@ -182,6 +193,7 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
     {
         return """
                 using System.Diagnostics;
+                using System.Reflection;
                 using System.Runtime.InteropServices;
 
                 if (OperatingSystem.IsWindows())
@@ -196,6 +208,15 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
                                 : IntPtr.Zero);
                 #endif
                     Console.WriteLine($"AngleError=0x{AngleNative.GetError():X}");
+                #if REFERENCES_AVALONIA_WIN32
+                    // Avalonia.Win32 loads ANGLE through its own EGL_GetProcAddress import, an internal method.
+                    MethodInfo eglGetProcAddress = typeof(Avalonia.Win32PlatformOptions).Assembly.GetTypes()
+                        .SelectMany(type => type.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+                        .First(method => method.GetCustomAttribute<DllImportAttribute>() is { EntryPoint: "EGL_GetProcAddress" } import
+                            && Path.GetFileNameWithoutExtension(import.Value).Equals("av_libglesv2", StringComparison.OrdinalIgnoreCase));
+                    IntPtr eglGetError = (IntPtr)eglGetProcAddress.Invoke(null, new object[] { "eglGetError" })!;
+                    Console.WriteLine($"AvaloniaWin32Angle={eglGetError != IntPtr.Zero}");
+                #endif
                 }
                 Console.WriteLine($"SkiaSharpVersion.Native={SkiaSharp.SkiaSharpVersion.Native}");
                 using (var harfBuzzBuffer = new HarfBuzzSharp.Buffer())

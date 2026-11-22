@@ -120,10 +120,12 @@ public class AvaloniaAppHostTests
     [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
     public async Task WindowsAnglePInvoke_ResolvesFromAppHost_WinX64(string targetFramework)
     {
+        // The module initializer registers its ANGLE resolver with Avalonia.Win32, which only this consumer references.
         await using var project = await TestProjectWorkspace.CreateAsync(
             targetFramework: targetFramework,
             runtimeIdentifier: "win-x64",
-            includeNativeAssetsPackages: true);
+            includeNativeAssetsPackages: true,
+            referenceAvaloniaWin32: true);
 
         CommandResult result = await RunDotNetCommandAsync(
             "publish",
@@ -143,6 +145,7 @@ public class AvaloniaAppHostTests
             outputDirectory);
         AssertEx.Success(runResult, "windows-angle-pinvoke:run");
         AssertEx.Contains(runResult.CombinedOutput, "AngleError=0x");
+        AssertEx.Contains(runResult.CombinedOutput, "AvaloniaWin32Angle=True");
         AssertSkottieAndLoadedLibraries(runResult.CombinedOutput, expectPrelinked: true);
     }
 

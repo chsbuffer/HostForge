@@ -9,9 +9,11 @@ Current coverage:
 - Windows activation and inactive-warning behavior across `net9.0` (inactive), `net10.0`, `net11.0` and
   `net11.0-windows`, `win-x64` / `win-arm64`
 - Windows Skia/HarfBuzz native runtime copy suppression switch behavior
-- Windows ANGLE P/Invoke resolution from the apphost and runtime copy suppression for every template TFM
-- The consumer projects do not reference Avalonia.Win32, so every run on a Windows template also checks that the
-  module initializer registers its resolver only with referenced assemblies
+- Windows ANGLE P/Invoke resolution from the apphost and runtime copy suppression for every template TFM: the
+  consumer references Avalonia.Win32 and calls its `EGL_GetProcAddress` import, which the module initializer
+  resolves from the executable
+- The other consumer projects do not reference Avalonia.Win32, so their runs on a Windows template also check that
+  the module initializer registers its resolver only with referenced assemblies
 - The consumer programs call SkiaSharp, SkiaSharp.Skottie, SkiaSharp.SceneGraph and SkiaSharp.Resources, which
   each import libSkiaSharp, and HarfBuzzSharp; every run on a template checks that no Skia, HarfBuzz or ANGLE
   library file is loaded
