@@ -61,8 +61,9 @@ The Build package's `.targets` matches `$(RuntimeIdentifier)` and the project's 
 
 - builds without a RuntimeIdentifier, silently: their output is portable, and the publish step removes the
   native libraries by file name, which would drop them for every RID;
-- NativeAOT and `UseAppHost=false` builds, because no apphost loads the libraries; the NativeAOT warning is
-  omitted when the static graphics packages (`HostForgeStaticGraphicsImported`) link them instead;
+- builds of a project with `PublishAot=true`, not only its publish, as in `AppHost.Static.targets`, because
+  the NativeAOT executable it publishes has no apphost, and `UseAppHost=false` builds, which run on `dotnet`; the NativeAOT
+  warning is omitted when any static graphics package is imported (`HostForgeStaticGraphicsImported`);
 - projects whose `$(Language)` is not C#, because the resolver is the C# source `ModuleInitializer.cs`
   compiled into the application.
 

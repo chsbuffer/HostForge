@@ -58,7 +58,7 @@ dotnet add package ChsBuffer.Avalonia.AppHost
 dotnet publish -c Release
 ```
 
-当 C# 项目的构建指定了 RID（`-r <RID>`、`RuntimeIdentifier`，或单文件发布推断出的 RID），且目标框架（`net10.0` / `net11.0`，含 `net11.0-windows` 等平台后缀）和该 RID 存在匹配模板时，包会自动替换 `AppHost` 与 `SingleFileHost`，注入本机库解析器，并把 ANGLE / SkiaSharp / HarfBuzzSharp 动态本机库及其符号文件排除在发布目录和单文件包之外（包括 `IncludeNativeLibrariesForSelfExtract=true` 时）。未指定 RID 的构建（如 `dotnet run`、可移植发布）保持 SDK 默认宿主，并保留所有 RID 的动态本机库；NativeAOT（`PublishAot=true`）和 `UseAppHost=false` 的构建没有 AppHost，F#、Visual Basic 项目无法编译包注入的 C# 解析器，这些构建同样保持 SDK 默认行为并保留动态本机库。
+当 C# 项目的构建指定了 RID（`-r <RID>`、`RuntimeIdentifier`，或单文件发布推断出的 RID），且目标框架（`net10.0` / `net11.0`，含 `net11.0-windows` 等平台后缀）和该 RID 存在匹配模板时，包会自动替换 `AppHost` 与 `SingleFileHost`，注入本机库解析器，并把 ANGLE / SkiaSharp / HarfBuzzSharp 动态本机库及其符号文件排除在发布目录和单文件包之外（包括 `IncludeNativeLibrariesForSelfExtract=true` 时）。未指定 RID 的构建（如 `dotnet run`、可移植发布）保持 SDK 默认宿主，并保留所有 RID 的动态本机库；`PublishAot=true` 的项目发布的 NativeAOT 可执行文件没有 AppHost，其指定 RID 的非发布构建（如 `dotnet build -r <RID>`）同样不激活；`UseAppHost=false` 的构建在 `dotnet` 上运行；F#、Visual Basic 项目无法编译包注入的 C# 解析器。这些构建同样保持 SDK 默认行为并保留动态本机库。
 
 完整行为和可选开关见 [Avalonia AppHost 包文档](src/package-avalonia-apphost/README.md)。通用静态链接用法见 [Static AppHost 包文档](src/package-apphost-static/README.md)。
 
