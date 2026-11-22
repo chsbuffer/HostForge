@@ -19,11 +19,11 @@ the default (empty) _Preview, so the lock follows the real version formulas, rev
 Rules, enforced by `python scripts/upstream.py lock [--check]` and tests/native/test_package_inputs.py:
 the variants of a family compute distinct versions; a version already in the history keeps its variant and
 inputs; every computed version is in the history (`lock` appends it); versions of a variant never move
-below its highest version in the history; versions are written in the form nuget.org identifies them by, so
-that the version strings of the lock are the versions on nuget.org. A committed entry never changes: `lock` and `lock --check [--base
-<ref>]` require every version to keep the entry of the first commit on the first-parent history of HEAD (or
-<ref>) whose lock holds it. Every commit on main counts as published: any push may publish, and a push whose
-check failed still becomes the parent of the next one.
+below its highest version in the history; versions are NuGet versions in the form normalized_version() gives,
+so that two versions of the lock are one version on nuget.org exactly when their strings are equal. A committed
+entry never changes: `lock` and `lock --check [--base <ref>]` require every version to keep the entry of the
+first commit on the first-parent history of HEAD (or <ref>) whose lock holds it. Every commit on main counts as
+published: any push may publish, and a push whose check failed still becomes the parent of the next one.
 """
 
 import importlib.util
@@ -177,12 +177,18 @@ def version_key(version):
     return (tuple(numbers), 0 if prerelease else 1, labels)
 
 
-_NUGET_VERSION = re.compile(r"(\d+(?:\.\d+){0,3})(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z.-]*)?")
+# NuGet rejects a numeric prerelease label with leading zeros (1.0.0-alpha.01), unlike a numeric part (1.0.01).
+_LABEL = r"(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)"
+_NUGET_VERSION = re.compile(rf"(\d+(?:\.\d+){{0,3}})(?:-({_LABEL}(?:\.{_LABEL})*))?(?:\+[0-9A-Za-z.-]*)?")
 
 
 def normalized_version(version):
-    """The version string nuget.org identifies `version` by: no leading zeros, three or four numeric parts (no
-    fourth part 0), no build metadata, and lower-case prerelease labels, which nuget.org compares ignoring case."""
+    """The form of `version` that the lock is keyed by; ValueError when NuGet does not accept `version`.
+
+    It is the form nuget.org normalizes a version to (no leading zeros, three or four numeric parts with no fourth
+    part 0, no build metadata) with lower-case prerelease labels: nuget.org keeps the case of the labels but
+    compares them ignoring case, so two versions in this form are one version on nuget.org exactly when their
+    strings are equal."""
     match = _NUGET_VERSION.fullmatch(version)
     if match is None:
         raise ValueError(f"{version!r} is not a NuGet version")
@@ -191,10 +197,7 @@ def normalized_version(version):
     if numbers[3:] == ["0"]:
         numbers.pop()
     release = ".".join(numbers)
-    if match.group(2) is None:
-        return release
-    labels = [str(int(label)) if label.isdigit() else label.lower() for label in match.group(2).split(".")]
-    return f"{release}-{'.'.join(labels)}"
+    return release if match.group(2) is None else f"{release}-{match.group(2).lower()}"
 
 
 def is_stable(version):
@@ -385,8 +388,8 @@ def _changes(old, new):
 # 2. violations:  a computed version is in the history with another variant or other inputs.
 # 3. missing:     a computed version is not in the history yet (`lock` appends it).
 # 4. regressions: a computed version is below the highest version of its family and variant in the history.
-# 5. unnormalized: a computed version is not written as nuget.org identifies it, so the lock, keyed by the
-#                  string, would take a version already on nuget.org for a new one.
+# 5. unnormalized: a computed version is not a NuGet version, or is not in the form normalized_version() gives,
+#                  so the lock, keyed by the string, would take a version already on nuget.org for a new one.
 # rewritten_entries() compares a lock with the history of committed locks: a committed entry is never removed or
 # changed.
 
@@ -439,7 +442,10 @@ def unnormalized(records):
     found = []
     for family, variants in records.items():
         for variant, record in variants.items():
-            normalized = normalized_version(record["version"])
+            try:
+                normalized = normalized_version(record["version"])
+            except ValueError:
+                normalized = None
             if normalized != record["version"]:
                 found.append({"family": family, "variant": variant, "version": record["version"],
                               "normalized": normalized})
@@ -525,9 +531,12 @@ def describe_regression(regression):
 
 
 def describe_unnormalized(item):
-    return (f"{_label(item['family'], item['variant'])} {item['version']}: nuget.org identifies this version as "
-            f"{item['normalized']}. Change its version formula so that it yields {item['normalized']} (no leading "
-            "zeros, no fourth part 0, no build metadata, lower-case prerelease labels).")
+    label = f"{_label(item['family'], item['variant'])} {item['version']}"
+    if item["normalized"] is None:
+        return f"{label}: not a version NuGet accepts. Change its version formula."
+    return (f"{label}: the same version on nuget.org as {item['normalized']}. Change its version formula so that it "
+            f"yields {item['normalized']} (no leading zeros, no fourth part 0, no build metadata, lower-case "
+            "prerelease labels).")
 
 
 def describe_changed_entry(item, origin):

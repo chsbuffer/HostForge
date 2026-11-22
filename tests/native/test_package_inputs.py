@@ -135,10 +135,10 @@ class RuleTests(unittest.TestCase):
         self.assertEqual([("a", "1.1.0", ["1.1.0"])],
                          [(item["variant"], item["locked"], item["newer"]) for item in found])
 
-    def test_versions_are_written_as_nuget_identifies_them(self):
+    def test_versions_are_written_in_normalized_form(self):
         for version, normalized in (("1.0.0.01", "1.0.0.1"), ("01.0.0", "1.0.0"), ("1.0.0.0", "1.0.0"), ("1.0", "1.0.0"),
                                     ("1.0.0-A", "1.0.0-a"), ("1.0.0-Beta.Skia4", "1.0.0-beta.skia4"),
-                                    ("1.0.0-alpha.01", "1.0.0-alpha.1"), ("1.0.0+meta", "1.0.0")):
+                                    ("1.0.0+meta", "1.0.0")):
             with self.subTest(version=version):
                 self.assertEqual(normalized, package_inputs.normalized_version(version))
                 # Locked as 1.0.0.1 with other inputs: the unnormalized string would be appended as a new version.
@@ -146,12 +146,20 @@ class RuleTests(unittest.TestCase):
                 records = {"F": {"a": record(version, x=2)}}
                 self.assertEqual([(version, normalized)], [(item["version"], item["normalized"])
                                                            for item in package_inputs.unnormalized(records)])
-                self.assertIn(f"identifies this version as {normalized}", package_inputs.guard(lock, records)[0])
-        for version in ("1.0.0", "1.0.0.1", "12.0.6-skia4", "10.0.15-alpha.1", "12.0.6-beta.skia4", "2.1.27548.1"):
+                self.assertIn(f"the same version on nuget.org as {normalized}", package_inputs.guard(lock, records)[0])
+        for version in ("1.0.0", "1.0.0.1", "12.0.6-skia4", "10.0.15-alpha.1", "12.0.6-beta.skia4", "2.1.27548.1",
+                        "1.0.0-alpha.0", "1.0.0-alpha.0a", "1.0.0-0a.b-c"):
             with self.subTest(version=version):
                 self.assertEqual(version, package_inputs.normalized_version(version))
-        with self.assertRaisesRegex(ValueError, "not a NuGet version"):
-            package_inputs.normalized_version("1.0.0-")
+        for version in ("1.0.0-", "1.0.0-alpha.01", "1.0.0-00", "1.0.0-a..b", "1.0.0.0.1", "v1.0.0"):
+            with self.subTest(version=version):
+                with self.assertRaisesRegex(ValueError, "not a NuGet version"):
+                    package_inputs.normalized_version(version)
+                records = {"F": {"a": record(version, x=1)}}
+                self.assertEqual([(version, None)], [(item["version"], item["normalized"])
+                                                     for item in package_inputs.unnormalized(records)])
+                self.assertIn(f"F (a) {version}: not a version NuGet accepts",
+                              package_inputs.guard(self.lock({}), records)[0])
 
     def test_changed_entries_of_a_base_lock(self):
         base = self.lock({"F": {"1.0.0": entry("a", x=1), "1.0.1": entry("a", x=2)}})
@@ -296,7 +304,7 @@ class LockMechanicsTests(unittest.TestCase):
         for arguments in ((), ("--force",), ("--check",)):
             code, output = self.lock_command(*arguments)
             self.assertEqual(1, code, arguments)
-            self.assertIn(f"nuget.org identifies this version as {version}", output)
+            self.assertIn(f"the same version on nuget.org as {version}", output)
         self.assertEqual(before, self.lock_text())
 
     def test_edited_existing_entry_fails_the_guard(self):
