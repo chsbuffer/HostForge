@@ -1580,10 +1580,12 @@ def avalonia_update(run, candidate):
             _edit(root, "native/avalonianative/conandata.yml",
                   lambda text: append_avalonia_source(text, version, url, sha256, commit))
 
-    olds = list(dict.fromkeys([current, native]))
-    return [Update("avalonia", f"Avalonia {', '.join(olds)} -> {version} ({commit}, sha256 {sha256})", olds, edit,
-                   name="Avalonia", version=version, target=f"Avalonia {version} ({commit})",
-                   new_strings=[version] * len(olds))]
+    versions = list(dict.fromkeys([current, native]))
+    # The package documentation names the source commit of the archives next to their version.
+    old_commit = pinned["avalonia-sources"].get(native, {}).get("commit")
+    return [Update("avalonia", f"Avalonia {', '.join(versions)} -> {version} ({commit}, sha256 {sha256})",
+                   [*versions, old_commit], edit, name="Avalonia", version=version,
+                   target=f"Avalonia {version} ({commit})", new_strings=[*[version] * len(versions), commit])]
 
 
 def plan_avalonia(run):

@@ -539,9 +539,22 @@ class ApplyTests(UpstreamTestCase):
                                 r"\g<1>2", props.read_text(encoding="utf-8")), encoding="utf-8")
         self.relock()
         major = self.props()["_Major"]
+        old = self.pinned["avalonia"]
+        old_commit = self.pinned["avalonia-sources"][self.pinned["avalonia-native"]]["commit"]
+        readme = self.root / "src/package-avalonia-native-static/README.md"
+        readme.parent.mkdir(parents=True, exist_ok=True)
+        readme.write_text(f"Archives are built from Avalonia {old} source, commit\n`{old_commit}`.\n", encoding="utf-8")
+        notes = self.root / "docs/notes.md"
+        notes.parent.mkdir()
+        notes.write_text(f"Avalonia source `{old_commit}`.\n", encoding="utf-8")
         code, stdout, stderr = self.run_main(fake_upstream(self.root, avalonia=True), "apply", "--avalonia")
         self.assertEqual(0, code, stderr)
         new = next_patch(self.pinned["avalonia"])
+        new_commit = fake_commit("avalonia " + new)
+        self.assertEqual(f"Archives are built from Avalonia {new} source, commit\n`{new_commit}`.\n",
+                         readme.read_text(encoding="utf-8"))
+        self.assertIn(f"docs/notes.md:1: Avalonia source `{old_commit}`.", stdout)
+        self.assertIn(f"Avalonia {old} -> {new} (", stdout)
         values = self.props()
         self.assertEqual((new, new), (values["AvaloniaVersion"], values["AvaloniaNativeVersion"]))
         self.assertEqual(f"{new}.1", values["AvaloniaNativePackageVersion"])
