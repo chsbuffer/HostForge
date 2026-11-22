@@ -10,7 +10,6 @@
     <Authors>ChsBuffer</Authors>
     <Description>SkiaSharp static library</Description>
     <PackageTags>skia;harfbuzz</PackageTags>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://github.com/chsbuffer/HostForge</PackageProjectUrl>
     <RepositoryUrl>https://github.com/chsbuffer/HostForge</RepositoryUrl>
@@ -25,6 +24,7 @@
     <_SkiaLine>$([System.Text.RegularExpressions.Regex]::Match('$(SkiaSharpVersion)', '^\d+\.\d+'))</_SkiaLine>
     <_HarfBuzzLine>$([System.Text.RegularExpressions.Regex]::Match('$(HarfBuzzVersion)', '^\d+\.\d+\.\d+'))</_HarfBuzzLine>
     <_VersionProps>$(MSBuildProjectDirectory)/obj/$(PackageId).$(SkiaSharpVersion).Version.props</_VersionProps>
+    <HostForgePackageNoticesDependsOn>_ValidateAvaloniaNativeLibsDir</HostForgePackageNoticesDependsOn>
   </PropertyGroup>
 
   <Target Name="_ValidateAvaloniaHostRid">
@@ -41,11 +41,14 @@
     <!-- LLVM 20.1.8 libc++ from the pinned Linux cross images. -->
     <None Include="licenses/libcxx.LICENSE.TXT" Pack="true" PackagePath="licenses/"
           Condition="$(AvaloniaHostRid.StartsWith('linux-')) and $(_SkiaLine.StartsWith('4.'))" />
+    <HostForgePackageLicense Include="licenses/libcxx.LICENSE.TXT" Notice="libcxx/LICENSE.TXT"
+          Condition="$(AvaloniaHostRid.StartsWith('linux-')) and $(_SkiaLine.StartsWith('4.'))" />
   </ItemGroup>
 
   <ItemGroup>
     <None Include="$(AvaloniaNativeLibsDir)/**/*" Pack="true"
       PackagePath="build/native/$(AvaloniaHostRid)/" />
+    <HostForgePackageLicense Include="$(AvaloniaNativeLibsDir)/licenses/**/*" />
     <PackageReference Include="SkiaSharp" Version="$(SkiaSharpVersion)" />
     <PackageReference Include="HarfBuzzSharp" Version="$(HarfBuzzVersion)" />
   </ItemGroup>
@@ -65,6 +68,8 @@
     <Error Condition="!Exists('$(AvaloniaNativeLibsDir)')"
            Text="Avalonia native libs directory not found: $(AvaloniaNativeLibsDir)" />
     <Error Condition="!Exists('$(AvaloniaNativeLibsDir)/manifest.json')" Text="Static graphics manifest is missing." />
+    <Error Condition="!Exists('$(AvaloniaNativeLibsDir)/licenses/skia/LICENSE')"
+           Text="SkiaSharp licenses not found: $(AvaloniaNativeLibsDir)/licenses. Rebuild the payload with task build-skiasharp." />
     <Error Condition="'$(HarfBuzzVersion)' == ''" Text="No HarfBuzzSharp mapping exists for $(SkiaSharpVersion)." />
     <!-- Freeze package identity in item metadata; properties are shared across RID imports. -->
     <PropertyGroup>
@@ -85,4 +90,5 @@
     <WriteLinesToFile File="$(_VersionProps)" Overwrite="true" Lines="$(_PackageRegistration)" />
   </Target>
 
+  <Import Project="../HostForge.Notices.targets" />
 </Project>

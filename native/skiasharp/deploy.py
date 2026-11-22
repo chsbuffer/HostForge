@@ -27,7 +27,8 @@ def deploy(graph, output_folder: str, **kwargs):
         raise ConanException(f"Unexpected SkiaSharp deploy directory: {(version, rid)}")
     target = os.path.join(output_folder, version, rid)
 
-    # Replace the directory, so that it holds only the files of this package.
+    # SkiaSharp.Static packs every file of the directory, and manifest.json must hash each of them, so a file
+    # left by an earlier payload layout must not survive a redeploy.
     rmdir(graph.root.conanfile, target)
     mkdir(graph.root.conanfile, target)
     copy(

@@ -42,3 +42,12 @@ def deploy(graph, output_folder: str, **kwargs):
         dst=target,
         keep_path=False,
     )
+    licenses = os.path.join(package.package_folder, "res", "licenses")
+    if not os.path.isfile(os.path.join(licenses, "angle", "LICENSE")):
+        raise ConanException(f"Missing ANGLE licenses: {licenses}")
+    copy(
+        graph.root.conanfile,
+        "*",
+        src=licenses,
+        dst=os.path.join(target, "licenses"),
+    )

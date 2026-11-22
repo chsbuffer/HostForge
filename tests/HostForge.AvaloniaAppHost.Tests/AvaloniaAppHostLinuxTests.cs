@@ -24,6 +24,15 @@ public class AvaloniaAppHostLinuxTests
     }
 
     [Test]
+    public void RidPackage_LicenseFileCoversTheLinkedInputs()
+    {
+        string nupkg = Path.Combine(RepoContext.AvaloniaPackageOutputDir,
+            $"{RepoContext.GetAvaloniaRidPackageId(Rid)}.{RepoContext.AvaloniaPackageIdentityVersion}.nupkg");
+        AssertEx.FileExists(nupkg);
+        PackageNotices.AssertCoverTemplateInputs(nupkg, Rid);
+    }
+
+    [Test]
     [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
     public async Task PublishLinux_RunsAndPrintsNativeVersion(string targetFramework)
     {

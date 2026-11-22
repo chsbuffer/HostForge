@@ -30,7 +30,8 @@ WINDOWS_HARFBUZZ = ("native/windows/libHarfBuzzSharp/libHarfBuzzSharp.vcxproj",
 class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
     name = "skiasharp"
     package_type = "static-library"
-    license = "MIT"
+    # SkiaSharp and Skia; licenses/ in the payload holds the license files of every component in the archives.
+    license = ("MIT", "BSD-3-Clause")
     homepage = "https://github.com/mono/skia"
     description = "SkiaSharp and HarfBuzzSharp static libraries"
 
@@ -69,6 +70,28 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
         "x86_64": "x64",
         "armv8": "arm64",
     }
+    # License files of the third_party/externals checkouts, at the revisions that Skia's DEPS pins.
+    _external_licenses = {
+        "d3d12allocator": ("LICENSE.txt",),
+        "dng_sdk": ("LICENSE",),
+        "expat": ("expat/COPYING",),
+        "freetype": ("LICENSE.TXT", "docs/FTL.TXT"),
+        "harfbuzz": ("COPYING",),
+        "libjpeg-turbo": ("LICENSE.md", "README.ijg"),
+        "libpng": ("LICENSE",),
+        "libwebp": ("COPYING", "PATENTS"),
+        "piex": ("LICENSE",),
+        "spirv-cross": ("LICENSE",),
+        "vulkanmemoryallocator": ("LICENSE.txt",),
+        "wuffs": ("LICENSE",),
+        "zlib": ("LICENSE",),
+    }
+    # Skia directories whose objects compile a header-only external.
+    _external_wrappers = {
+        "third_party/vulkanmemoryallocator": "vulkanmemoryallocator",
+        "src/gpu/vk/vulkanmemoryallocator": "vulkanmemoryallocator",
+    }
+
     @property
     def _skia_libraries(self):
         libraries = ("SkiaSharp", "skia", "skottie", "sksg", "skshaper", "skresources")
@@ -221,8 +244,16 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
             copy(self, "gn-*.json", src=str(self._skia_build), dst=str(output))
             copy(self, "gn-*.json", src=str(self._harfbuzz_build), dst=str(output / "harfbuzz"))
         copy(self, "toolchain.txt", src=self.build_folder, dst=str(output), keep_path=False)
-        copy(self, "LICENSE", src=str(self._skia_root), dst=str(output / "licenses"), keep_path=True)
-        copy(self, "COPYING", src=str(self._skia_root / "third_party/externals/harfbuzz"), dst=str(output / "licenses/harfbuzz"))
+        licenses = {"skia/LICENSE": self._skia_root / "LICENSE"}
+        for external in sorted(self._compiled_externals()):
+            for path in self._external_licenses[external]:
+                licenses[f"{external}/{Path(path).name}"] = self._skia_root / "third_party/externals" / external / path
+        for name, source in licenses.items():
+            if not source.is_file():
+                raise ConanException(f"License file not found: {source}")
+            target = output / "licenses" / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
         hashes = {}
         for file in sorted(output.glob("**/*")):
             if file.is_file():
@@ -243,6 +274,34 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
         if self.settings.os == "Linux":
             manifest["libc"] = str(self.options.libc)
         save(self, str(output / "manifest.json"), json.dumps(manifest, indent=2) + "\n")
+
+    def _compiled_externals(self):
+        # GN writes each object below obj/ at the directory of its source, so the objects of a build name
+        # the externals that the archives contain for this version, platform and set of GN arguments.
+        # libHarfBuzzSharp is HarfBuzz on every platform, but on Windows MSBuild writes its object to
+        # obj/<platform>/Release/libHarfBuzzSharp/, a path that does not name the harfbuzz checkout.
+        externals = {"harfbuzz"}
+        unmapped = set()
+        for build in (self._skia_build, self._harfbuzz_build):
+            objects = build / "obj"
+            for file in objects.rglob("*"):
+                if file.suffix not in (".o", ".obj") or not file.is_file():
+                    continue
+                directory = file.parent.relative_to(objects).as_posix()
+                parts = directory.split("/")
+                wrapper = next((name for prefix, name in self._external_wrappers.items()
+                                if directory == prefix or directory.startswith(prefix + "/")), None)
+                if parts[:2] == ["third_party", "externals"] and len(parts) > 2:
+                    externals.add(parts[2])
+                elif wrapper is not None:
+                    externals.add(wrapper)
+                elif "third_party" in parts:
+                    unmapped.add(directory)
+        unmapped |= {f"third_party/externals/{name}" for name in externals - self._external_licenses.keys()}
+        if unmapped:
+            raise ConanException("The archives contain third-party objects without a license in "
+                                 f"_external_licenses or _external_wrappers: {', '.join(sorted(unmapped))}")
+        return externals
 
     def package_info(self):
         self.cpp_info.includedirs = []

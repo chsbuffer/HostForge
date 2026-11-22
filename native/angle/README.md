@@ -11,9 +11,24 @@ task build-angle
 task build-angle ARCH=arm64
 ```
 
-The Conan package contains `libANGLE_static.lib`, `libGLESv2_static.lib`, and
-`av_libglesv2.def`. MSBuild remains responsible for linking these inputs into the
-Avalonia apphost and packing the resulting templates.
+The Conan package contains `libANGLE_static.lib`, `libGLESv2_static.lib`,
+`av_libglesv2.def` and the license files of the code in the libraries; the deployer
+copies them to `artifacts/angle/<version>/<rid>/`, the licenses into
+`licenses/<component>/`. MSBuild remains responsible for linking these inputs into
+the Avalonia apphost and packing the resulting templates.
+
+## Licenses
+
+`package()` reads the member paths of both archives. GN places each object below the
+directory of the `BUILD.gn` that defines its target, so a member path names the
+third-party code it comes from. `_third_party_licenses` maps those path prefixes to
+the license file that the component's `README.chromium` names, at the pinned commit;
+the root `BUILD.gn` defines `xxhash`, whose path has no `third_party` directory. The
+recipe copies ANGLE's `LICENSE`, Chromium's license for the Chromium code in
+`src/common/base` (from the `buildtools` checkout), and the license of every mapped
+component found in the archives. It fails when a member below a `third_party`
+directory has no entry or a license file is missing. When an upgrade links new
+third-party code, add its object directory and license file to the table.
 
 ## Pinned sources
 
@@ -45,3 +60,5 @@ branch, follow the `Avalonia.Angle.Windows.Natives` version that Avalonia depend
 4. Update `AnglePackageVersion` and `_Major` as the package lock requires, then run
    `task upstream-lock` (see [DEVELOPMENT.md](../../DEVELOPMENT.md#上游跟踪与版本守卫)).
 5. Check that the patches in `patches/` still apply.
+6. Check that no new root `BUILD.gn` target compiles third-party sources into the
+   archives without a `_third_party_licenses` entry (see [Licenses](#licenses)).

@@ -1,0 +1,68 @@
+<Project>
+  <!--
+    Writes THIRD-PARTY-NOTICES.txt from the license texts of everything a package ships and packs it as the
+    package license. The package contents are under several licenses, which no SPDX expression accepted by
+    NuGet can state for every RID (the DNG SDK license has no identifier), so the package names the file.
+
+    Importing projects add HostForgePackageLicense items. A section is headed by the Notice metadata, or by
+    the path below the wildcard root for items from a recursive wildcard, and identical sections appear once.
+    HostForgePackageNoticesDependsOn names the targets that add or validate these items.
+  -->
+  <PropertyGroup>
+    <PackageLicenseFile>THIRD-PARTY-NOTICES.txt</PackageLicenseFile>
+  </PropertyGroup>
+
+  <UsingTask TaskName="HostForgeWriteNotices" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Title ParameterType="System.String" Required="true" />
+      <Licenses ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <OutputFile ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Linq" />
+      <Using Namespace="System.Text" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var sections = Licenses
+            .Select(item => (
+                Notice: (item.GetMetadata("Notice") is { Length: > 0 } notice
+                    ? notice : item.GetMetadata("RecursiveDir") + item.GetMetadata("Filename") + item.GetMetadata("Extension")).Replace('\\', '/'),
+                Text: File.ReadAllText(item.GetMetadata("FullPath")).Replace("\r\n", "\n").Trim('\n')))
+            .Distinct()
+            .OrderBy(section => section.Notice, StringComparer.Ordinal)
+            .ThenBy(section => section.Text, StringComparer.Ordinal)
+            .ToList();
+        string rule = new string('=', 79);
+        var text = new StringBuilder(Title).Append('\n');
+        foreach (var section in sections)
+            text.Append('\n').Append(rule).Append('\n').Append(section.Notice).Append('\n').Append(rule).Append("\n\n").Append(section.Text).Append('\n');
+        string content = text.ToString();
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(OutputFile)));
+        if (!File.Exists(OutputFile) || File.ReadAllText(OutputFile) != content)
+            File.WriteAllText(OutputFile, content, new UTF8Encoding(false));
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="_HostForgeWritePackageNotices"
+          BeforeTargets="_GetPackageFiles"
+          DependsOnTargets="$(HostForgePackageNoticesDependsOn)">
+    <!--
+      The path includes PackageVersion so that packages of one ID, such as the SkiaSharp 3 and 4 packages of a
+      RID, write separate files. It is set here because the Sdk.targets that defaults PackageVersion to Version
+      is imported after this file in projects that use the Sdk attribute.
+    -->
+    <PropertyGroup>
+      <_HostForgePackageNotices>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)', 'notices', '$(PackageId)', '$(PackageVersion)', 'THIRD-PARTY-NOTICES.txt'))</_HostForgePackageNotices>
+    </PropertyGroup>
+    <ItemGroup>
+      <HostForgePackageLicense Include="$(MSBuildThisFileDirectory)../LICENSE.TXT" Notice="hostforge/LICENSE.TXT" />
+      <None Include="$(_HostForgePackageNotices)" Pack="true" PackagePath="" />
+    </ItemGroup>
+    <HostForgeWriteNotices Title="Licenses of the components in $(PackageId). Each section is headed by a component and its license file."
+                           Licenses="@(HostForgePackageLicense)"
+                           OutputFile="$(_HostForgePackageNotices)" />
+  </Target>
+</Project>

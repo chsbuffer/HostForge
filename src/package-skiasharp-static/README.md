@@ -36,6 +36,15 @@ dynamic graphics libraries before publishing. Linux archives are grouped to reso
 mutual dependencies. Payloads, source manifests, GN arguments and licenses are under
 `build/native/<rid>/`.
 
+The archives contain Skia, HarfBuzz and the third-party libraries that the build
+compiles into them, which differ by version and platform (for example libpng,
+libjpeg-turbo, libwebp, expat, zlib and wuffs; FreeType on Linux). The license files
+of each component are under `build/native/<rid>/licenses/<component>/`, and the source
+manifest records their SHA-256. `THIRD-PARTY-NOTICES.txt`, the package license,
+reproduces them together with the libc++ license where it applies and the license of
+the package's MSBuild files. Executables that link the archives contain this code, and
+these licenses ask binary distributions to reproduce their notices.
+
 Conflicting native lines fail with `HFG0001`; incompatible managed SkiaSharp
 major.minor or HarfBuzzSharp major.minor.patch fail with `HFG0002` or `HFG0003`.
 An incomplete selected payload fails with `HFG0005`. `HFG1001` warns when an AOT

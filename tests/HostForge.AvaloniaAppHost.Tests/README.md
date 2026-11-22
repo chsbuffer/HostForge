@@ -13,6 +13,9 @@ Current coverage:
   `net11.0` and `net11.0-windows`, `win-x64` / `win-arm64`; `net9.0`, for which the RID packages have no
   dependencies, keeps the SDK host and the native libraries without a warning; publishing for a RID whose package
   the project does not reference keeps them with the inactive warning
+- RID package license file on Windows and Linux: `THIRD-PARTY-NOTICES.txt` has sections for the .NET runtime
+  of every template TFM, Skia and HarfBuzz, ANGLE on Windows only, and libc++ for Linux SkiaSharp 4, and
+  reproduces each file in the `licenses/` directories of the packed templates as a section headed by its path
 - Windows Skia/HarfBuzz native runtime copy suppression switch behavior
 - Windows ANGLE P/Invoke resolution from the apphost and runtime copy suppression for every template TFM: the
   consumer references Avalonia.Win32 and calls its `EGL_GetProcAddress` import, which the module initializer

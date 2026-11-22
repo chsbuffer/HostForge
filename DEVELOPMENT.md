@@ -242,7 +242,7 @@ task matrix
 
 两个矩阵都对 `Directory.Build.props` 中 `HostForgeTargetFrameworks` 的每个 TFM 各运行一次；Static AppHost 矩阵因此需要先构建每个运行时版本的 HostLibs。Linux 上 Static AppHost 矩阵链接 .NET 11 HostLibs，CI 在最新运行时的 linux-x64 构建容器中运行它，NativeAOT 矩阵在 runner 上运行。
 
-`tests/native` 是不依赖构建产物的 Python 测试（缓存键、版本一致性、版本字面量、包输入锁与上游脚本），CI 在 `plan-all` 中运行：
+`tests/native` 是不依赖构建产物的 Python 测试（缓存键、版本一致性、版本字面量、包输入锁、上游脚本，以及 ANGLE 与 SkiaSharp recipe 的许可证收集和 SkiaSharp deployer；Conan 由测试替身代替），CI 在 `plan-all` 中运行：
 
 ```bash
 python -m unittest discover -s tests/native
@@ -283,11 +283,11 @@ artifacts/
 
 主要目录：
 
-- `hostlibs`：AppHost / SingleFileHost 静态库、响应文件和链接参数。
-- `skiasharp`：SkiaSharp / HarfBuzzSharp 及其依赖静态库。
-- `angle`：Windows ANGLE complete static libraries 与宿主导出定义文件。
+- `hostlibs`：AppHost / SingleFileHost 静态库、响应文件、链接参数，以及 .NET 运行时的许可证与第三方声明（`licenses/`）。
+- `skiasharp`：SkiaSharp / HarfBuzzSharp 及其依赖静态库、来源清单，以及 Skia、HarfBuzz 和编入静态库的第三方代码的许可证（`licenses/<组件>/`）。
+- `angle`：Windows ANGLE complete static libraries、宿主导出定义文件，以及 ANGLE 和库中第三方代码的许可证（`licenses/<组件>/`）。
 - `avalonianative`：AvaloniaNative 静态库、来源清单与许可证。
-- `avalonia-host`：已经链接完成、可直接打包的宿主模板。
+- `avalonia-host`：已经链接完成、可直接打包的宿主模板，以及所链接输入的许可证（`licenses/`）。
 - `packages`：生成的 NuGet 包。
 - `tmp`：集成测试工作区和临时 NuGet 缓存。
 

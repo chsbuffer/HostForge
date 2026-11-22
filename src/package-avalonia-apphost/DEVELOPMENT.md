@@ -19,6 +19,12 @@ Examples:
 - `artifacts/avalonia-host/12.0/net10.0/win-x64/apphost.exe`
 - `artifacts/avalonia-host/12.0/net11.0/linux-x64/singlefilehost`
 
+Each `<tfm>/<rid>/` directory also receives `licenses/`, copied from the inputs of that link:
+`dotnet/<runtime-version>/` from the host libs, `skiasharp/` from the SkiaSharp payload (plus
+`skiasharp/libcxx/` from `src/package-skiasharp-static/licenses` for Linux SkiaSharp 4), and
+`angle/` from the ANGLE payload on Windows. Linking fails when an input has no licenses, which
+means it was built by an older recipe.
+
 `AvaloniaTemplateTfms` (default: `HostForgeTargetFrameworks` in `Directory.Build.props`)
 selects the template TFMs. Each TFM links the host libs of its own runtime
 (`HostLibsNet<N>Version`), from `artifacts/hostlibs/<runtime-version>/...`, so build HostLibs
@@ -52,6 +58,11 @@ template TFM and register each one in a `.props` file generated at pack time:
   …
 </AvaloniaAppHostRids>
 ```
+
+The RID package's license file is `THIRD-PARTY-NOTICES.txt`, which
+[`HostForge.Notices.targets`](../HostForge.Notices.targets) writes at pack time from the `licenses/`
+directories of every packed template, with HostForge's own license; sections that are identical for
+several TFMs appear once. Packing fails when a template directory has no `licenses/`.
 
 The Build package's `.targets` matches `$(RuntimeIdentifier)` and the project's .NET version against
 `@(AvaloniaAppHostRids)`. The TFM is normalized to `net<major>.<minor>`, so OS-specific TFMs such as

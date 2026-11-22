@@ -133,6 +133,12 @@ class HostLibsConan(ConanFile):
             )
             shutil.copy2(source, Path(self.package_folder) / source.name)
 
+        # The runtime's notices cover the third-party code of its native components, which the hosts link.
+        licenses = Path(self.package_folder) / "licenses"
+        licenses.mkdir()
+        for name in ("LICENSE.TXT", "THIRD-PARTY-NOTICES.TXT"):
+            shutil.copy2(self._runtime_root / name, licenses / name)
+
     def package_info(self):
         self.cpp_info.includedirs = []
         self.cpp_info.libdirs = []

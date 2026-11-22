@@ -129,8 +129,42 @@
     </ItemGroup>
   </Target>
 
+  <!--
+    Copies the licenses of the linked inputs next to the templates, by component: the .NET runtime of the
+    host libs, SkiaSharp (Skia, HarfBuzz, the third-party code in their archives and, for Linux SkiaSharp 4,
+    libc++) and, on Windows, ANGLE. The RID package turns them into its THIRD-PARTY-NOTICES.txt.
+  -->
+  <Target Name="_CopyAvaloniaHostLicenses"
+          DependsOnTargets="_ResolveAvaloniaLinkInputs">
+    <PropertyGroup>
+      <_AvaloniaHostLicensesDir>$([MSBuild]::NormalizePath('$(AvaloniaHostOutputDir)', 'licenses'))</_AvaloniaHostLicensesDir>
+      <_AvaloniaLibcxxLicense Condition="'$(_AvaloniaHostRidIsWindows)' != 'True' and $(SkiaSharpVersion.StartsWith('4.'))">$(MSBuildProjectDirectory)/../package-skiasharp-static/licenses/libcxx.LICENSE.TXT</_AvaloniaLibcxxLicense>
+    </PropertyGroup>
+
+    <Error Condition="!Exists('$(PackageAssetsDir)/licenses/THIRD-PARTY-NOTICES.TXT')"
+           Text=".NET runtime notices not found in $(PackageAssetsDir)/licenses. Rebuild the host libs with task build-hostlibs." />
+    <Error Condition="!Exists('$(AvaloniaNativeLibsDir)/licenses/skia/LICENSE')"
+           Text="SkiaSharp licenses not found in $(AvaloniaNativeLibsDir)/licenses. Rebuild the payload with task build-skiasharp." />
+    <Error Condition="'$(_AvaloniaHostRidIsWindows)' == 'True' and !Exists('$(AngleNativeLibsDir)/licenses/angle/LICENSE')"
+           Text="ANGLE licenses not found in $(AngleNativeLibsDir)/licenses. Rebuild the payload with task build-angle." />
+
+    <ItemGroup>
+      <_AvaloniaHostLicense Include="$(PackageAssetsDir)/licenses/**/*" Component="dotnet/$(HostLibsVersion)" />
+      <_AvaloniaHostLicense Include="$(AvaloniaNativeLibsDir)/licenses/**/*" Component="skiasharp" />
+      <_AvaloniaHostLicense Include="$(AngleNativeLibsDir)/licenses/**/*" Component="angle"
+                            Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'" />
+    </ItemGroup>
+
+    <RemoveDir Directories="$(_AvaloniaHostLicensesDir)" />
+    <Copy SourceFiles="@(_AvaloniaHostLicense)"
+          DestinationFiles="@(_AvaloniaHostLicense->'$(_AvaloniaHostLicensesDir)/%(Component)/%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="$(_AvaloniaLibcxxLicense)"
+          DestinationFiles="$(_AvaloniaHostLicensesDir)/skiasharp/libcxx/LICENSE.TXT"
+          Condition="'$(_AvaloniaLibcxxLicense)' != ''" />
+  </Target>
+
   <Target Name="_LinkAvaloniaAppHostForRid"
-          DependsOnTargets="_ResolveAvaloniaLinkInputs;LinkAppHost" />
+          DependsOnTargets="_ResolveAvaloniaLinkInputs;LinkAppHost;_CopyAvaloniaHostLicenses" />
 
   <Target Name="_LinkAvaloniaSingleFileHostForRid"
           DependsOnTargets="_ResolveAvaloniaLinkInputs;LinkSingleFileHost" />

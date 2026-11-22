@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import shutil
 import sys
 
 from conan import ConanFile
@@ -37,6 +38,15 @@ class AngleConan(ConanFile):
         "libANGLE_static.lib",
         "libGLESv2_static.lib",
     )
+    # Third-party code in the libraries, by the member path prefix of its objects, with the license file
+    # that its README.chromium names. GN places objects below the directory of the BUILD.gn that defines
+    # the target, so the xxhash target of the root BUILD.gn has no third_party directory in its path.
+    _third_party_licenses = {
+        "obj/src/third_party/volk/": ("volk", "src/third_party/volk/LICENSE.md"),
+        "obj/third_party/astc-encoder/": ("astc-encoder", "third_party/astc-encoder/src/LICENSE.txt"),
+        "obj/third_party/zlib/": ("zlib", "third_party/zlib/LICENSE"),
+        "obj/xxhash/": ("xxhash", "src/common/third_party/xxhash/LICENSE"),
+    }
 
     @property
     def _angle_root(self):
@@ -164,6 +174,61 @@ class AngleConan(ConanFile):
             os.path.join(self.package_folder, "res", "av_libglesv2.def"),
             exports + "\n",
         )
+
+        members = [
+            member
+            for library in self._libraries
+            for member in self._archive_members(os.path.join(object_dir, library))
+        ]
+        for component, path in self._linked_licenses(members).items():
+            source = os.path.join(self._angle_root, *path.split("/"))
+            if not os.path.isfile(source):
+                raise ConanException(f"License of {component} not found: {source}")
+            target = os.path.join(self.package_folder, "res", "licenses", component)
+            os.makedirs(target, exist_ok=True)
+            shutil.copy2(source, target)
+
+    @classmethod
+    def _linked_licenses(cls, members):
+        # angle_common compiles src/common/base, Chromium code that its README.chromium places under
+        # Chromium's LICENSE; the buildtools checkout of DEPS carries that license.
+        licenses = {"angle": "LICENSE", "chromium": "buildtools/LICENSE"}
+        unmapped = set()
+        for member in members:
+            path = member.replace("\\", "/")
+            mapped = next((value for prefix, value in cls._third_party_licenses.items() if path.startswith(prefix)), None)
+            if mapped is not None:
+                licenses[mapped[0]] = mapped[1]
+            elif "third_party" in path.split("/"):
+                unmapped.add(path.rsplit("/", 1)[0])
+        if unmapped:
+            raise ConanException(
+                "The libraries contain third-party objects without a license in _third_party_licenses: "
+                + ", ".join(sorted(unmapped))
+            )
+        return licenses
+
+    @staticmethod
+    def _archive_members(path):
+        # MSVC keeps the object paths given to lib.exe. Names longer than 15 characters live in the
+        # "//" member, NUL-terminated, and the member header refers to them as "/<offset>".
+        members = []
+        names = b""
+        with open(path, "rb") as archive:
+            if archive.read(8) != b"!<arch>\n":
+                raise ConanException(f"Not an archive: {path}")
+            while len(header := archive.read(60)) == 60:
+                name = header[:16].decode("ascii").rstrip()
+                size = int(header[48:58])
+                start = archive.tell()
+                if name == "//":
+                    names = archive.read(size)
+                elif name.startswith("/") and name[1:].isdigit():
+                    members.append(names[int(name[1:]):].split(b"\0", 1)[0].decode("utf-8"))
+                elif name != "/":
+                    members.append(name.rstrip("/"))
+                archive.seek(start + size + size % 2)
+        return members
 
     def package_info(self):
         self.cpp_info.includedirs = []
