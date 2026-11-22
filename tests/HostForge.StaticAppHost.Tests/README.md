@@ -6,7 +6,8 @@ host libs of that runtime, so build HostLibs for every runtime version first. On
 contain LLVM bitcode: run the matrix with a Clang and LLD at least as new as the LLVM of the runtime's build
 container, as CI does in the `build` stage of `native/hostlibs/linux.Dockerfile`. On Windows the matrix also
 checks that the relinked hosts keep Control Flow Guard and the EH continuation table of the official x64 hosts,
-and that `StaticHostGuardEHCont=false` relinks without the table.
+that `StaticHostGuardEHCont=false` relinks without the table, and that a publish with the default options
+then relinks both hosts with it again, so a kept `bin` / `obj` matches the default options.
 
 Run:
 
