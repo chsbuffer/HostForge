@@ -10,7 +10,6 @@
     <Authors>ChsBuffer</Authors>
     <Description>ANGLE static libraries for $(AngleHostRid) NativeAOT and static host linking.</Description>
     <PackageTags>angle;static;nativeaot</PackageTags>
-    <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://github.com/chsbuffer/HostForge</PackageProjectUrl>
     <RepositoryUrl>https://github.com/chsbuffer/HostForge</RepositoryUrl>
@@ -20,6 +19,7 @@
     <IsPackable>true</IsPackable>
     <PackageOutputPath>$(AvaloniaAppHostPackageOutputDir)\</PackageOutputPath>
     <AngleNativeLibsDir>$([MSBuild]::NormalizePath('$(AngleNativeLibsRoot)', '$(AngleHostRid)'))</AngleNativeLibsDir>
+    <HostForgePackageNoticesDependsOn>_ValidateAngleNativeLibs</HostForgePackageNoticesDependsOn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -30,6 +30,8 @@
     <None Include="$(AngleNativeLibsDir)/libANGLE_static.lib" Pack="true" PackagePath="build/native/$(AngleHostRid)/libANGLE_static.lib" />
     <None Include="$(AngleNativeLibsDir)/libGLESv2_static.lib" Pack="true" PackagePath="build/native/$(AngleHostRid)/libGLESv2_static.lib" />
     <None Include="$(AngleNativeLibsDir)/av_libglesv2.def" Pack="true" PackagePath="build/native/$(AngleHostRid)/av_libglesv2.def" />
+    <None Include="$(AngleNativeLibsDir)/licenses/**/*" Pack="true" PackagePath="build/native/$(AngleHostRid)/licenses/" />
+    <HostForgePackageLicense Include="$(AngleNativeLibsDir)/licenses/**/*" />
   </ItemGroup>
 
   <Target Name="_ValidateAngleNativeLibs" BeforeTargets="_GetPackageFiles">
@@ -37,5 +39,8 @@
     <Error Condition="!Exists('$(AngleNativeLibsDir)/libANGLE_static.lib')" Text="ANGLE library not found: $(AngleNativeLibsDir)/libANGLE_static.lib" />
     <Error Condition="!Exists('$(AngleNativeLibsDir)/libGLESv2_static.lib')" Text="ANGLE library not found: $(AngleNativeLibsDir)/libGLESv2_static.lib" />
     <Error Condition="!Exists('$(AngleNativeLibsDir)/av_libglesv2.def')" Text="ANGLE export definition not found: $(AngleNativeLibsDir)/av_libglesv2.def" />
+    <Error Condition="!Exists('$(AngleNativeLibsDir)/licenses/angle/LICENSE')" Text="ANGLE licenses not found: $(AngleNativeLibsDir)/licenses. Rebuild the payload with task build-angle." />
   </Target>
+
+  <Import Project="../HostForge.Notices.targets" />
 </Project>

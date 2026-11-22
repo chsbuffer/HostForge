@@ -74,4 +74,49 @@ public class PackageLayoutTests
             throw new InvalidOperationException("The static package includes a variant directory or dynamic payload.");
         Console.WriteLine($"Verified {path}: {new FileInfo(path).Length} bytes and all manifest hashes.");
     }
+
+    [Test]
+    public void AngleRidPackage_LicenseFileCoversTheLicensesOfItsLibraries()
+    {
+        string rid = NativeAotMatrixTests.Rid;
+        if (!rid.StartsWith("win-", StringComparison.Ordinal) || Environment.GetEnvironmentVariable("HOSTFORGE_CHECK_ANGLE") == "false")
+            return;
+
+        string path = Path.Combine(RepoContext.AvaloniaPackageOutputDir, $"ChsBuffer.Angle.Static.{rid}.{RepoContext.AnglePackageVersion}.nupkg");
+        AssertEx.FileExists(path);
+        using ZipArchive zip = ZipFile.OpenRead(path);
+        AssertLicenseFileCoversPayloadLicenses(zip, $"build/native/{rid}/licenses/", "angle/LICENSE");
+    }
+
+    /// <summary>
+    /// Requires the license file of the package to be THIRD-PARTY-NOTICES.txt with a section, headed by its path
+    /// below <paramref name="licenseRoot"/>, for every payload license file, and returns the section headers.
+    /// </summary>
+    private static HashSet<string> AssertLicenseFileCoversPayloadLicenses(ZipArchive zip, string licenseRoot, params string[] required)
+    {
+        XElement license;
+        using (Stream stream = zip.Entries.Single(entry => entry.FullName.EndsWith(".nuspec", StringComparison.Ordinal)).Open())
+            license = XDocument.Load(stream).Descendants().Single(element => element.Name.LocalName == "license");
+        if ((string?)license.Attribute("type") != "file" || license.Value != "THIRD-PARTY-NOTICES.txt")
+            throw new InvalidOperationException($"The package license is not THIRD-PARTY-NOTICES.txt: {license}");
+        string notices;
+        using (var reader = new StreamReader((zip.GetEntry(license.Value) ?? throw new InvalidOperationException("Missing THIRD-PARTY-NOTICES.txt.")).Open()))
+            notices = reader.ReadToEnd();
+        HashSet<string> headers = notices.Split('\n').ToHashSet(StringComparer.Ordinal);
+
+        foreach (string name in required)
+            if (zip.GetEntry(licenseRoot + name) is null)
+                throw new InvalidOperationException($"Missing {licenseRoot}{name}.");
+        foreach (ZipArchiveEntry entry in zip.Entries.Where(entry => entry.FullName.StartsWith(licenseRoot, StringComparison.Ordinal)))
+        {
+            string text;
+            using (var reader = new StreamReader(entry.Open()))
+                text = reader.ReadToEnd().Replace("\r\n", "\n").Trim('\n');
+            if (!headers.Contains(entry.FullName[licenseRoot.Length..]) || !notices.Contains(text, StringComparison.Ordinal))
+                throw new InvalidOperationException($"THIRD-PARTY-NOTICES.txt does not reproduce {entry.FullName}.");
+        }
+        if (!headers.Contains("hostforge/LICENSE.TXT"))
+            throw new InvalidOperationException("THIRD-PARTY-NOTICES.txt lacks the HostForge license.");
+        return headers;
+    }
 }

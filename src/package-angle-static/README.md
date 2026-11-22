@@ -22,6 +22,12 @@ For a matching Windows AOT RID, `buildTransitive` adds `libANGLE_static.lib`,
 `av_libglesv2.dll` from publishing. The archives and `av_libglesv2.def` are under
 `build/native/<rid>/`.
 
+The archives contain ANGLE and the third-party code that its libraries link. The
+license file of each component is under `build/native/<rid>/licenses/<component>/`.
+`THIRD-PARTY-NOTICES.txt`, the package license, reproduces them together with the
+license of the package's MSBuild files. Executables that link the archives contain
+this code, and these licenses ask binary distributions to reproduce their notices.
+
 An incomplete selected payload fails with `HFG0005`. A Windows AOT build with a
 nonempty unsupported RID warns with `HFG1001`. Other platforms, builds without a
 RID and non-AOT projects remain inactive and silent.
