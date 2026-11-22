@@ -278,7 +278,7 @@ artifacts/
 - `skiasharp`：SkiaSharp / HarfBuzzSharp 及其依赖静态库、来源清单，以及 Skia、HarfBuzz 和编入静态库的第三方代码的许可证（`licenses/<组件>/`）。
 - `angle`：Windows ANGLE complete static libraries、宿主导出定义文件，以及 ANGLE 和库中第三方代码的许可证（`licenses/<组件>/`）。
 - `avalonianative`：AvaloniaNative 静态库、来源清单与许可证。
-- `avalonia-host`：已经链接完成、可直接打包的宿主模板。
+- `avalonia-host`：已经链接完成、可直接打包的宿主模板，以及所链接输入的许可证（`licenses/`）。
 - `packages`：生成的 NuGet 包。
 - `tmp`：集成测试工作区和临时 NuGet 缓存。
 

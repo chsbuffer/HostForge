@@ -80,6 +80,7 @@ public class AvaloniaAppHostTests
                 if (!files.Contains(props))
                     throw new InvalidOperationException($"{rid} package missing .props");
                 await AssertRegistrationsResolveToPackedTemplates(Path.Combine(tmp, props), rid);
+                PackageNotices.AssertCoverTemplateInputs(nupkg, rid);
             }
             finally
             {

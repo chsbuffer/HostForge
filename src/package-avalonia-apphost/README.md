@@ -27,3 +27,7 @@ The single-file host embeds the native .NET runtime it was built from (10.0.15 o
 | `DisableAngleRuntimeCopy` | `true` | Keeps the ANGLE library (`av_libglesv2.dll`) out of the publish directory and the single-file bundle. |
 
 The package registers a `DllImport` resolver for SkiaSharp, HarfBuzzSharp and Avalonia.Win32 that loads these libraries from the executable. When the application has already registered its own resolver for one of these assemblies, that resolver stays in effect; set the matching property to `false` so the libraries it loads are published.
+
+## Licenses
+
+The templates statically link the .NET runtime, Skia, HarfBuzz and the third-party libraries in their archives, ANGLE on Windows, and libc++ on Linux with SkiaSharp 4. Each RID package names `THIRD-PARTY-NOTICES.txt` as its license file; it reproduces the licenses of everything its templates link, including the runtime's own third-party notices. Executables published with the templates contain this code, and these licenses ask binary distributions to reproduce their notices.
