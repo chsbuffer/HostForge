@@ -248,12 +248,12 @@ python -m unittest discover -s tests/native
 
 `matrix-nativeaot` 按 .NET SDK 的 RID（`NETCoreSdkPortableRuntimeIdentifier`，即测试进程所在运行时的 RID）和 `SKIASHARP_VERSION`（默认为 `Directory.Build.props` 的 `SkiaSharpVersion`）打包 SkiaSharp 静态库，Windows 还会打包 ANGLE；随后通过 `HOSTFORGE_NATIVE_RID` 与 `HOSTFORGE_SKIA_VERSION` 把同一 RID 与版本交给测试，发布并运行 `samples/nativeaot-matrix`，检查 SkiaSharp、HarfBuzzSharp 和 Windows ANGLE 的原生调用，以及发布目录中没有对应动态本机库。运行前需先构建该 RID 与版本的原生库。
 
-可通过环境变量调整矩阵测试：
+可通过环境变量调整 Static AppHost 矩阵：
 
 - `HOSTFORGE_MATRIX_SKIP_EXE_RUN=true`：只构建，不运行生成的可执行文件。
 - `HOSTFORGE_MATRIX_NO_CLEAN=true`：保留消费端测试项目的 `bin` / `obj`。
 
-也可在命令行传入对应的 Task 变量：`SKIP_EXE_RUN=true`、`NO_CLEAN=true`。
+也可给 `task matrix` 传入对应的 Task 变量：`SKIP_EXE_RUN=true`、`NO_CLEAN=true`。NativeAOT 矩阵不读取这两个开关：它总是运行发布的程序，并为每次发布新建工作区。
 
 也可以直接运行测试工程：
 
