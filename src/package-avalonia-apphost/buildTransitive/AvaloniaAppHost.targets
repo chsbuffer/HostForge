@@ -60,12 +60,11 @@
   </Target>
 
   <!--
-    Running before BeforeCompile puts the initializer and its constants into the compile input cache, so a
-    build that changes the activation in the same intermediate directory, such as one with UseAppHost=false,
+    Each constant enables the registration of one assembly in @(ReferencePath), which is resolved before
+    BeforeCompile. Only the Windows templates contain ANGLE, which Avalonia.Win32 imports.
+    Running before BeforeCompile also puts the initializer and its constants into the compile input cache, so
+    a build that changes the activation in the same intermediate directory, such as one with UseAppHost=false,
     recompiles the assembly instead of keeping or missing the initializer of the previous build.
-    @(ReferencePath) is resolved by then: the initializer registers its resolver with each of the assemblies
-    below that the project references, which a constant enables. Only the Windows templates contain ANGLE,
-    which Avalonia.Win32 imports.
   -->
   <Target Name="InjectAvaloniaModuleInitializer"
           BeforeTargets="BeforeCompile;CoreCompile"
@@ -73,6 +72,9 @@
           Condition="Exists('$(_AvaloniaModuleInitializer)')">
     <PropertyGroup Condition="'$(AvaloniaAppHostActive)' == 'true'">
       <DefineConstants Condition="'@(ReferencePath->AnyHaveMetadataValue('Filename', 'SkiaSharp'))' == 'true'">$(DefineConstants);HOSTFORGE_SKIASHARP</DefineConstants>
+      <DefineConstants Condition="'@(ReferencePath->AnyHaveMetadataValue('Filename', 'SkiaSharp.Skottie'))' == 'true'">$(DefineConstants);HOSTFORGE_SKIASHARP_SKOTTIE</DefineConstants>
+      <DefineConstants Condition="'@(ReferencePath->AnyHaveMetadataValue('Filename', 'SkiaSharp.SceneGraph'))' == 'true'">$(DefineConstants);HOSTFORGE_SKIASHARP_SCENEGRAPH</DefineConstants>
+      <DefineConstants Condition="'@(ReferencePath->AnyHaveMetadataValue('Filename', 'SkiaSharp.Resources'))' == 'true'">$(DefineConstants);HOSTFORGE_SKIASHARP_RESOURCES</DefineConstants>
       <DefineConstants Condition="'@(ReferencePath->AnyHaveMetadataValue('Filename', 'HarfBuzzSharp'))' == 'true'">$(DefineConstants);HOSTFORGE_HARFBUZZSHARP</DefineConstants>
       <DefineConstants Condition="'$(_AvaloniaTemplateRidIsWindows)' == 'True' and '@(ReferencePath->AnyHaveMetadataValue('Filename', 'Avalonia.Win32'))' == 'true'">$(DefineConstants);HOSTFORGE_AVALONIA_WIN32</DefineConstants>
     </PropertyGroup>

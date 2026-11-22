@@ -12,6 +12,8 @@ Current coverage:
 - Windows ANGLE P/Invoke resolution from the apphost and runtime copy suppression for every template TFM
 - The consumer projects do not reference Avalonia.Win32, so every run on a Windows template also checks that the
   module initializer registers its resolver only with referenced assemblies
+- The consumer programs call SkiaSharp.Skottie, SkiaSharp.SceneGraph and SkiaSharp.Resources, which import
+  libSkiaSharp themselves; every run on a template checks that no Skia, HarfBuzz or ANGLE library file is loaded
 - Self-contained single-file publish on Windows and Linux for every template TFM, without and with
   `IncludeNativeLibrariesForSelfExtract`: `RuntimeFrameworkVersion` is pinned to the template's runtime version,
   as the package README requires; the bundle runs on the prelinked singlefilehost (exact runtime version checked)

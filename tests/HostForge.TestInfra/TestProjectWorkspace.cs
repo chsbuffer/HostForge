@@ -136,6 +136,8 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         AddPackageReference(itemGroup, RepoContext.GetAvaloniaRidPackageId(runtimeIdentifier), "$(AvaloniaAppHostPackageVersion)");
         AddPackageReference(itemGroup, RepoContext.AvaloniaAppHostBuildPackageId, "$(AvaloniaAppHostPackageVersion)");
         AddPackageReference(itemGroup, "SkiaSharp", "$(SkiaSharpVersion)");
+        // Skottie also brings SkiaSharp.SceneGraph and SkiaSharp.Resources, each with its own libSkiaSharp imports.
+        AddPackageReference(itemGroup, "SkiaSharp.Skottie", "$(SkiaSharpVersion)");
         AddPackageReference(itemGroup, "HarfBuzzSharp", "$(HarfBuzzVersion)");
 
         if (includeNativeAssetsPackages)
@@ -179,6 +181,7 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
     private static string BuildProgramSource()
     {
         return """
+                using System.Diagnostics;
                 using System.Runtime.InteropServices;
 
                 if (OperatingSystem.IsWindows())
@@ -195,7 +198,22 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
                     Console.WriteLine($"AngleError=0x{AngleNative.GetError():X}");
                 }
                 Console.WriteLine($"SkiaSharpVersion.Native={SkiaSharp.SkiaSharpVersion.Native}");
+                using (var resources = new SkiaSharp.Resources.FileResourceProvider(AppContext.BaseDirectory))
+                using (var invalidation = new SkiaSharp.SceneGraph.InvalidationController())
+                {
+                    invalidation.Begin();
+                    invalidation.End();
+                    bool parsed = SkiaSharp.Skottie.Animation.TryParse(
+                        "{\"v\":\"5.7.4\",\"fr\":30,\"ip\":0,\"op\":30,\"w\":16,\"h\":16,\"layers\":[]}", out var animation);
+                    animation?.Dispose();
+                    Console.WriteLine($"Skottie={parsed}");
+                }
                 Console.WriteLine($"RuntimeVersion={Environment.Version}");
+                string[] graphicsLibraries = ["libSkiaSharp", "libHarfBuzzSharp", "av_libglesv2"];
+                IEnumerable<string> loadedGraphicsLibraries = Process.GetCurrentProcess().Modules.Cast<ProcessModule>()
+                    .Select(module => Path.GetFileName(module.FileName))
+                    .Where(file => graphicsLibraries.Any(library => file.StartsWith(library, StringComparison.OrdinalIgnoreCase)));
+                Console.WriteLine($"GraphicsLibraryFiles={string.Join(",", loadedGraphicsLibraries)}");
 
                 internal static class AngleNative
                 {

@@ -51,6 +51,7 @@ public class AvaloniaAppHostLinuxTests
 
         AssertEx.Success(runResult, $"{Rid}-run");
         AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        AssertSkottieAndLoadedLibraries(runResult.CombinedOutput, expectPrelinked: true);
     }
 
     [Test]
@@ -95,6 +96,7 @@ public class AvaloniaAppHostLinuxTests
         }
 
         AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        AssertSkottieAndLoadedLibraries(runResult.CombinedOutput, expectPrelinked: true);
         // The bundle pins its managed framework to the runtime embedded in the template.
         AssertEx.Contains(runResult.CombinedOutput, $"RuntimeVersion={RepoContext.GetHostLibsVersion(targetFramework)}");
     }
@@ -121,12 +123,14 @@ public class AvaloniaAppHostLinuxTests
             Path.Combine(outputDirectory, project.ProjectName), string.Empty, outputDirectory);
         AssertEx.Success(templateRun, $"{Rid} build output run ({targetFramework})");
         AssertLoadedSkiaSharpNativeVersion(templateRun.CombinedOutput);
+        AssertSkottieAndLoadedLibraries(templateRun.CombinedOutput, expectPrelinked: true);
 
         // Under dotnet the main program exports none of the libraries, so the resolver of the application
         // assembly leaves them to the files in the build output, as for a test project that references it.
         CommandResult dotnetRun = await CommandRunner.RunAsync("dotnet", $"\"{project.ProjectName}.dll\"", outputDirectory);
         AssertEx.Success(dotnetRun, $"{Rid} build output on dotnet ({targetFramework})");
         AssertLoadedSkiaSharpNativeVersion(dotnetRun.CombinedOutput);
+        AssertSkottieAndLoadedLibraries(dotnetRun.CombinedOutput, expectPrelinked: false);
     }
 
     [Test]
@@ -159,6 +163,7 @@ public class AvaloniaAppHostLinuxTests
         CommandResult runResult = await CommandRunner.RunAsync("dotnet", $"\"{project.ProjectName}.dll\"", outputDirectory);
         AssertEx.Success(runResult, $"{targetFramework} run without a RID");
         AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        AssertSkottieAndLoadedLibraries(runResult.CombinedOutput, expectPrelinked: false);
     }
 
     [Test]
@@ -281,6 +286,25 @@ public class AvaloniaAppHostLinuxTests
         {
             throw new InvalidOperationException(
                 $"Expected native SkiaSharp {RepoContext.SkiaSharpVersion}, but got '{value}'.{Environment.NewLine}{output}");
+        }
+    }
+
+    private static void AssertSkottieAndLoadedLibraries(string output, bool expectPrelinked)
+    {
+        // SkiaSharp.Skottie, SceneGraph and Resources import libSkiaSharp themselves.
+        AssertEx.Contains(output, "Skottie=True");
+        if (!expectPrelinked)
+            return;
+
+        const string prefix = "GraphicsLibraryFiles=";
+        AssertEx.Contains(output, prefix);
+        int start = output.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length;
+        int end = output.IndexOfAny(['\r', '\n'], start);
+        string loaded = output[start..(end < 0 ? output.Length : end)].Trim();
+        if (loaded.Length != 0)
+        {
+            throw new InvalidOperationException(
+                $"The template loaded {loaded} instead of resolving it from the executable.{Environment.NewLine}{output}");
         }
     }
 

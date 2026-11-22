@@ -33,6 +33,16 @@ internal static class ModuleInitializer
 #if HOSTFORGE_SKIASHARP
         SetResolver(typeof(global::SkiaSharp.SkiaSharpVersion).Assembly, "libSkiaSharp");
 #endif
+        // Skottie, SceneGraph and Resources import libSkiaSharp themselves; the templates export their functions too.
+#if HOSTFORGE_SKIASHARP_SKOTTIE
+        SetResolver(typeof(global::SkiaSharp.Skottie.Animation).Assembly, "libSkiaSharp");
+#endif
+#if HOSTFORGE_SKIASHARP_SCENEGRAPH
+        SetResolver(typeof(global::SkiaSharp.SceneGraph.InvalidationController).Assembly, "libSkiaSharp");
+#endif
+#if HOSTFORGE_SKIASHARP_RESOURCES
+        SetResolver(typeof(global::SkiaSharp.Resources.ResourceProvider).Assembly, "libSkiaSharp");
+#endif
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

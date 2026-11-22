@@ -228,7 +228,7 @@ public class AvaloniaAppHostTests
                 if (testCase.RunExecutable)
                 {
                     string exePath = Path.Combine(outputDirectory, $"{project.ProjectName}.exe");
-                    await RunExeAndAssertSuccess(testCase.Name, exePath);
+                    await RunExeAndAssertSuccess(testCase.Name, exePath, expectPrelinked: testCase.ExpectedActive);
                 }
             });
         }
@@ -256,6 +256,7 @@ public class AvaloniaAppHostTests
         CommandResult runResult = await CommandRunner.RunAsync("dotnet", $"\"{project.ProjectName}.dll\"", outputDirectory);
         AssertEx.Success(runResult, $"{caseName}:dotnet");
         AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        AssertSkottieAndLoadedLibraries(runResult.CombinedOutput, expectPrelinked: false);
         AssertEx.Contains(runResult.CombinedOutput, "AngleError=0x");
     }
 
@@ -285,6 +286,7 @@ public class AvaloniaAppHostTests
         CommandResult runResult = await CommandRunner.RunAsync("dotnet", $"\"{project.ProjectName}.dll\"", outputDirectory);
         AssertEx.Success(runResult, $"{targetFramework}_publish_no-rid:run");
         AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        AssertSkottieAndLoadedLibraries(runResult.CombinedOutput, expectPrelinked: false);
         AssertEx.Contains(runResult.CombinedOutput, "AngleError=0x");
     }
 
@@ -314,6 +316,7 @@ public class AvaloniaAppHostTests
             : await CommandRunner.RunAsync("dotnet", $"\"{project.ProjectName}.dll\"", outputDirectory);
         AssertEx.Success(runResult, $"{caseName}:run");
         AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        AssertSkottieAndLoadedLibraries(runResult.CombinedOutput, expectPrelinked: false);
         AssertEx.Contains(runResult.CombinedOutput, "AngleError=0x");
     }
 
@@ -487,7 +490,8 @@ public class AvaloniaAppHostTests
         string caseName,
         string exePath,
         string? expectedRuntimeVersion = null,
-        IReadOnlyDictionary<string, string>? environmentVariables = null)
+        IReadOnlyDictionary<string, string>? environmentVariables = null,
+        bool expectPrelinked = true)
     {
         AssertEx.FileExists(exePath);
 
@@ -499,6 +503,7 @@ public class AvaloniaAppHostTests
 
         AssertEx.Success(runResult, $"{caseName}:run-exe");
         AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        AssertSkottieAndLoadedLibraries(runResult.CombinedOutput, expectPrelinked);
         AssertEx.Contains(runResult.CombinedOutput, "AngleError=0x");
         if (expectedRuntimeVersion is not null)
         {
@@ -528,6 +533,25 @@ public class AvaloniaAppHostTests
         {
             throw new InvalidOperationException(
                 $"Expected native SkiaSharp {RepoContext.SkiaSharpVersion}, but got '{value}'.{Environment.NewLine}{output}");
+        }
+    }
+
+    private static void AssertSkottieAndLoadedLibraries(string output, bool expectPrelinked)
+    {
+        // SkiaSharp.Skottie, SceneGraph and Resources import libSkiaSharp themselves.
+        AssertEx.Contains(output, "Skottie=True");
+        if (!expectPrelinked)
+            return;
+
+        const string prefix = "GraphicsLibraryFiles=";
+        AssertEx.Contains(output, prefix);
+        int start = output.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length;
+        int end = output.IndexOfAny(['\r', '\n'], start);
+        string loaded = output[start..(end < 0 ? output.Length : end)].Trim();
+        if (loaded.Length != 0)
+        {
+            throw new InvalidOperationException(
+                $"The template loaded {loaded} instead of resolving it from the executable.{Environment.NewLine}{output}");
         }
     }
 
