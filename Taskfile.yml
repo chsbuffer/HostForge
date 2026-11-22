@@ -80,7 +80,8 @@ tasks:
       RID: '{{.RID | default ""}}'
       SKIASHARP_VERSION:
         sh: '{{if .SKIASHARP_VERSION}}echo {{.SKIASHARP_VERSION}}{{else}}uv run python scripts/repo_versions.py --get skiasharp{{end}}'
-      SYSROOT: '{{.SYSROOT | default .ROOTFS_DIR | default ""}}'
+      # The recipe reads the sysroot in Conan's build folder, so a relative path is resolved against the repository root.
+      SYSROOT: '{{with .SYSROOT | default .ROOTFS_DIR}}{{if osIsAbs .}}{{.}}{{else}}{{joinPath $.ROOT_DIR .}}{{end}}{{end}}'
     cmds:
       - task: _skiasharp-windows
         vars: {ARCH: "{{.ARCH}}", RID: "{{.RID}}", SKIASHARP_VERSION: "{{.SKIASHARP_VERSION}}"}

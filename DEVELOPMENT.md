@@ -184,20 +184,25 @@ docker run --rm -v "$PWD:/work" hostforge-hostlibs task build-hostlibs RID=linux
 
 ### 2. 构建 SkiaSharp / HarfBuzzSharp
 
+每个 Linux RID 在对应的 amd64 cross 镜像（`native/skiasharp/<RID>.Dockerfile`）中构建，镜像提供固定的 LLVM 与目标 rootfs，所有 Skia 编译均在 amd64 宿主执行。`RID` 默认为 `linux-x64`，Conan profile 为 `native/skiasharp/profiles/<RID>`。`SYSROOT` 为该架构的 rootfs（镜像中为 `/crossrootfs/x64` 或 `/crossrootfs/arm64`），省略时取环境变量 `ROOTFS_DIR`，通过 `ROOTFS_DIR` 环境变量传给 recipe。例如：
+
 ```bash
-task build-skiasharp SYSROOT=build/rootfs/x64
+docker build $(python scripts/upstream.py build-args) -f native/skiasharp/linux-x64.Dockerfile -t hostforge-skia .
+docker run --rm -v "$PWD:/work" hostforge-skia task build-skiasharp SYSROOT=/crossrootfs/x64
 task pack-skia-static RID=linux-x64
 task matrix-nativeaot
+
+docker build $(python scripts/upstream.py build-args) -f native/skiasharp/linux-musl-arm64.Dockerfile -t hostforge-skia-musl-arm64 .
+docker run --rm -v "$PWD:/work" hostforge-skia-musl-arm64 task build-skiasharp RID=linux-musl-arm64 SKIASHARP_VERSION=<版本> SYSROOT=/crossrootfs/arm64 JOBS=4
+task pack-skia-static RID=linux-musl-arm64 SKIASHARP_VERSION=<版本>
 ```
 
-使用 `native/skiasharp/profiles/linux-x64`，同样通过 `ROOTFS_DIR` 环境变量传入 sysroot；可继续用 `CC`、`CXX` 和 `AR` 覆盖 GN 工具链命令。
-
-其它 Linux RID 使用对应的 amd64 cross 镜像；`SYSROOT` 的末级目录为 `x64` 或 `arm64`，所有 Skia 编译均在 amd64 宿主执行。例如：
+也可以在宿主机上构建：像 CI 一样把镜像中的 rootfs 导出到 `build/rootfs/x64`，再传给 `SYSROOT`；相对路径按仓库根目录解析。可继续用 `CC`、`CXX` 和 `AR` 覆盖 GN 工具链命令。
 
 ```bash
-docker build $(python scripts/upstream.py build-args) -f native/skiasharp/linux-musl-arm64.Dockerfile -t hostforge-skia .
-docker run --rm -v "$PWD:/work" hostforge-skia task build-skiasharp RID=linux-musl-arm64 SKIASHARP_VERSION=<版本> SYSROOT=/crossrootfs/arm64 JOBS=4
-task pack-skia-static RID=linux-musl-arm64 SKIASHARP_VERSION=<版本>
+mkdir -p build/rootfs/x64
+docker run --rm hostforge-skia tar cf - -C /crossrootfs/x64 . | tar xf - -C build/rootfs/x64
+task build-skiasharp SYSROOT=build/rootfs/x64
 ```
 
 省略 `SKIASHARP_VERSION` 时使用 `Directory.Build.props` 的 `SkiaSharpVersion`；可选版本见 `native/skiasharp/versions.json`。
