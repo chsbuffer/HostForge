@@ -235,7 +235,7 @@ task matrix
 
 两个矩阵都对 `Directory.Build.props` 中 `HostForgeTargetFrameworks` 的每个 TFM 各运行一次；Static AppHost 矩阵因此需要先构建每个运行时版本的 HostLibs。Linux 上 Static AppHost 矩阵链接 .NET 11 HostLibs，CI 在最新运行时的 linux-x64 构建容器中运行它，NativeAOT 矩阵在 runner 上运行。
 
-`tests/native` 是不依赖构建产物的 Python 测试（缓存键、版本一致性、版本字面量、包输入锁与上游脚本），CI 在 `plan-all` 中运行：
+`tests/native` 是不依赖构建产物的 Python 测试（缓存键、版本一致性、版本字面量、包输入锁、上游脚本，以及 ANGLE 与 SkiaSharp recipe 的许可证收集和 SkiaSharp deployer；Conan 由测试替身代替），CI 在 `plan-all` 中运行：
 
 ```bash
 python -m unittest discover -s tests/native
