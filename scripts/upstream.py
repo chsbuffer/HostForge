@@ -244,7 +244,9 @@ class Client:
                 yield chunk
 
     def ls_remote(self, repository, *patterns):
-        """{ref: commit} of the refs matching `patterns`, retrying failures like the HTTP reads."""
+        """{ref: commit} of the refs matching `patterns`, retrying failures like the HTTP reads, except a timeout:
+        its limit covers the whole command, so retrying would make a hung git endpoint cost every lookup several
+        limits, and the workflow runs the check and all groups within one job timeout."""
         command = ["git", "ls-remote", repository, *patterns]
         environment = dict(os.environ, GIT_TERMINAL_PROMPT="0")
         for attempt in range(1, self.attempts + 1):
@@ -254,11 +256,10 @@ class Client:
             except FileNotFoundError:
                 raise UpstreamError("git is required for ls-remote") from None
             except subprocess.TimeoutExpired:
-                reason = f"timed out after {self.timeout * 2}s"
-            else:
-                if result.returncode == 0:
-                    break
-                reason = result.stderr.strip() or f"exit code {result.returncode}"
+                raise UpstreamError(f"git ls-remote {repository}: timed out after {self.timeout * 2}s") from None
+            if result.returncode == 0:
+                break
+            reason = result.stderr.strip() or f"exit code {result.returncode}"
             if attempt == self.attempts:
                 raise UpstreamError(f"git ls-remote {repository}: {reason} (after {attempt} attempts)")
             time.sleep(2 * attempt)
@@ -270,8 +271,8 @@ class Client:
 
 
 class CachingClient:
-    """Remembers the successful reads of one apply run, so the security verdicts before and after the update and
-    the planners see the same upstream state and nothing is fetched twice."""
+    """Remembers the reads of one apply run, failed ones included, so the security verdicts before and after the
+    update and the planners see the same upstream state and nothing is fetched twice."""
 
     def __init__(self, client):
         self._client = client
@@ -279,8 +280,14 @@ class CachingClient:
 
     def _cached(self, key, read):
         if key not in self._cache:
-            self._cache[key] = read()
-        return copy.deepcopy(self._cache[key])
+            try:
+                self._cache[key] = read()
+            except UpstreamError as error:
+                self._cache[key] = error
+        value = self._cache[key]
+        if isinstance(value, UpstreamError):
+            raise copy.copy(value)
+        return copy.deepcopy(value)
 
     def get(self, url, accept=None):
         return self._cached(("get", url, accept), lambda: self._client.get(url, accept))

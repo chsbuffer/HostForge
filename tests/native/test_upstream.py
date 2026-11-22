@@ -1645,7 +1645,7 @@ class ClientTests(unittest.TestCase):
     def test_ls_remote_retries_failures(self):
         client, url = upstream.Client(attempts=3), "https://example.invalid/r"
         results = [subprocess.CompletedProcess([], 128, "", "fatal: unable to access: Could not resolve host\n"),
-                   subprocess.TimeoutExpired(["git"], 120),
+                   subprocess.CompletedProcess([], 128, "", "fatal: unable to access: Connection reset by peer\n"),
                    subprocess.CompletedProcess([], 0, f"{'a' * 40}\trefs/tags/v1\n", "")]
         with mock.patch.object(upstream.subprocess, "run", side_effect=results) as run, mock.patch("time.sleep"):
             self.assertEqual({"refs/tags/v1": "a" * 40}, client.ls_remote(url, "refs/tags/v1"))
@@ -1657,6 +1657,16 @@ class ClientTests(unittest.TestCase):
                 client.ls_remote(url, "refs/tags/v1")
         self.assertEqual(3, run.call_count)
 
+    def test_ls_remote_does_not_retry_a_timeout(self):
+        client, url = upstream.Client(timeout=60, attempts=3), "https://example.invalid/r"
+        results = [subprocess.CompletedProcess([], 128, "", "fatal: unable to access: Could not resolve host\n"),
+                   subprocess.TimeoutExpired(["git"], 120),
+                   subprocess.CompletedProcess([], 0, f"{'a' * 40}\trefs/tags/v1\n", "")]
+        with mock.patch.object(upstream.subprocess, "run", side_effect=results) as run, mock.patch("time.sleep"):
+            with self.assertRaisesRegex(upstream.UpstreamError, rf"^git ls-remote {url}: timed out after 120s$"):
+                client.ls_remote(url, "refs/tags/v1")
+        self.assertEqual(2, run.call_count)
+
     def test_token_is_not_sent_after_a_redirect(self):
         client = upstream.Client(token="secret")
         request = client._request("https://api.github.com/repos/o/r/tarball/main", True)
@@ -1666,6 +1676,32 @@ class ClientTests(unittest.TestCase):
         self.assertIsNone(redirected.get_header("Authorization"))
         self.assertEqual(upstream.USER_AGENT, redirected.get_header("User-agent"))
         self.assertIsNone(client._request("https://api.nuget.org/v3/index.json", True).get_header("Authorization"))
+
+
+class CachingClientTests(unittest.TestCase):
+    """One apply run reads each upstream item once and gets the same answer every time."""
+
+    def test_remembers_failed_reads(self):
+        client = FakeClient()
+        url, missing = "https://example.invalid/down", "https://example.invalid/missing"
+        client.failures[url] = upstream.UpstreamError(f"GET {url}: HTTP 503 Service Unavailable")
+        client.ls_remote_failures["r", "refs/tags/v1"] = upstream.UpstreamError("git ls-remote r: timed out after 120s")
+        cached = upstream.CachingClient(client)
+        with mock.patch.object(client, "ls_remote", wraps=client.ls_remote) as ls_remote:
+            for _ in range(2):
+                with self.assertRaisesRegex(upstream.UpstreamError, "HTTP 503"):
+                    cached.get(url)
+                with self.assertRaises(upstream.NotFound):
+                    cached.get(missing)
+                with self.assertRaisesRegex(upstream.UpstreamError, "timed out"):
+                    cached.ls_remote("r", "refs/tags/v1")
+        self.assertEqual(1, ls_remote.call_count)
+        # Upstream recovers during the run: the run keeps the answer it already has.
+        del client.failures[url]
+        client.responses[url] = b"{}"
+        with self.assertRaisesRegex(upstream.UpstreamError, "HTTP 503"):
+            cached.get(url)
+        self.assertEqual([url, missing], client.requests)
 
 
 if __name__ == "__main__":
