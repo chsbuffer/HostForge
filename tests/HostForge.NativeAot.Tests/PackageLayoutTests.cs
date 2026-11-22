@@ -23,7 +23,7 @@ public class PackageLayoutTests
             throw new InvalidOperationException("The bundled libc++ runtime license is missing.");
         await AssertGraphicsDependenciesAsync(zip, version, rid);
         string nativeRoot = $"build/native/{rid}/";
-        HashSet<string> notices = AssertLicenseFileCoversPayloadLicenses(zip, nativeRoot + "licenses/", "skia/LICENSE", "harfbuzz/COPYING");
+        HashSet<string> notices = AssertNoticesCoverPayloadLicenses(path, zip, "MIT", nativeRoot + "licenses/", "skia/LICENSE", "harfbuzz/COPYING");
         if (bundlesLibcxx && !notices.Contains("libcxx/LICENSE.TXT"))
             throw new InvalidOperationException("THIRD-PARTY-NOTICES.txt lacks the libc++ license.");
         ZipArchiveEntry manifest = zip.GetEntry(nativeRoot + "manifest.json") ?? throw new InvalidOperationException("Missing native manifest.");
@@ -74,7 +74,7 @@ public class PackageLayoutTests
     }
 
     [Test]
-    public void AngleRidPackage_LicenseFileCoversTheLicensesOfItsLibraries()
+    public void AngleRidPackage_NoticesCoverTheLicensesOfItsLibraries()
     {
         string rid = NativeAotMatrixTests.Rid;
         if (!rid.StartsWith("win-", StringComparison.Ordinal) || Environment.GetEnvironmentVariable("HOSTFORGE_CHECK_ANGLE") == "false")
@@ -83,23 +83,17 @@ public class PackageLayoutTests
         string path = Path.Combine(RepoContext.AvaloniaPackageOutputDir, $"ChsBuffer.Angle.Static.{rid}.{RepoContext.AnglePackageVersion}.nupkg");
         AssertEx.FileExists(path);
         using ZipArchive zip = ZipFile.OpenRead(path);
-        AssertLicenseFileCoversPayloadLicenses(zip, $"build/native/{rid}/licenses/", "angle/LICENSE");
+        AssertNoticesCoverPayloadLicenses(path, zip, "BSD-3-Clause", $"build/native/{rid}/licenses/", "angle/LICENSE");
     }
 
     /// <summary>
-    /// Requires the license file of the package to be THIRD-PARTY-NOTICES.txt with a section, headed by its path
-    /// below <paramref name="licenseRoot"/>, for every payload license file, and returns the section headers.
+    /// Requires the package license to be <paramref name="expression"/> and THIRD-PARTY-NOTICES.txt to have a section,
+    /// headed by its path below <paramref name="licenseRoot"/>, for every payload license file; returns the section headers.
     /// </summary>
-    private static HashSet<string> AssertLicenseFileCoversPayloadLicenses(ZipArchive zip, string licenseRoot, params string[] required)
+    private static HashSet<string> AssertNoticesCoverPayloadLicenses(string path, ZipArchive zip, string expression, string licenseRoot, params string[] required)
     {
-        XElement license;
-        using (Stream stream = zip.Entries.Single(entry => entry.FullName.EndsWith(".nuspec", StringComparison.Ordinal)).Open())
-            license = XDocument.Load(stream).Descendants().Single(element => element.Name.LocalName == "license");
-        if ((string?)license.Attribute("type") != "file" || license.Value != "THIRD-PARTY-NOTICES.txt")
-            throw new InvalidOperationException($"The package license is not THIRD-PARTY-NOTICES.txt: {license}");
-        string notices;
-        using (var reader = new StreamReader((zip.GetEntry(license.Value) ?? throw new InvalidOperationException("Missing THIRD-PARTY-NOTICES.txt.")).Open()))
-            notices = reader.ReadToEnd();
+        PackageLicense.AssertExpression(zip, path, expression);
+        string notices = PackageLicense.ReadNotices(zip, path);
         HashSet<string> headers = notices.Split('\n').ToHashSet(StringComparer.Ordinal);
 
         foreach (string name in required)
@@ -111,10 +105,8 @@ public class PackageLayoutTests
             using (var reader = new StreamReader(entry.Open()))
                 text = reader.ReadToEnd().Replace("\r\n", "\n").Trim('\n');
             if (!headers.Contains(entry.FullName[licenseRoot.Length..]) || !notices.Contains(text, StringComparison.Ordinal))
-                throw new InvalidOperationException($"THIRD-PARTY-NOTICES.txt does not reproduce {entry.FullName}.");
+                throw new InvalidOperationException($"{PackageLicense.Notices} of {path} does not reproduce {entry.FullName}.");
         }
-        if (!headers.Contains("hostforge/LICENSE.TXT"))
-            throw new InvalidOperationException("THIRD-PARTY-NOTICES.txt lacks the HostForge license.");
         return headers;
     }
 }

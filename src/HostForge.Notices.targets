@@ -1,17 +1,14 @@
 <Project>
   <!--
-    Writes THIRD-PARTY-NOTICES.txt from the license texts of everything a package ships and packs it as the
-    package license. The package contents are under several licenses, which no SPDX expression accepted by
-    NuGet can state for every RID (the DNG SDK license has no identifier), so the package names the file.
+    Writes THIRD-PARTY-NOTICES.txt from the license texts of the third-party code a package ships and packs it at
+    the package root. The package license stays the PackageLicenseExpression of the importing project, as in the
+    .NET runtime and SkiaSharp native asset packages; these licenses ask binary distributions to reproduce their
+    notices, which the file does.
 
-    Importing projects add HostForgePackageLicense items. A section is headed by the Notice metadata, or by
+    Importing projects add HostForgeThirdPartyLicense items. A section is headed by the Notice metadata, or by
     the path below the wildcard root for items from a recursive wildcard, and identical sections appear once.
     HostForgePackageNoticesDependsOn names the targets that add or validate these items.
   -->
-  <PropertyGroup>
-    <PackageLicenseFile>THIRD-PARTY-NOTICES.txt</PackageLicenseFile>
-  </PropertyGroup>
-
   <UsingTask TaskName="HostForgeWriteNotices" TaskFactory="RoslynCodeTaskFactory"
              AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
     <ParameterGroup>
@@ -58,11 +55,10 @@
       <_HostForgePackageNotices>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)', 'notices', '$(PackageId)', '$(PackageVersion)', 'THIRD-PARTY-NOTICES.txt'))</_HostForgePackageNotices>
     </PropertyGroup>
     <ItemGroup>
-      <HostForgePackageLicense Include="$(MSBuildThisFileDirectory)../LICENSE.TXT" Notice="hostforge/LICENSE.TXT" />
       <None Include="$(_HostForgePackageNotices)" Pack="true" PackagePath="" />
     </ItemGroup>
-    <HostForgeWriteNotices Title="Licenses of the components in $(PackageId). Each section is headed by a component and its license file."
-                           Licenses="@(HostForgePackageLicense)"
+    <HostForgeWriteNotices Title="Licenses of the third-party components in $(PackageId). Each section is headed by a component and its license file."
+                           Licenses="@(HostForgeThirdPartyLicense)"
                            OutputFile="$(_HostForgePackageNotices)" />
   </Target>
 </Project>

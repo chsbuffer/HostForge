@@ -13,9 +13,10 @@ Current coverage:
   `net11.0` and `net11.0-windows`, `win-x64` / `win-arm64`; `net9.0`, for which the RID packages have no
   dependencies, keeps the SDK host and the native libraries without a warning; publishing for a RID whose package
   the project does not reference keeps them with the inactive warning
-- RID package license file on Windows and Linux: `THIRD-PARTY-NOTICES.txt` has sections for the .NET runtime
-  of every template TFM, Skia and HarfBuzz, ANGLE on Windows only, and libc++ for Linux SkiaSharp 4, and
-  reproduces each file in the `licenses/` directories of the packed templates as a section headed by its path
+- RID package licenses on Windows and Linux: the package license is MIT, and `THIRD-PARTY-NOTICES.txt` has
+  sections for the .NET runtime of every template TFM, Skia and HarfBuzz, ANGLE on Windows only, and libc++ for
+  Linux SkiaSharp 4, and reproduces each file in the `licenses/` directories of the packed templates as a section
+  headed by its path
 - Windows PE audit of the linked templates: Control Flow Guard for every RID and, as in the official hosts, the
   EH continuation table (`/guard:ehcont`) for `win-x64`
 - Windows Skia/HarfBuzz native runtime copy suppression switch behavior

@@ -16,6 +16,7 @@
     <Authors>ChsBuffer</Authors>
     <Description>Prelinked Avalonia apphost/singlefilehost templates for $(AvaloniaHostRid) ($(AvaloniaTemplateTfms.Replace(";", ", "))), with static native libraries.</Description>
     <PackageTags>avalonia;apphost;single-file;host-template;$(AvaloniaHostRid)</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://github.com/chsbuffer/HostForge</PackageProjectUrl>
     <RepositoryUrl>https://github.com/chsbuffer/HostForge</RepositoryUrl>
@@ -98,7 +99,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <HostForgePackageLicense Include="$(_AvaloniaTemplateLicenses)" />
+      <HostForgeThirdPartyLicense Include="$(_AvaloniaTemplateLicenses)" />
 
       <!-- %24 keeps the MSBuild expressions literal in the generated props. -->
       <_AvaloniaRidRegistration Include="@(_AvaloniaPackTfm)">

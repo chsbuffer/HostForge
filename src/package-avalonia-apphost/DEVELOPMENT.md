@@ -59,10 +59,9 @@ template TFM and register each one in a `.props` file generated at pack time:
 </AvaloniaAppHostRids>
 ```
 
-The RID package's license file is `THIRD-PARTY-NOTICES.txt`, which
+The RID package contains `THIRD-PARTY-NOTICES.txt`, which
 [`HostForge.Notices.targets`](../HostForge.Notices.targets) writes at pack time from the `licenses/`
-directories of every packed template, with HostForge's own license; sections that are identical for
-several TFMs appear once. Packing fails when a template directory has no `licenses/`.
+directories of every packed template; sections that are identical for several TFMs appear once. Packing fails when a template directory has no `licenses/`.
 
 The Build package's `.targets` matches `$(RuntimeIdentifier)` and the project's .NET version against
 `@(AvaloniaAppHostRids)`. The TFM is normalized to `net<major>.<minor>`, so OS-specific TFMs such as

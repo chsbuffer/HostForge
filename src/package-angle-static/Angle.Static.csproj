@@ -10,6 +10,7 @@
     <Authors>ChsBuffer</Authors>
     <Description>ANGLE static libraries for $(AngleHostRid) NativeAOT and static host linking.</Description>
     <PackageTags>angle;static;nativeaot</PackageTags>
+    <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://github.com/chsbuffer/HostForge</PackageProjectUrl>
     <RepositoryUrl>https://github.com/chsbuffer/HostForge</RepositoryUrl>
@@ -31,7 +32,7 @@
     <None Include="$(AngleNativeLibsDir)/libGLESv2_static.lib" Pack="true" PackagePath="build/native/$(AngleHostRid)/libGLESv2_static.lib" />
     <None Include="$(AngleNativeLibsDir)/av_libglesv2.def" Pack="true" PackagePath="build/native/$(AngleHostRid)/av_libglesv2.def" />
     <None Include="$(AngleNativeLibsDir)/licenses/**/*" Pack="true" PackagePath="build/native/$(AngleHostRid)/licenses/" />
-    <HostForgePackageLicense Include="$(AngleNativeLibsDir)/licenses/**/*" />
+    <HostForgeThirdPartyLicense Include="$(AngleNativeLibsDir)/licenses/**/*" />
   </ItemGroup>
 
   <Target Name="_ValidateAngleNativeLibs" BeforeTargets="_GetPackageFiles">

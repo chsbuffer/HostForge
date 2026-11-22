@@ -39,4 +39,4 @@ The package registers a `DllImport` resolver that loads these libraries from the
 
 ## Licenses
 
-The templates statically link the .NET runtime, Skia, HarfBuzz and the third-party libraries in their archives, ANGLE on Windows, and libc++ on Linux with SkiaSharp 4. Each RID package names `THIRD-PARTY-NOTICES.txt` as its license file; it reproduces the licenses of everything its templates link, including the runtime's own third-party notices. Executables published with the templates contain this code, and these licenses ask binary distributions to reproduce their notices.
+The templates statically link the .NET runtime, Skia, HarfBuzz and the third-party libraries in their archives, ANGLE on Windows, and libc++ on Linux with SkiaSharp 4. Each RID package contains `THIRD-PARTY-NOTICES.txt`, which reproduces the licenses of everything its templates link, including the runtime's own third-party notices. Executables published with the templates contain this code, and these licenses ask binary distributions to reproduce their notices.

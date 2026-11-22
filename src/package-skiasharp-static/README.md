@@ -40,10 +40,10 @@ The archives contain Skia, HarfBuzz and the third-party libraries that the build
 compiles into them, which differ by version and platform (for example libpng,
 libjpeg-turbo, libwebp, expat, zlib and wuffs; FreeType on Linux). The license files
 of each component are under `build/native/<rid>/licenses/<component>/`, and the source
-manifest records their SHA-256. `THIRD-PARTY-NOTICES.txt`, the package license,
-reproduces them together with the libc++ license where it applies and the license of
-the package's MSBuild files. Executables that link the archives contain this code, and
-these licenses ask binary distributions to reproduce their notices.
+manifest records their SHA-256. `THIRD-PARTY-NOTICES.txt` at the package root
+reproduces them together with the libc++ license where it applies. Executables that
+link the archives contain this code, and these licenses ask binary distributions to
+reproduce their notices.
 
 Windows libraries are compiled with Control Flow Guard (`/guard:cf`), and the `win-x64`
 libraries also with EH continuation metadata (`/guard:ehcont`), so they link into

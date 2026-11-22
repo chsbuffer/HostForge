@@ -20,7 +20,7 @@ public class AvaloniaAppHostLinuxTests
     }
 
     [Test]
-    public void RidPackage_LicenseFileCoversTheLinkedInputs()
+    public void RidPackage_NoticesCoverTheLinkedInputs()
     {
         string nupkg = Path.Combine(RepoContext.AvaloniaPackageOutputDir,
             $"{RepoContext.GetAvaloniaRidPackageId(Rid)}.{RepoContext.AvaloniaPackageIdentityVersion}.nupkg");
