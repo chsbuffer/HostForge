@@ -142,6 +142,9 @@ jobs:
         ]
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The package lock check reads the lock of every commit on the first-parent history.
+          fetch-depth: 0
       - name: Read pinned versions
         id: versions
         run: |
@@ -158,37 +161,23 @@ jobs:
               print(f"skiasharp-lines={json.dumps(versions, separators=(',', ':'))}", file=output)
           PY
       - run: python -m unittest discover -s tests/native -v
-      # Every entry of the package lock at the previous push must still be present unchanged, so a lock entry
-      # cannot be rewritten together with its inputs. The previous push is unreachable after a force push and
-      # may be garbage collected; the step then fails, because a force push is exactly what can rewrite
-      # published entries. Compare by hand (lock --check --base <commit>) and push again to publish.
-      - name: Check the package lock against the previous push
-        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+      # Every version keeps the lock entry of the first commit on the first-parent history that holds it, so a
+      # lock entry cannot be rewritten together with its inputs, also not by a push after one whose check failed.
+      # The first-parent history is main; for a pull request, the merge commit on top of its base. Runs after a
+      # failed unit test too, so that test failures do not hide a rewritten entry. A push that leaves the previous
+      # head of main off the first-parent history (a force push) changes the history the check reads, so it
+      # fails: compare by hand (lock --check --base <commit>) and push again.
+      - name: Check the package lock against the history of main
+        if: ${{ !cancelled() }}
         env:
-          BEFORE: ${{ github.event.before }}
+          BEFORE: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: |
-          for delay in 10 20 0; do
-            if git fetch --no-tags --depth=1 origin "$BEFORE"; then
-              exec python scripts/upstream.py lock --check --base FETCH_HEAD
-            fi
-            sleep "$delay"
-          done
-          echo "::error::Cannot fetch the previous push $BEFORE (force push?); the package lock was not compared with it."
-          exit 1
-      # The same comparison for a pull request, against the base commit it was last compared with.
-      - name: Check the package lock against the pull request base
-        if: github.event_name == 'pull_request'
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-        run: |
-          for delay in 10 20 0; do
-            if git fetch --no-tags --depth=1 origin "$BASE"; then
-              exec python scripts/upstream.py lock --check --base FETCH_HEAD
-            fi
-            sleep "$delay"
-          done
-          echo "::error::Cannot fetch the pull request base $BASE; the package lock was not compared with it."
-          exit 1
+          if [[ -n "$BEFORE" && "$BEFORE" != 0000000000000000000000000000000000000000 ]] &&
+             ! git rev-list --first-parent HEAD | grep -qxF "$BEFORE"; then
+            echo "::error::The previous head of main $BEFORE is not on the first-parent history of $GITHUB_SHA (force push?); the package lock was not checked against the history it was published from."
+            exit 1
+          fi
+          python scripts/upstream.py lock --check
 
   build-angle-windows:
     needs: plan-all

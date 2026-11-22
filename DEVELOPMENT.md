@@ -405,7 +405,7 @@ flowchart LR
 
 | Job | 执行平台 | 主要输出 |
 | --- | --- | --- |
-| `plan-all` | Linux | 读取规范文件中的版本；`tests/native`（缓存键边界、版本一致性、包输入锁守卫）；与上一次推送或 PR 基准提交的包输入锁比对；两个 SkiaSharp 版本与完整 8 RID 矩阵 |
+| `plan-all` | Linux | 读取规范文件中的版本；`tests/native`（缓存键边界、版本一致性、包输入锁守卫）；与 `main` 首父历史中的包输入锁比对；两个 SkiaSharp 版本与完整 8 RID 矩阵 |
 | `build-skia-windows` | Windows x64 | 两个版本 × 两种架构的静态库、RID 包，以及 x64 AOT / 版本保护 |
 | `test-skia-windows-arm64` | Windows 11 ARM64 | ARM64 NativeAOT 原生发布、实际运行与架构审计 |
 | `build-skia-linux` | Linux | 固定 LLVM 20 / bionic sysroot 静态库、RID 包、AOT 运行及 ABI 审计 |
@@ -441,7 +441,7 @@ NativeAOT 发布测试按阶段分工，两处都覆盖全部 TFM：RID 包在�
 
 job 通过 `scripts/repo_versions.py` 读取上游版本，workflow 中不写这些版本号。Linux job 固定在 `ubuntu-24.04`，避免镜像切换改变构建环境；升级 runner 时一并修改 `build.yml` 与 `upstream.yml`。depot_tools 由 ANGLE recipe 按固定的 commit 获取。
 
-`build.yml` 在推送到 `main` 和向 `main` 发起的 PR 上运行。PR 运行除 `publish-nuget` 外的全部 job，把包输入锁与 PR 的基准提交比对，并清理中间工件（fork 的 PR 只有只读 token，工件保留到过期）。PR 运行写入的缓存不能在 `main` 上恢复，所以 PR 改动的原生组件在合并后会重新构建。
+`build.yml` 在推送到 `main` 和向 `main` 发起的 PR 上运行。PR 运行除 `publish-nuget` 外的全部 job，把包输入锁与基准分支的首父历史比对，并清理中间工件（fork 的 PR 只有只读 token，工件保留到过期）。PR 运行写入的缓存不能在 `main` 上恢复，所以 PR 改动的原生组件在合并后会重新构建。
 
 [`upstream.yml`](.github/workflows/upstream.yml) 是独立的 workflow，不在上图中，见 [上游跟踪与版本守卫](#上游跟踪与版本守卫)。[`cleanup-pr-caches.yml`](.github/workflows/cleanup-pr-caches.yml) 在 PR 关闭时和每天一次删除所有未打开 PR 写入的缓存，仓库的缓存配额留给 `main`；用 `GITHUB_TOKEN` 关闭的 PR 不触发 workflow，由每天那次清理。
 
@@ -567,12 +567,12 @@ Avalonia 版本不是 AppHost 的输入。版本公式本身已随输入变化�
 
 | 命令 | 作用 |
 | --- | --- |
-| `task upstream-lock` | 追加当前版本；不修改已有条目，违反规则时拒绝写入 |
-| `task upstream-lock -- --check` | 只检查；同时与 `HEAD` 的锁比对，已提交的条目不能改动或删除 |
-| `task upstream-lock -- --check --base <ref>` | 改为与指定提交的锁比对；该提交没有锁时跳过 |
-| `task upstream-lock -- --force` | 允许替换或删除 `HEAD` 的锁中没有的条目（尚未提交的版本）；已提交的条目仍不能改 |
+| `task upstream-lock` | 追加当前版本；不修改已提交的条目，违反规则时拒绝写入 |
+| `task upstream-lock -- --check` | 只检查；同时与 `HEAD` 的首父历史比对，每个版本的条目必须与历史中第一个含有它的锁相同，不能改动或删除 |
+| `task upstream-lock -- --check --base <ref>` | 改为与指定提交的首父历史比对；该历史中没有锁时跳过 |
+| `task upstream-lock -- --force` | 允许替换或删除 `HEAD` 首父历史中没有提交过的条目；已提交的条目仍不能改 |
 
-每次推送到 `main` 都会发布，所以已提交的条目视为已发布。`plan-all` 在推送时运行 `lock --check --base <上一次推送>`，在 PR 中运行 `lock --check --base <PR 的基准提交>`，防止输入和锁在同一提交中一起改掉。取不到上一次推送的提交（例如 force push 之后）时这一步失败，本次推送不会发布：在本地用 `task upstream-lock -- --check --base <上次已发布的提交>` 确认后，推送一个新提交（重跑无效，下一次推送才能取到上一次的提交）。
+每次推送到 `main` 都可能发布，所以 `main` 首父历史上提交过的条目都视为已发布，包括检查失败、没有发布的推送和同一次推送中的中间提交。`plan-all` 检出完整历史，在推送和 PR 中都运行 `lock --check`（PR 的测试合并提交以基准分支为第一个父提交），即使 `tests/native` 失败也运行。这样输入和锁条目不能在同一提交中一起改掉，检查失败的推送之后的推送也不会以改写后的条目为准。这些命令需要完整历史，在浅克隆中报错。推送后 `main` 原来的 head 不在新 head 的首父历史上时（例如 force push），这一步失败，本次推送不会发布：在本地用 `task upstream-lock -- --check --base <上次已发布的提交>` 确认后，推送一个新提交（重跑无效）。
 
 锁只覆盖上述上游输入，不覆盖仓库内的构建改动（patch、recipe、链接 targets）和工具链；这些改动需要发布时，手动递增受影响包的版本。
 
@@ -580,5 +580,5 @@ Avalonia 版本不是 AppHost 的输入。版本公式本身已随输入变化�
 | --- | --- |
 | 手动修改了规范文件或包版本 | 运行 `task upstream-lock`，与改动一起提交 |
 | `plan-all` 的包输入锁测试失败 | 按失败信息递增对应版本属性，再运行 `task upstream-lock` |
-| `plan-all` 的 “Check the package lock against the previous push” 或 “… against the pull request base” 失败 | 已提交的锁条目被改动或删除：恢复这些条目，改为递增版本；取不到上一次推送时见上文 |
+| `plan-all` 的 “Check the package lock against the history of main” 失败 | 已提交的锁条目被改动或删除：按失败信息给出的提交恢复这些条目（`git show <提交>:package-inputs.lock.json`），改为递增版本，再运行 `task upstream-lock`；force push 时见上文 |
 | 修改了 patch、recipe、链接 targets 或工具链，且需要发布 | 手动递增受影响包的版本，再运行 `task upstream-lock` |

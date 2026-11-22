@@ -19,8 +19,10 @@ the default (empty) _Preview, so the lock follows the real version formulas, rev
 Rules, enforced by `python scripts/upstream.py lock [--check]` and tests/native/test_package_inputs.py:
 the variants of a family compute distinct versions; a version already in the history keeps its variant and
 inputs; every computed version is in the history (`lock` appends it); versions of a variant never move
-below its highest version in the history. `lock` never changes an entry of the committed lock (HEAD), and
-`lock --check --base <ref>` requires every entry of the lock at <ref> to be present unchanged.
+below its highest version in the history. A committed entry never changes: `lock` and `lock --check [--base
+<ref>]` require every version to keep the entry of the first commit on the first-parent history of HEAD (or
+<ref>) whose lock holds it. Every commit on main counts as published: any push may publish, and a push whose
+check failed still becomes the parent of the next one.
 """
 
 import importlib.util
@@ -261,7 +263,7 @@ COMMENT = [
     "Maintained by `python scripts/upstream.py lock`, which only appends; do not edit by hand.",
     "One entry per package version: the variant it is built for and the inputs it is built from. nuget.org keeps",
     "the first upload of a version and CI pushes with --skip-duplicate, so changed inputs need a new version, and a",
-    "committed entry never changes (CI compares the lock with the one of the previous push).",
+    "committed entry never changes (CI compares each entry with the first commit on main that holds it).",
 ]
 FAMILIES = ("ChsBuffer.Avalonia.AppHost", "ChsBuffer.AppHost.Static", "ChsBuffer.SkiaSharp.Static",
             "ChsBuffer.Angle.Static", "ChsBuffer.Avalonia.Native.Static")
@@ -353,7 +355,8 @@ def _changes(old, new):
 # 2. violations:  a computed version is in the history with another variant or other inputs.
 # 3. missing:     a computed version is not in the history yet (`lock` appends it).
 # 4. regressions: a computed version is below the highest version of its family and variant in the history.
-# changed_entries() compares two lock documents: a committed entry is never removed or changed.
+# rewritten_entries() compares a lock with the history of committed locks: a committed entry is never removed or
+# changed.
 
 def conflicts(records):
     found = []
@@ -409,17 +412,35 @@ def append(packages, records):
     return result
 
 
-def changed_entries(base, lock):
-    """Entries of the `base` lock document that `lock` removed or changed."""
+def first_entries(locks):
+    """{family: {version: (origin, entry)}}: the entry of each version in the first of `locks` that holds it.
+
+    `locks` is a history [(origin, lock document)], oldest first."""
+    first = {}
+    for origin, lock in locks:
+        for family, versions in history(lock).items():
+            for version, entry in versions.items():
+                first.setdefault(family, {}).setdefault(version, (origin, entry))
+    return first
+
+
+def rewritten_entries(locks, lock):
+    """Versions of the history `locks` [(origin, lock document)], oldest first, whose first entry `lock` removed
+    (changes None) or changed; "origin" names the lock that first holds the version."""
     found = []
     current = history(lock)
-    for family, versions in history(base).items():
-        for version, entry in versions.items():
+    for family, versions in first_entries(locks).items():
+        for version, (origin, entry) in versions.items():
             now = current.get(family, {}).get(version)
             if now != entry:
-                found.append({"family": family, "version": version,
+                found.append({"family": family, "version": version, "origin": origin,
                               "changes": None if now is None else _changes(entry, now)})
     return found
+
+
+def changed_entries(base, lock):
+    """Entries of the `base` lock document that `lock` removed or changed."""
+    return rewritten_entries([(None, base)], lock)
 
 
 def stale(lock, records):

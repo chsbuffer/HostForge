@@ -309,35 +309,50 @@ class LockMechanicsTests(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("git"), "git is required")
 class CommittedLockTests(LockMechanicsTests):
-    """--force and --base against a git repository whose HEAD holds the lock."""
+    """--force and the lock history against a git repository whose HEAD holds the lock."""
 
     def setUp(self):
         super().setUp()
         self.git("init", "-q")
         self.commit("lock")
 
-    def git(self, *arguments):
+    def git(self, *arguments, cwd=None):
         command = ["git", "-c", "core.autocrlf=false", "-c", "user.name=test", "-c", "user.email=test@example.invalid",
                    "-c", "commit.gpgsign=false", *arguments]
-        return subprocess.run(command, cwd=self.root, check=True, capture_output=True, text=True).stdout.strip()
+        return subprocess.run(command, cwd=cwd or self.root, check=True, capture_output=True,
+                              text=True).stdout.strip()
 
     def commit(self, message):
         self.git("add", "-A")
         self.git("commit", "-q", "--no-verify", "--allow-empty", "-m", message)
         return self.git("rev-parse", "HEAD")
 
+    def rewrite_entries(self):
+        """Change a VMR commit together with the lock entries of the versions it feeds, so that the lock agrees
+        with the repository again."""
+        change_vmr_commit(self.root, "0" * 40)
+        lock = package_inputs.read_lock(self.root)
+        records = package_inputs.compute(self.root)
+        for family, versions in package_inputs.entries(records).items():
+            lock["packages"][family].update(versions)
+        (self.root / package_inputs.LOCK).write_text(package_inputs.render(lock["packages"]), encoding="utf-8")
+        self.assertEqual([], package_inputs.guard(package_inputs.read_lock(self.root), records))
+
+    def bump_apphost_versions(self):
+        increment(self.props, MAJOR)
+        increment(self.root / package_inputs.APPHOST_STATIC, r"(<Version>\$\(HostLibsVersion\)-alpha\.)(\d+)(</Version>)")
+
     def test_force_cannot_change_committed_entries(self):
         change_vmr_commit(self.root, "0" * 40)
         before = self.lock_text()
         code, output = self.lock_command("--force")
         self.assertEqual(1, code)
-        self.assertIn("cannot change entries committed in HEAD", output)
+        self.assertIn("cannot change committed entries", output)
         self.assertEqual(before, self.lock_text())
 
     def test_force_replaces_uncommitted_entries_only(self):
         committed = package_inputs.read_lock(self.root)
-        increment(self.props, MAJOR)
-        increment(self.root / package_inputs.APPHOST_STATIC, r"(<Version>\$\(HostLibsVersion\)-alpha\.)(\d+)(</Version>)")
+        self.bump_apphost_versions()
         self.assertEqual(0, self.lock_command()[0])
         change_vmr_commit(self.root, "0" * 40)
         self.assertEqual(1, self.lock_command()[0])
@@ -357,45 +372,92 @@ class CommittedLockTests(LockMechanicsTests):
         (self.root / package_inputs.LOCK).write_text(json.dumps(lock), encoding="utf-8")
         code, output = self.lock_command()
         self.assertEqual(1, code)
-        self.assertIn(f"ChsBuffer.Angle.Static {version}: in the lock of HEAD but removed", output)
+        self.assertIn(f"ChsBuffer.Angle.Static {version}: in the lock of {self.git('rev-parse', 'HEAD')} but removed",
+                      output)
         code, output = self.lock_command("--check")
         self.assertEqual(1, code)
         self.assertIn("removed", output)
 
-    def test_base_detects_entries_rewritten_together_with_their_inputs(self):
+    def test_entries_rewritten_together_with_their_inputs_are_refused(self):
         base = self.git("rev-parse", "HEAD")
-        # Inputs and lock entry change in the same commit: the lock agrees with the repository again.
-        change_vmr_commit(self.root, "0" * 40)
-        lock = package_inputs.read_lock(self.root)
-        records = package_inputs.compute(self.root)
-        for family, versions in package_inputs.entries(records).items():
-            lock["packages"][family].update(versions)
-        (self.root / package_inputs.LOCK).write_text(package_inputs.render(lock["packages"]), encoding="utf-8")
+        self.rewrite_entries()
         self.commit("rewrite")
-        self.assertEqual([], package_inputs.guard(package_inputs.read_lock(self.root), records))
-        self.assertEqual(0, self.lock_command("--check")[0], "HEAD itself agrees")
-        code, output = self.lock_command("--check", "--base", base)
-        self.assertEqual(1, code)
-        self.assertIn(f"changed since the lock of {base}", output)
-        self.assertIn("vmr-commit", output)
+        for arguments in (("--check",), ("--check", "--base", "HEAD"), ("--check", "--base", base)):
+            code, output = self.lock_command(*arguments)
+            self.assertEqual(1, code, arguments)
+            self.assertIn(f"changed since the lock of {base}", output)
+            self.assertIn("vmr-commit", output)
 
-    def test_base_accepts_appended_entries(self):
+    def test_commits_after_a_rewrite_keep_the_first_entries(self):
+        # A push that rewrote entries fails its check but stays on main; the pushes after it must still fail.
+        published = self.git("rev-parse", "HEAD")
+        self.rewrite_entries()
+        self.commit("rewrite")
+        (self.root / "unrelated.txt").write_text("unrelated\n", encoding="utf-8")
+        self.commit("unrelated")
+        code, output = self.lock_command("--check")
+        self.assertEqual(1, code)
+        self.assertIn(f"changed since the lock of {published}", output)
+        self.assertEqual(1, self.lock_command()[0], "lock refuses to build on the rewritten entries")
+        # Restoring the entries and publishing the new inputs under new versions passes again.
+        self.git("checkout", published, "--", package_inputs.LOCK)
+        self.bump_apphost_versions()
+        code, output = self.lock_command()
+        self.assertEqual(0, code, output)
+        self.commit("restore")
+        code, output = self.lock_command("--check")
+        self.assertEqual(0, code, output)
+        self.assertIn("keep their first committed entries", output)
+
+    def test_history_accepts_appended_entries(self):
         base = self.git("rev-parse", "HEAD")
         increment(self.props, MAJOR)
         self.assertEqual(0, self.lock_command()[0])
         self.commit("bump")
-        code, output = self.lock_command("--check", "--base", base)
+        count = sum(map(len, package_inputs.history(package_inputs.read_lock(self.root)).values()))
+        code, output = self.lock_command("--check")
         self.assertEqual(0, code, output)
-        self.assertIn(f"entries of the lock at {base} are unchanged", output)
+        self.assertIn(f"All {count} versions on the first-parent history of HEAD keep their first committed entries",
+                      output)
+        self.assertEqual(0, self.lock_command("--check", "--base", base)[0])
 
-    def test_base_without_a_lock_is_skipped(self):
+    def test_history_follows_the_first_parent(self):
+        # A branch merged into main: the entries of its own commits are not on the first-parent history.
+        main = self.git("branch", "--show-current")
+        self.git("switch", "-q", "-c", "topic")
+        increment(self.props, MAJOR)
+        self.assertEqual(0, self.lock_command()[0])
+        self.commit("topic: first attempt")
+        self.git("switch", "-q", main)
+        self.git("merge", "-q", "--no-ff", "--no-commit", "topic")
+        change_vmr_commit(self.root, "0" * 40)
+        self.git("checkout", main, "--", package_inputs.LOCK)
+        self.bump_apphost_versions()
+        self.assertEqual(0, self.lock_command()[0])
+        self.commit("merge topic with other inputs")
+        code, output = self.lock_command("--check")
+        self.assertEqual(0, code, output)
+        self.assertEqual(1, self.lock_command("--check", "--base", "topic")[0])
+
+    def test_history_without_a_lock_is_skipped(self):
+        self.git("checkout", "-q", "--orphan", "without-lock")
         (self.root / package_inputs.LOCK).unlink()
         base = self.commit("no lock")
         self.write_lock()
-        self.commit("lock again")
         code, output = self.lock_command("--check", "--base", base)
         self.assertEqual(0, code, output)
-        self.assertIn(f"{base} has no {package_inputs.LOCK}; skipped", output)
+        self.assertIn(f"No commit on the first-parent history of {base} has {package_inputs.LOCK}; skipped", output)
+
+    def test_shallow_clone_is_an_error(self):
+        self.commit("second")
+        clone = self.root / "shallow"
+        self.git("clone", "-q", "--depth=1", self.root.as_uri(), str(clone))
+        for arguments in (("--check",), ()):
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                code = upstream.main(["--root", str(clone), "lock", *arguments])
+            self.assertEqual(2, code, arguments)
+            self.assertIn("shallow clone", stderr.getvalue())
 
     def test_unknown_base_is_an_error(self):
         code, output = self.lock_command("--check", "--base", "0" * 40)

@@ -3,7 +3,7 @@
     "Maintained by `python scripts/upstream.py lock`, which only appends; do not edit by hand.",
     "One entry per package version: the variant it is built for and the inputs it is built from. nuget.org keeps",
     "the first upload of a version and CI pushes with --skip-duplicate, so changed inputs need a new version, and a",
-    "committed entry never changes (CI compares the lock with the one of the previous push)."
+    "committed entry never changes (CI compares each entry with the first commit on main that holds it)."
   ],
   "packages": {
     "ChsBuffer.Avalonia.AppHost": {
