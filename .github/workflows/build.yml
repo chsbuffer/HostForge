@@ -1634,6 +1634,9 @@ jobs:
       - name: Delete packaged build artifacts
         uses: geekyeggo/delete-artifact@v6
         with:
+          # The artifact service can answer a delete with 404 for an artifact it has just listed. The artifacts
+          # expire after their retention days anyway, so a failed delete is reported without failing the build.
+          failOnError: false
           name: |
             native-skia-*
             native-rootfs-*
