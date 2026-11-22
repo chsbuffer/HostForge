@@ -15,6 +15,10 @@ task pack-avalonia
 
 `artifacts/packages/Release`
 
+NuGet does not extract a package version again once it is in the package folder (`artifacts/tmp/nuget/packages`,
+or `NUGET_PACKAGES` when set). After repacking under the same version, delete the `chsbuffer.avalonia.apphost*`
+folders there before building the sample again.
+
 ## Build and run
 
 ```powershell

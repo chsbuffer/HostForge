@@ -249,9 +249,11 @@ public class AvaloniaNativeTests
         };
         string project = Path.Combine(RepoContext.RepoRoot, "tests/HostForge.AvaloniaNative.Tests/Smoke/AvaloniaNativeSmoke.csproj");
         string output = Path.Combine(RepoContext.RepoRoot, "artifacts/avalonianative-smoke", rid);
-        string packageCache = Path.Combine(RepoContext.RepoRoot, "build", $"avalonianative-nuget-{rid}");
+        // Without the local package, restore takes the published package of the same version from nuget.org.
+        AssertEx.FileExists(Path.Combine(RepoContext.AvaloniaPackageOutputDir,
+            $"ChsBuffer.Avalonia.Native.Static.{rid}.{RepoContext.AvaloniaNativePackageVersion}.nupkg"));
         CommandResult publish = await CommandRunner.RunAsync("dotnet",
-            $"publish \"{project}\" -c Release -r {rid} -o \"{output}\" -p:RestorePackagesPath=\"{packageCache}\" -v:minimal", RepoContext.RepoRoot);
+            $"publish \"{project}\" -c Release -r {rid} -o \"{output}\" -p:RestorePackagesPath=\"{RepoContext.TestPackagesRoot}\" -v:minimal", RepoContext.RepoRoot);
         AssertEx.Success(publish, "AvaloniaNative AOT publish");
         AssertEx.FileMissing(Path.Combine(output, "libAvaloniaNative.dylib"));
         AssertEx.FileExists(Path.Combine(output, "libSkiaSharp.dylib"));
