@@ -7,7 +7,8 @@ Current coverage:
 - Windows-only package contract validation for `ChsBuffer.Avalonia.AppHost.Windows`: templates for every
   `AvaloniaTemplateTfms` entry and generated `AvaloniaAppHostRids` registrations evaluated by MSBuild
 - RID package license file on Windows and Linux: `THIRD-PARTY-NOTICES.txt` has sections for the .NET runtime
-  of every template TFM, Skia and HarfBuzz, ANGLE on Windows only, and libc++ for Linux SkiaSharp 4
+  of every template TFM, Skia and HarfBuzz, ANGLE on Windows only, and libc++ for Linux SkiaSharp 4, and
+  reproduces each file in the `licenses/` directories of the packed templates as a section headed by its path
 - Windows activation and inactive-warning behavior across `net9.0` (inactive), `net10.0`, `net11.0` and
   `net11.0-windows`, `win-x64` / `win-arm64`
 - Windows Skia/HarfBuzz native runtime copy suppression switch behavior
