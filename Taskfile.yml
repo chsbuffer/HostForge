@@ -172,10 +172,12 @@ tasks:
     platforms: [windows]
     vars:
       ARCH: '{{.ARCH | default "x64"}}'
+      ANGLE_VERSION:
+        sh: uv run python scripts/repo_versions.py --get angle
     cmds:
       - uv run conan export native/angle
       - >-
-        uv run conan install --requires="angle/[>=0.0.0]" --build=missing --no-remote --envs-generation=false
+        uv run conan install --requires="angle/{{.ANGLE_VERSION}}" --build=missing --no-remote --envs-generation=false
         -pr:b=native/angle/profiles/windows-{{.ARCH}}
         -pr:h=native/angle/profiles/windows-{{.ARCH}}
         -c tools.build:jobs={{.JOBS}}
