@@ -1172,9 +1172,11 @@ class SkiaSharpLineTests(UpstreamTestCase):
     def test_package_docs_follow_the_new_versions(self):
         line = self.pinned["skiasharp-versions"][0]
         harfbuzz = self.pinned["skiasharp-sources"][line]["harfbuzz"]
+        package = package_inputs.evaluate([self.root / package_inputs.PROPS],
+                                          {"SkiaSharpVersion": line})["SkiaSharpPackageVersion"]
         readme = self.root / "src/package-skiasharp-static/README.md"
         readme.parent.mkdir(parents=True, exist_ok=True)
-        readme.write_text(f"Use {line} ({line}.1, HarfBuzzSharp {harfbuzz}); not {line}.9 or 1{line}.\n",
+        readme.write_text(f"Use {line} ({package}, HarfBuzzSharp {harfbuzz}); not {line}.9 or 1{line}.\n",
                           encoding="utf-8")
         client = fake_upstream(self.root, skiasharp=True, skiasharp_milestone=True)
         code, _, stderr, metadata = self.apply(client, "--group", f"skiasharp-{line.split('.')[0]}")
