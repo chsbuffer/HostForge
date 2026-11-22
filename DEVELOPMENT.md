@@ -577,6 +577,8 @@ Avalonia 版本不是 AppHost 的输入。版本公式本身已随输入变化�
 
 每次推送到 `main` 都可能发布，所以 `main` 首父历史上提交过的条目都视为已发布，包括检查失败、没有发布的推送和同一次推送中的中间提交。`plan-all` 检出完整历史，在推送和 PR 中都运行 `lock --check`（PR 的测试合并提交以基准分支为第一个父提交），即使 `tests/native` 失败也运行。这样输入和锁条目不能在同一提交中一起改掉，检查失败的推送之后的推送也不会以改写后的条目为准。这些命令需要完整历史，在浅克隆中报错。推送后 `main` 原来的 head 不在新 head 的首父历史上时（例如 force push），这一步失败，本次推送不会发布：在本地用 `task upstream-lock -- --check --base <上次已发布的提交>` 确认后，推送一个新提交（重跑无效）。
 
+比对历史时跳过锁不是 JSON 的提交（例如留下了冲突标记），每个都打印一行：这样的提交读不出自己的锁，`tests/native` 和 `lock --check` 都会失败，没有发布任何包。历史锁是 JSON 却读不出时报错，所以修改锁格式时，`package_inputs.history()` 必须继续能读出旧格式。
+
 锁只覆盖上述上游输入，不覆盖仓库内的构建改动（patch、recipe、链接 targets）和工具链；这些改动需要发布时，手动递增受影响包的版本。
 
 | 情况 | 操作 |
@@ -584,4 +586,5 @@ Avalonia 版本不是 AppHost 的输入。版本公式本身已随输入变化�
 | 手动修改了规范文件或包版本 | 运行 `task upstream-lock`，与改动一起提交 |
 | `plan-all` 的包输入锁测试失败 | 按失败信息递增对应版本属性，再运行 `task upstream-lock` |
 | `plan-all` 的 “Check the package lock against the history of main” 失败 | 已提交的锁条目被改动或删除：按失败信息给出的提交恢复这些条目（`git show <提交>:package-inputs.lock.json`），改为递增版本，再运行 `task upstream-lock`；force push 时见上文 |
+| 包输入锁不是 JSON（例如合并冲突后） | 取回一个完好的锁（`git checkout <提交> -- package-inputs.lock.json`），再运行 `task upstream-lock` |
 | 修改了 patch、recipe、链接 targets 或工具链，且需要发布 | 手动递增受影响包的版本，再运行 `task upstream-lock` |

@@ -1163,8 +1163,13 @@ def _git_failure(what, result):
 
 def lock_history(root, ref):
     """[(commit, lock document)] of every commit on the first-parent history of git revision `ref` that changed
-    the lock, oldest first, leaving out those that deleted it; None without git or without that revision.
-    A shallow clone is an error: its history is cut off."""
+    the lock, oldest first; None without git or without that revision. A shallow clone is an error: its history
+    is cut off.
+
+    Commits that deleted the lock are left out, and so are commits whose lock is not JSON (conflict markers, say),
+    each with a line naming it: such a commit fails its own check, so nothing was published from it. A lock that
+    is JSON but that history() cannot read is an error, so that a change of the lock format cannot drop the
+    entries of older locks unnoticed."""
     resolved = _git(root, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
     if resolved is None or resolved.returncode != 0:
         return None
@@ -1195,9 +1200,12 @@ def lock_history(root, ref):
         if header[-1] == b"missing":
             continue
         size = int(header[2])
-        text = data[position:position + size].decode("utf-8")
+        blob = data[position:position + size]
         position += size + 1
-        locks.append((item, package_inputs.parse(text, f"{package_inputs.LOCK} at {item}")))
+        try:
+            locks.append((item, package_inputs.parse(blob, f"{package_inputs.LOCK} at {item}")))
+        except package_inputs.Unreadable as error:
+            print(f"Skipped {error}: nothing is published from a commit whose lock is not JSON.")
     return locks
 
 

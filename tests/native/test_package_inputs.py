@@ -485,6 +485,36 @@ class CommittedLockTests(LockMechanicsTests):
         self.assertEqual(0, code, output)
         self.assertIn(f"No commit on the first-parent history of {base} has {package_inputs.LOCK}; skipped", output)
 
+    def test_history_skips_locks_that_are_not_json(self):
+        good = self.lock_text().encode("utf-8")
+        skipped = []
+        for broken in (b"<<<<<<< HEAD\n" + good, b"\xff" + good):
+            (self.root / package_inputs.LOCK).write_bytes(broken)
+            skipped.append(self.commit("broken lock"))
+            # The commit itself fails its check, so nothing is published from it.
+            self.assertEqual(2, self.lock_command("--check")[0])
+            self.git("checkout", "HEAD~1", "--", package_inputs.LOCK)
+            self.commit("restore the lock")
+        for arguments in (("--check",), ()):
+            code, output = self.lock_command(*arguments)
+            self.assertEqual(0, code, output)
+            for commit in skipped:
+                self.assertIn(f"Skipped {package_inputs.LOCK} at {commit}: invalid JSON", output)
+
+    def test_history_rejects_a_lock_in_another_format(self):
+        lock = json.loads(self.lock_text())
+        family = lock["packages"]["ChsBuffer.Angle.Static"]
+        version = next(iter(family))
+        family[version] = {"version": version, **family[version]}
+        (self.root / package_inputs.LOCK).write_text(json.dumps(lock), encoding="utf-8")
+        other = self.commit("other format")
+        self.git("checkout", "HEAD~1", "--", package_inputs.LOCK)
+        self.commit("restore the lock")
+        for arguments in (("--check",), ()):
+            code, output = self.lock_command(*arguments)
+            self.assertEqual(2, code, arguments)
+            self.assertIn(f"{package_inputs.LOCK} at {other}: ChsBuffer.Angle.Static {version}: expected", output)
+
     def test_shallow_clone_is_an_error(self):
         self.commit("second")
         clone = self.root / "shallow"

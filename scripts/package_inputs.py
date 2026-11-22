@@ -296,20 +296,23 @@ def entries(records):
                      for variant, record in variants.items()} for family, variants in records.items()}
 
 
-def history(lock):
-    """The {family: {version: entry}} history of a lock document ({} for no lock); ValueError when malformed."""
+def history(lock, origin=LOCK):
+    """The {family: {version: entry}} history of a lock document ({} for no lock); ValueError when malformed.
+
+    The lock history check reads the lock of every commit on main with this function, so it keeps reading every
+    format a committed lock has had."""
     if lock is None:
         return {}
     packages = lock.get("packages") if isinstance(lock, dict) else None
     if not isinstance(packages, dict):
-        raise ValueError(f'{LOCK}: expected an object with "packages"')
+        raise ValueError(f'{origin}: expected an object with "packages"')
     for family, versions in packages.items():
         if not isinstance(versions, dict):
-            raise ValueError(f"{LOCK}: {family}: expected an object of versions")
+            raise ValueError(f"{origin}: {family}: expected an object of versions")
         for version, entry in versions.items():
             if not isinstance(entry, dict) or set(entry) != {"variant", "inputs"}:
                 found = sorted(entry) if isinstance(entry, dict) else type(entry).__name__
-                raise ValueError(f'{LOCK}: {family} {version}: expected {{"variant", "inputs"}}, found {found}')
+                raise ValueError(f'{origin}: {family} {version}: expected {{"variant", "inputs"}}, found {found}')
     return packages
 
 
@@ -340,12 +343,18 @@ def render(packages):
     return _render(document(packages), 0) + "\n"
 
 
+class Unreadable(ValueError):
+    """A lock text that is not UTF-8 JSON."""
+
+
 def parse(text, origin=LOCK):
+    """The lock document in `text` (str, or UTF-8 bytes): Unreadable when it is not JSON, ValueError when it is
+    JSON but not a lock."""
     try:
-        lock = json.loads(text)
+        lock = json.loads(text.decode("utf-8") if isinstance(text, bytes) else text)
     except ValueError as error:
-        raise ValueError(f"{origin}: invalid JSON ({error})") from None
-    history(lock)
+        raise Unreadable(f"{origin}: invalid JSON ({error})") from None
+    history(lock, origin)
     return lock
 
 
@@ -353,7 +362,7 @@ def read_lock(root=ROOT):
     path = Path(root) / LOCK
     if not path.exists():
         return None
-    return parse(path.read_text(encoding="utf-8"))
+    return parse(path.read_bytes())
 
 
 def _flatten(value, prefix=""):
