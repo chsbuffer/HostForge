@@ -2,7 +2,7 @@
 tests/native.
 
 The documentation is upstream.DOC_FILES: the README files packed into the packages and the README.md of the
-repository. A fix revision is bumped by hand in Directory.Build.props, not by `upstream.py apply`, which updates
+repository. A fix revision is bumped by hand in Directory.Build.props, not by the upstream workflow that updates
 the documentation, and NuGet resolves a version that does not exist (an upstream version such as 1.2.3) to the
 lowest version above it, the oldest revision. So the documentation that gives a package version of a native
 package family gives the current version of each of its lines, and no other revision of them.

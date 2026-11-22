@@ -460,7 +460,7 @@ job 通过 `scripts/repo_versions.py` 读取上游版本，workflow 中不写这
 
 `build.yml` 在推送到 `main` 和向 `main` 发起的 PR 上运行。PR 运行除 `publish-nuget` 外的全部 job，把包输入锁与基准分支的首父历史比对，并清理中间工件（fork 的 PR 只有只读 token，工件保留到过期）。PR 运行写入的缓存不能在 `main` 上恢复，所以 PR 改动的原生组件在合并后会重新构建。
 
-[`upstream.yml`](.github/workflows/upstream.yml) 是独立的 workflow，不在上图中，见 [上游跟踪与版本守卫](#上游跟踪与版本守卫)。[`cleanup-pr-caches.yml`](.github/workflows/cleanup-pr-caches.yml) 在 PR 关闭时和每天一次删除所有未打开 PR 写入的缓存，仓库的缓存配额留给 `main`；PR 关闭时仍在运行的 workflow 之后才写入的缓存，由每天那次清理。
+[`upstream.yml`](.github/workflows/upstream.yml) 是独立的 workflow，不在上图中，见 [上游跟踪与版本守卫](#上游跟踪与版本守卫)。[`cleanup-pr-caches.yml`](.github/workflows/cleanup-pr-caches.yml) 在 PR 关闭时和每天一次删除所有未打开 PR 写入的缓存，仓库的缓存配额留给 `main`；用 `GITHUB_TOKEN` 关闭的 PR 不触发 workflow，由每天那次清理。
 
 ## 缓存约定
 
@@ -513,9 +513,9 @@ native RID 包及聚合包统一使用上游版本的前三段加第四段修复
 
 ## 上游跟踪与版本守卫
 
-[`upstream.yml`](.github/workflows/upstream.yml) 每天 05:37 UTC 只读检查上游（也可手动触发），job summary 列出新版本和处理它的更新组，由维护者在本地应用并开 PR；GitHub Actions 版本由 [Dependabot](.github/dependabot.yml) 每周开一个 PR。PR 不自动合并，合并到 `main` 即发布。
+[`upstream.yml`](.github/workflows/upstream.yml) 每天 05:37 UTC 检查上游（也可手动触发），按组开 PR；GitHub Actions 版本由 [Dependabot](.github/dependabot.yml) 每周开一个 PR。PR 不自动合并，合并到 `main` 即发布。
 
-运行时到 VMR 标签的映射、包版本递增和包输入锁都依赖仓库内的逻辑，由 `scripts/upstream.py` 计算。
+运行时到 VMR 标签的映射、包版本递增和包输入锁都依赖仓库内的逻辑，由 `scripts/upstream.py` 计算；GitHub Actions 版本由 Dependabot 更新。PR 用 `GITHUB_TOKEN` 创建，不需要保存密钥。
 
 ### 更新组
 
@@ -529,33 +529,38 @@ native RID 包及聚合包统一使用上游版本的前三段加第四段修复
 
 只报告、手动处理：新主版本、依赖有变化的新 Avalonia、ANGLE 换分支、固定为预览版的 .NET 运行时的新版本（含正式版）。不跟踪：Microsoft.Build（版本随 SDK）、runner 镜像。
 
-`inputs` 组从最新版往下逐个核对比固定版本新的 .NET 补丁版，应用第一个 VMR 来源已确定的版本：nuget.org 上它的 `Microsoft.NETCore.App.Ref` 声明了 commit，且 releases.json 为它列出的某个 1xx SDK 的 VMR 标签指向该 commit。`apply` 的输出在 “Not applied” 下列出跳过的版本及原因。
+`inputs` 组从最新版往下逐个核对比固定版本新的 .NET 补丁版，应用第一个 VMR 来源已确定的版本：nuget.org 上它的 `Microsoft.NETCore.App.Ref` 声明了 commit，且 releases.json 为它列出的某个 1xx SDK 的 VMR 标签指向该 commit。PR 正文的 “Not applied” 列出跳过的版本及原因。
 
-SkiaSharp 的 recipe 按 mono/SkiaSharp 对应标签的构建文件（各平台 `build.cake`、共享 cake 脚本、Xcode 与 vcxproj 工程，以及 Windows HarfBuzzSharp 工程编译的 `harfbuzz-subset-msvc.cc`）编写。[`native/skiasharp/upstream-build.json`](native/skiasharp/upstream-build.json) 按版本记录核对过的这些文件的 git blob SHA：新版本中它们不变时，`apply` 沿用记录；有变化时，`apply` 输出 diff 和新记录，原生测试失败，直到把变化同步到 recipe 并补上记录。SkiaSharp 4 的 Windows 构建直接使用其中两个文件，下载后按这份记录校验；`apply` 同时把新标签的 commit 写入 `versions.json`，作为下载这两个文件的固定版本。
+SkiaSharp 的 recipe 按 mono/SkiaSharp 对应标签的构建文件（各平台 `build.cake`、共享 cake 脚本、Xcode 与 vcxproj 工程，以及 Windows HarfBuzzSharp 工程编译的 `harfbuzz-subset-msvc.cc`）编写。[`native/skiasharp/upstream-build.json`](native/skiasharp/upstream-build.json) 按版本记录核对过的这些文件的 git blob SHA：新版本中它们不变时，bot 沿用记录；有变化时，PR 正文列出 diff 和新记录，原生测试失败，直到把变化同步到 recipe 并补上记录。SkiaSharp 4 的 Windows 构建直接使用其中两个文件，下载后按这份记录校验；bot 同时把新标签的 commit 写入 `versions.json`，作为下载这两个文件的固定版本。
 
-包输入变化而版本不变时，自动按 [包输入锁](#包输入锁) 的规则递增版本并追加锁。`tools`、`llvm` 组和 Dependabot 的改动不改包版本，合并后不发布新包。
+包输入变化而版本不变时，自动按 [包输入锁](#包输入锁) 的规则递增版本并追加锁。`tools`、`llvm` 和 Dependabot 的 PR 不改包版本，合并后不发布新包。
 
 ### 维护者操作
 
-1. 查看每日检查的 job summary，或在本地运行 `task upstream-check`，确定要应用的组。
-2. 从 `main` 新建分支，运行 `task upstream-apply -- --group <组>`（`inputs` 组可加 `--dotnet`、`--avalonia`、`--skiasharp`、`--angle` 只应用其中一部分；加 `--dry-run` 只显示改动）。它写入改动，按需递增包版本并追加锁；输出列出已应用和未应用的更新、包版本的变化，以及仍写着旧版本或旧 commit、需要手动修改的文件。包文档（根目录和 `src/*/README.md`）中的版本和源码 commit 一并更新。
-3. 提交并开 PR，CI 通过后合并。
+1. 一次性设置：Settings → Actions → General → Workflow permissions → “Allow GitHub Actions to create and approve pull requests”。
+2. bot 每次创建或更新 PR 后，在 PR 中选择 “Approve workflows to run”，CI 才会运行。
+3. 审阅后合并。包文档（根目录和 `src/*/README.md`）中的版本和源码 commit 随 PR 更新；PR 正文列出其他仍写着旧版本或旧 commit 的文件，需手动修改。
+4. 要接手某个 PR，向它的分支推送提交，此后 bot 不再改动它。
+5. 要拒绝某次更新，不合并而关闭 PR：同一目标不再开 PR，出现更新的版本时再开。bot 自己关闭的 PR（该组的计划没有改动、该组不再存在）不算拒绝。
+6. 要重试，在 Actions → upstream → Run workflow 开始新的运行；Re-run 不会更新 PR。
 
 ### workflow 失败
 
 以下情况 workflow 失败，原因见 job summary：
 
-- 有比固定版本新的 .NET 安全版本、固定的 .NET 渠道已停止支持，或固定的包有漏洞公告；
-- 读不到 .NET 发布信息或漏洞公告数据。
+- 读不到 .NET 数据（发布信息、逐个核对的补丁版的 `Microsoft.NETCore.App.Ref` 与 VMR 标签、要应用的补丁版的官方构建容器）或漏洞公告数据；
+- 自动更新后仍有安全问题（渠道停止支持、漏洞没有修复版本、.NET 安全版本暂时无法应用）；
+- 安全修复没有对应的打开 PR（例如 PR 被关闭或已过时）；
+- git 或 gh 操作失败（创建 PR 被拒时检查上面的设置）。
 
-其他部分的查询失败只写入 job summary。失败提醒取决于 GitHub 的 Actions 通知设置；公开仓库 60 天无活动后，定时任务会被停用。
+其他组的查询失败只写入 job summary。失败提醒取决于 GitHub 的 Actions 通知设置；公开仓库 60 天无活动后，定时任务会被停用。
 
 ### 本地命令
 
 | 命令 | 作用 |
 | --- | --- |
 | `task upstream-check` | 只读报告上游新版本与安全问题；加 `-- --fail-on-security` 时有安全问题退出码为 1 |
-| `task upstream-apply -- --group <g> [--dry-run]` | 按组写入上游更新、包版本与包输入锁，默认 `inputs` 组 |
+| `task upstream-apply -- --group <g> [--dry-run]` | 生成与 workflow 相同的改动，默认 `inputs` 组 |
 | `task upstream-lock` | 追加包输入锁 |
 
 ### 包输入锁

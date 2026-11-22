@@ -16,7 +16,8 @@
           releases, each with the apply group that handles it. Writes a Markdown summary to $GITHUB_STEP_SUMMARY
           when set. Exit code 1 (with --fail-on-security only): a newer .NET security release, an end-of-life
           .NET channel or a vulnerable pinned package; 2: the .NET or advisory check could not complete.
-  apply   [--group NAME] [--dotnet] [--avalonia] [--skiasharp] [--angle] [--dry-run]
+  apply   [--group NAME] [--dotnet] [--avalonia] [--skiasharp] [--angle] [--keep-going] [--metadata FILE]
+          [--dry-run]
           Update the files of one group, computed from the repository as it is (one pull request per group):
             inputs          (default) .NET runtime patch releases with the official Linux build
                             containers of their VMR commit (a preview pin is report only), the Avalonia patch
@@ -35,10 +36,12 @@
                             binaries but no package version.
           Groups that change package inputs give every package family whose locked version would get other
           inputs a new version (<_Major> + 1 once, otherwise its revision or prerelease number + 1) and append
-          to the lock. Writes every file or none (--dry-run prints the diff instead), then prints the updates,
-          the package versions, notes, what was not applied, the changed mono/SkiaSharp build files to port to
-          native/skiasharp and the tracked files that still mention the old versions. Exit code 2: the group
-          could not be computed (a failed upstream lookup, say); nothing was written.
+          to the lock. Writes every file or none, and lists tracked files that still mention the old versions.
+          --keep-going records a failed lookup other than .NET and skips that item. --metadata FILE writes a
+          JSON summary for the pull request (group, changed files, target, title, body, updates, notes, errors
+          and, for inputs, the security verdict before and after), also when nothing changed, never on exit
+          code 2; with --dry-run it describes the files that would change. Exit code 2: the group could not
+          be computed (also when a .NET lookup or the security verdict fails); nothing was written.
   groups  Print the apply groups, one per line.
   build-args
           Print the docker build arguments of the Linux build images: the pinned versions of the tools they
@@ -115,9 +118,9 @@ DEPOT_TOOLS_REVISION = r"/chromium/tools/depot_tools\.git@([0-9a-f]{40})"
 LLVM_ACTION = ".github/actions/install-llvm/action.yml"
 PYPROJECT = "pyproject.toml"
 LLVM_NOTE = ("This changes the compiled binaries but bumps no package version, so merging does not republish "
-             "anything. To republish, bump the package versions in the same pull request.")
+             "anything. To republish, bump the package versions in this pull request.")
 INPUT_KINDS = ("dotnet", "avalonia", "skiasharp", "angle")
-APPLY_COMMANDS = ("task upstream-apply -- --group <group>", "python scripts/upstream.py apply --group <group>")
+TITLE_LENGTH = 72
 
 _VERSION = re.compile(r"\d+(?:\.\d+){1,3}")
 _COMMIT = re.compile(r"[0-9a-f]{40}")
@@ -130,7 +133,7 @@ class UpstreamError(Exception):
 
 
 class LookupFailed(UpstreamError):
-    """A failed upstream lookup of one item, named in the message."""
+    """A failed upstream lookup of one item; --keep-going records it and skips the item instead."""
 
 
 class NotFound(UpstreamError):
@@ -270,8 +273,8 @@ class Client:
 
 
 class CachingClient:
-    """Remembers the reads of one apply run, failed ones included, so that every planner sees the same upstream
-    state and nothing is fetched twice."""
+    """Remembers the reads of one apply run, failed ones included, so the security verdicts before and after the
+    update and the planners see the same upstream state and nothing is fetched twice."""
 
     def __init__(self, client):
         self._client = client
@@ -846,6 +849,24 @@ def insecure(findings):
     return any(findings.values())
 
 
+def resolved_findings(before, after):
+    """(.NET security releases, NuGet advisories) found before an update and no longer after it."""
+    releases = {(item["framework"], item["version"]) for item in after["releases"]}
+    advisories = {(item["package"], item["url"]) for item in after["advisories"]}
+    return ([item for item in before["releases"] if (item["framework"], item["version"]) not in releases],
+            [item for item in before["advisories"] if (item["package"], item["url"]) not in advisories])
+
+
+def describe_findings(findings):
+    lines = [f".NET {item['framework']} {item['version']} is a security release "
+             f"({', '.join(item['cves']) or 'no CVE ids'})" for item in findings["releases"]]
+    lines += [f".NET {item['channel']} ({item['framework']}) is end of life since {item['eol-date']}"
+              for item in findings["eol"]]
+    lines += [f"{item['package']} {item['version']}: {item['severity']} advisory {item['url']}"
+              for item in findings["advisories"]]
+    return lines
+
+
 # --- Toolchain -----------------------------------------------------------------------------------
 
 def _latest_github_release(client, repository, prefix):
@@ -1095,13 +1116,7 @@ def render_text(report):
         out += [f"  - {note}" for note in notes]
         out.append("")
     out.append(f"Security: {_verdict(report)}")
-    out.append(_apply_hint(str))
     return "\n".join(out) + "\n"
-
-
-def _apply_hint(quote):
-    task, python = map(quote, APPLY_COMMANDS)
-    return f"Apply a group with {task} (or {python}), then commit and open a pull request."
 
 
 def render_markdown(report):
@@ -1112,7 +1127,6 @@ def render_markdown(report):
         out += [f"### {title}", "", "| " + " | ".join(headers) + " |", "|" + "---|" * len(headers)]
         out += ["| " + " | ".join(str(cell).replace("|", "\\|") for cell in row) + " |" for row in rows]
         out += [""] + [f"- {note}" for note in notes] + ([""] if notes else [])
-    out.append(_apply_hint(lambda command: f"`{command}`"))
     return "\n".join(out) + "\n"
 
 
@@ -1503,41 +1517,52 @@ def bump_package_versions(stage, lock):
         versions = ", ".join(f"{before[family][variant]['version']} -> {after[family][variant]['version']}"
                              for variant in after[family]
                              if before[family][variant]["version"] != after[family][variant]["version"])
-        updates.append(Update(f"{family}: {what[family]} ({versions}); its inputs changed", [], None))
+        updates.append(Update("bump", f"{family}: {what[family]} ({versions}); its inputs changed", [], None))
     return updates
 
 
 # --- apply: planners -----------------------------------------------------------------------------
 
 class Update:
-    """One planned change; edit(stage) makes it in the staged files. `new_strings[i]` replaces `old_strings[i]` in
-    the package documentation (DOC_FILES)."""
+    """One planned change. `name` and `version` make up the pull request title, `target` the deterministic
+    description of what the update moves to; `skippable` updates may fail without aborting under --keep-going.
+    `new_strings[i]` replaces `old_strings[i]` in the package documentation (DOC_FILES)."""
 
-    def __init__(self, description, old_strings, edit, new_strings=()):
+    def __init__(self, kind, description, old_strings, edit, name=None, version=None, target=None, skippable=False,
+                 new_strings=()):
+        self.kind = kind
         self.description = description
         self.old_strings = old_strings
         self.new_strings = new_strings
         self.edit = edit
+        self.name = name
+        self.version = version
+        self.target = target
+        self.skippable = skippable
 
 
 class Run:
-    """State of one apply run: what was looked up, and the notes for the report."""
+    """State of one apply run: what was looked up, and the notes and errors for the report."""
 
-    def __init__(self, client, root, dry_run=False):
+    def __init__(self, client, root, dry_run=False, keep_going=False):
         self.client = client
         self.root = Path(root)
         self.dry_run = dry_run
+        self.keep_going = keep_going
         self.pinned = repo_versions.load(self.root)
-        self.notes, self.group_notes = [], []
+        self.notes, self.group_notes, self.errors = [], [], []
         self.build_changes = []
 
-    @staticmethod
-    def attempt(label, lookup):
-        """lookup() for the item `label`; any failure aborts the run with a LookupFailed that names the item."""
+    def attempt(self, label, lookup):
+        """lookup() for the item `label`. A failure aborts the run, or with --keep-going is recorded in errors and
+        returns None so the item is skipped."""
         try:
             return lookup()
         except Exception as error:  # noqa: BLE001 - upstream data is untrusted; the item reports what failed
-            raise LookupFailed(f"{label}: {_reason(error)}") from None
+            if not self.keep_going:
+                raise LookupFailed(f"{label}: {_reason(error)}") from None
+            self.errors.append(f"{label}: {_reason(error)}")
+            return None
 
 
 def dotnet_target(run, item):
@@ -1568,7 +1593,8 @@ def dotnet_target(run, item):
 
 
 def plan_dotnet(run):
-    """The newest patch release of each pinned .NET channel whose Ref nuspec and VMR tag are published."""
+    """The newest patch release of each pinned .NET channel whose Ref nuspec and VMR tag are published; a lookup
+    failure always aborts (no --keep-going)."""
     pinned, updates = run.pinned, []
     for item in dotnet_report(run.client, pinned):
         found = dotnet_target(run, item)
@@ -1591,8 +1617,9 @@ def plan_dotnet(run):
                        for cve in release["cves"] if cve})
         description = (f".NET {item['framework']}: {old} -> {new} ({source['tag']} {source['commit']})"
                        + (f"; security: {', '.join(cves)}" if cves else ""))
-        updates.append(Update(description, [old, old_source["tag"][1:], old_source["commit"]], edit,
-                              new_strings=[new, source["tag"][1:], source["commit"]]))
+        updates.append(Update("dotnet", description, [old, old_source["tag"][1:], old_source["commit"]], edit,
+                              name=".NET", version=new, new_strings=[new, source["tag"][1:], source["commit"]],
+                              target=f".NET {item['framework']} {new} ({source['tag']} {source['commit']})"))
     return updates
 
 
@@ -1623,6 +1650,8 @@ def avalonia_update(run, candidate):
         sha256 = "<sha256 of the archive, downloaded by apply>"
     else:
         sha256 = run.attempt(f"Avalonia {version} source archive", lambda: _sha256(run.client.stream(url)))
+        if sha256 is None:
+            return []
 
     def edit(root):
         def props(text):
@@ -1640,8 +1669,9 @@ def avalonia_update(run, candidate):
     versions = list(dict.fromkeys([current, native]))
     # The package documentation names the source commit of the archives next to their version.
     old_commit = pinned["avalonia-sources"].get(native, {}).get("commit")
-    return [Update(f"Avalonia {', '.join(versions)} -> {version} ({commit}, sha256 {sha256})",
-                   [*versions, old_commit], edit, new_strings=[*[version] * len(versions), commit])]
+    return [Update("avalonia", f"Avalonia {', '.join(versions)} -> {version} ({commit}, sha256 {sha256})",
+                   [*versions, old_commit], edit, name="Avalonia", version=version,
+                   target=f"Avalonia {version} ({commit})", new_strings=[*[version] * len(versions), commit])]
 
 
 def plan_avalonia(run):
@@ -1671,6 +1701,8 @@ def plan_avalonia_minor(run):
         return {"candidate": candidate, "majors": majors}
 
     found = run.attempt("Avalonia", lookup)
+    if found is None:
+        return []
     if found["majors"]:
         run.notes.append("Avalonia newer major releases (report only): " + ", ".join(found["majors"]))
     return avalonia_update(run, found["candidate"]) if found["candidate"] else []
@@ -1717,16 +1749,19 @@ def skiasharp_update(run, line, source, build):
                                                             source["skiasharp-commit"]]))
         _edit(root, SKIASHARP_BUILD, record)
 
-    return [Update(f"SkiaSharp {line} -> {new} (skia {source['skia-commit']}, HarfBuzzSharp {old_harfbuzz} -> "
-                   f"{source['harfbuzz']})", [line, old_harfbuzz, old_commit], edit,
-                   new_strings=[new, source["harfbuzz"], source["skia-commit"]])]
+    return [Update("skiasharp", f"SkiaSharp {line} -> {new} (skia {source['skia-commit']}, HarfBuzzSharp "
+                                f"{old_harfbuzz} -> {source['harfbuzz']})", [line, old_harfbuzz, old_commit], edit,
+                   name="SkiaSharp", version=new, new_strings=[new, source["harfbuzz"], source["skia-commit"]],
+                   target=f"SkiaSharp {new} (skia {source['skia-commit']}, HarfBuzzSharp {source['harfbuzz']})")]
 
 
 def _skiasharp_line(run, line, version):
     source = run.attempt(f"SkiaSharp {version}", lambda: skiasharp_source(run.client, version))
+    if not source:
+        return []
     build = run.attempt(f"SkiaSharp {version} build files",
                         lambda: skiasharp_build_files(run.client, run.root, line, version))
-    return skiasharp_update(run, line, source, build)
+    return skiasharp_update(run, line, source, build) if build else []
 
 
 def plan_skiasharp(run):
@@ -1735,7 +1770,7 @@ def plan_skiasharp(run):
     targets = run.attempt("SkiaSharp", lambda: {line: skiasharp_targets(skiasharp_versions(run.client), line)[0]
                                                  for line in lines})
     updates = []
-    for line, patch in targets.items():
+    for line, patch in (targets or {}).items():
         if patch:
             updates += _skiasharp_line(run, line, patch)
     return updates
@@ -1751,6 +1786,8 @@ def plan_skiasharp_major(run, major):
                 "majors": skiasharp_new_majors(stable, run.pinned["skiasharp-versions"]).get(major, [])}
 
     found = run.attempt("SkiaSharp", lookup)
+    if found is None:
+        return []
     if found["majors"]:
         run.notes.append("SkiaSharp newer major releases (report only): " + ", ".join(found["majors"]))
     return _skiasharp_line(run, line, found["milestone"]) if found["milestone"] else []
@@ -1790,7 +1827,7 @@ def _deps_patches(root):
 def plan_angle(run):
     """Move the ANGLE pin to the head of its branch, with the depot_tools revision of the DEPS file there."""
     found = run.attempt("ANGLE", lambda: angle_candidate(run.client, run.root))
-    if found["head"] == found["pinned"]:
+    if not found or found["head"] == found["pinned"]:
         return []
     if not found["pinned"]:
         run.notes.append(f"ANGLE {found['branch']}: {ANGLE_DATA} pins no commit; pin one by hand")
@@ -1801,20 +1838,22 @@ def plan_angle(run):
         problems = deps_patch_problems(patch, found["deps"])
         if problems:
             run.group_notes.append(f"{path} no longer applies to DEPS at {head}: hunks {', '.join(problems)}; "
-                                   "update the patch in the same pull request")
+                                   "update the patch in this pull request")
 
     def edit(root):
         _edit(root, ANGLE_DATA, lambda text: set_angle_commits(text, head, new_tools))
 
     tools = (f"depot_tools {old_tools} -> {new_tools}" if new_tools != old_tools
              else f"depot_tools {new_tools} (unchanged)")
-    return [Update(f"ANGLE {branch}: {old} -> {head}; {tools} from DEPS",
+    return [Update("angle", f"ANGLE {branch}: {old} -> {head}; {tools} from DEPS",
                    [old] + ([old_tools] if old_tools and new_tools != old_tools else []), edit,
-                   new_strings=[head] + ([new_tools] if old_tools and new_tools != old_tools else []))]
+                   name="ANGLE", version=f"{branch}@{head[:12]}",
+                   new_strings=[head] + ([new_tools] if old_tools and new_tools != old_tools else []),
+                   target=f"ANGLE {branch} {head} (depot_tools {new_tools})")]
 
 
 def plan_inputs(run, selection):
-    """.NET, Avalonia, SkiaSharp and ANGLE; a failure aborts the whole run and names the selections that avoid it."""
+    """.NET, Avalonia, SkiaSharp and ANGLE; without --keep-going any failed lookup aborts the whole run."""
     planners = {"dotnet": plan_dotnet, "avalonia": plan_avalonia, "skiasharp": plan_skiasharp, "angle": plan_angle}
     updates = []
     for kind in INPUT_KINDS:
@@ -1826,27 +1865,30 @@ def plan_inputs(run, selection):
             reason = str(error) if isinstance(error, LookupFailed) else f"{kind}: {_reason(error)}"
             others = [f"--{name}" for name in INPUT_KINDS if name in selection and name != kind]
             hint = f" To apply the other updates first, select them: {' '.join(others)}." if others else ""
+            if kind != "dotnet" and not run.keep_going:
+                hint += " --keep-going skips failed lookups other than .NET."
             raise UpstreamError(f"{reason}\nNothing was written.{hint}") from None
     return updates
 
 
-def _tool_update(tool, pinned, latest):
+def _tool_update(run, tool, pinned, latest):
     def edit(root):
         _edit(root, tool.path, lambda text: tool.set(text, latest))
 
-    return Update(f"{tool.name}: {pinned} -> {latest} ({tool.path})", [pinned], edit)
+    return Update("tool", f"{tool.name}: {pinned} -> {latest} ({tool.path})", [pinned], edit, name=tool.name,
+                  version=latest, target=f"{tool.name} {latest}", skippable=True)
 
 
 def plan_tools(run):
-    """The newest stable release of each tool."""
+    """The newest stable release of each tool; tools are independent, so --keep-going skips only the failed one."""
     updates = []
     for tool in TOOLS:
         def lookup(tool=tool):
             return tool.pin(run.root), _checked(tool.latest(run.client), _VERSION, f"{tool.name} latest version")
 
-        pinned, latest = run.attempt(tool.name, lookup)
-        if version_key(latest) > version_key(pinned):
-            updates.append(_tool_update(tool, pinned, latest))
+        found = run.attempt(tool.name, lookup)
+        if found and version_key(found[1]) > version_key(found[0]):
+            updates.append(_tool_update(run, tool, *found))
     return updates
 
 
@@ -1856,7 +1898,7 @@ def plan_llvm(run):
     if LLVM_CACHE_KEY.pin(run.root) != pinned:
         raise UpstreamError(f"{LLVM_ACTION}: the cache key and $Version pin different LLVM versions")
     release = run.attempt("LLVM", lambda: llvm_release(run.client))
-    if version_key(release["version"]) <= version_key(pinned):
+    if release is None or version_key(release["version"]) <= version_key(pinned):
         return []
     version = _checked(release["version"], _VERSION, "LLVM version")
     # The installer type the action downloads, e.g. "msi" in LLVM-${Version}-win64.msi.
@@ -1871,7 +1913,8 @@ def plan_llvm(run):
     def edit(root):
         _edit(root, LLVM_ACTION, lambda text: LLVM_CACHE_KEY.set(LLVM.set(text, version), version))
 
-    return [Update(f"LLVM: {pinned} -> {version} ({LLVM_ACTION})", [pinned], edit)]
+    return [Update("llvm", f"LLVM: {pinned} -> {version} ({LLVM_ACTION})", [pinned], edit, name="LLVM",
+                   version=version, target=f"LLVM {version}")]
 
 
 # --- apply: groups -------------------------------------------------------------------------------
@@ -1928,13 +1971,22 @@ def plan_group(run, group, selection):
     try:
         return planner(run)
     except LookupFailed as error:
-        raise UpstreamError(f"{error}\nNothing was written.") from None
+        raise UpstreamError(f"{error}\nNothing was written. --keep-going records failed lookups and skips them.") from None
 
 
-def apply_group(client, root, group="inputs", selection=INPUT_KINDS, dry_run=False, out=None):
-    """Plan, stage and (unless dry_run) write the updates of `group`, and print the report to `out` (stdout).
+def security_state(client, pinned):
+    """Findings of the check security verdict for `pinned`; any failure aborts the run."""
+    try:
+        return security_findings(dotnet_report(client, pinned), vulnerability_report(client, pinned))
+    except Exception as error:  # noqa: BLE001 - the verdict must be known; malformed data counts as unknown
+        raise UpstreamError(f"cannot evaluate the security state: {_reason(error)}\nNothing was written.") from None
 
-    Returns {"group", "changed": [changed files], "updates": [update descriptions], "notes": [notes]}."""
+
+def apply_group(client, root, group="inputs", selection=INPUT_KINDS, dry_run=False, keep_going=False,
+                security=False, out=None):
+    """Plan, stage and (unless dry_run) write the updates of `group`; returns the metadata of the run.
+
+    security: evaluate the security verdict before and after (inputs group only)."""
     out = out or sys.stdout
     root = Path(root)
     names = group_names(root)
@@ -1948,24 +2000,34 @@ def apply_group(client, root, group="inputs", selection=INPUT_KINDS, dry_run=Fal
         if pending:
             raise UpstreamError("the package lock does not match the repository; fix it first (see "
                                 "`python scripts/upstream.py lock --check`):\n" + "\n".join(pending))
-    run = Run(CachingClient(client), root, dry_run=dry_run)
+    run = Run(CachingClient(client), root, dry_run=dry_run, keep_going=keep_going)
+    evaluate = security and group == "inputs"
+    findings_before = security_state(run.client, run.pinned) if evaluate else None
     updates = plan_group(run, group, selection)
     if group == "llvm" and updates:
         run.group_notes.append(LLVM_NOTE)
 
     files = staged_files(group, root)
-    versions = []
+    versions, findings_after = [], None
     with tempfile.TemporaryDirectory(prefix="hostforge-apply-") as staging:
         stage = Path(staging)
         for relative in files:
             if (root / relative).exists():
                 (stage / relative).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(root / relative, stage / relative)
+        applied = []
         for update in updates:
             try:
                 update.edit(stage)
-            except UpstreamError as error:
-                raise UpstreamError(f"{update.description}: {error}\nNothing was written.") from None
+                applied.append(update)
+            except Exception as error:  # noqa: BLE001 - only skippable updates survive, under --keep-going
+                if keep_going and update.skippable:
+                    run.errors.append(f"{update.name}: {_reason(error)}")
+                elif isinstance(error, UpstreamError):
+                    raise UpstreamError(f"{update.name or update.kind}: {error}\nNothing was written.") from None
+                else:
+                    raise
+        updates = applied
         if changes_package_inputs(group) and updates:
             updates += bump_package_versions(stage, lock)
             after = package_inputs.compute(stage)
@@ -1978,6 +2040,8 @@ def apply_group(client, root, group="inputs", selection=INPUT_KINDS, dry_run=Fal
             versions = version_changes(before, after)
             update_docs(stage, [pair for update in updates for pair in zip(update.old_strings, update.new_strings)]
                         + version_pairs(before, after))
+        if evaluate:
+            findings_after = security_state(run.client, repo_versions.load(stage))
 
         contents, diffs = {}, []
         for relative in files:
@@ -1992,9 +2056,9 @@ def apply_group(client, root, group="inputs", selection=INPUT_KINDS, dry_run=Fal
     changed = list(contents)
     olds = list(dict.fromkeys(item for update in updates for item in update.old_strings if item))
     mentions = remaining_mentions(root, olds, set(files))
-    _print_apply(out, changed, updates, versions, run, diffs, dry_run, olds, mentions)
-    return {"group": group, "changed": changed, "updates": [update.description for update in updates],
-            "notes": run.group_notes + run.notes}
+    metadata = build_metadata(group, changed, updates, versions, run, findings_before, findings_after, olds, mentions)
+    _print_apply(out, metadata, updates, versions, run, diffs, dry_run, olds, mentions)
+    return metadata
 
 
 def tracked_files(root):
@@ -2029,23 +2093,125 @@ def remaining_mentions(root, strings, exclude):
     return found
 
 
-# --- apply: report ------------------------------------------------------------------------------
+# --- apply: report and metadata ------------------------------------------------------------------
 
-def _print_build_changes(out, item):
-    """What to port to native/skiasharp for one changed upstream build, with the record entry to add after it."""
+def _join(items):
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def pull_request_title(group, updates, security):
+    """One Conventional Commits line; shortened to the names, then to a count, when it gets long."""
+    named = {}
+    for update in updates:
+        if update.name:
+            named.setdefault(update.name, []).append(update.version)
+    prefix, suffix = ("fix(deps): ", " (security)") if security else ("build(deps): ", "")
+    if not named:
+        return f"{prefix}no updates for {group}{suffix}"
+    if len(named) == 1 and len(next(iter(named.values()))) == 1:
+        (name, (version,)), = named.items()
+        subjects = [f"update {name} to {version}"]
+    else:
+        subjects = ["update " + _join([f"{name} {' and '.join(versions)}" for name, versions in named.items()])]
+    count = sum(map(len, named.values()))
+    subjects += ["update " + _join(list(named)), f"update {count} {'tools' if group == 'tools' else 'upstream dependencies'}"]
+    return next((prefix + subject + suffix for subject in subjects if len(prefix + subject + suffix) <= TITLE_LENGTH),
+                prefix + subjects[-1] + suffix)
+
+
+def _markdown(text):
+    """Plain text as one Markdown list item: no raw HTML (so no HTML comments) and no line breaks."""
+    return " ".join(text.replace("<", "&lt;").split())
+
+
+def _code(text):
+    fence = "``" if "`" in text else "`"
+    return f"{fence} {text} {fence}" if fence == "``" else f"`{text}`"
+
+
+def _fenced(text, info=""):
+    """`text` as a code block whose fence no line of it can close."""
+    longest = max((len(run) for run in re.findall(r"~+", text)), default=0)
+    fence = "~" * max(3, longest + 1)
+    return [fence + info, text.rstrip("\n"), fence]
+
+
+def build_changes_section(item):
     line, version = item["line"], item["version"]
     entry = json.dumps({version: item["files"]}, indent=2)[1:-1].strip("\n")
-    print(f"Upstream build changes (SkiaSharp {line} -> {version}):", file=out)
-    print(f"  The recipes in native/skiasharp follow these mono/SkiaSharp files, which changed between v{line} and "
-          f"v{version} ({SKIASHARP_REPOSITORY}/compare/v{line}...v{version}).", file=out)
-    print(f"  Port the changes to the recipes, then add this entry to {SKIASHARP_BUILD}; the native tests fail "
-          "until then:", file=out)
-    print(entry, file=out)
-    for _, diff in item["changed"]:
-        out.write(diff)
+    out = ["", f"### Upstream build changes ({line} -> {version})", "",
+           f"The recipes in `native/skiasharp` follow these mono/SkiaSharp files, which changed between v{line} and "
+           f"v{version} ([compare](https://github.com/mono/SkiaSharp/compare/v{line}...v{version})). Port the "
+           f"changes to the recipes, then add this entry to `{SKIASHARP_BUILD}`; the native tests fail until then:",
+           ""]
+    out += _fenced(entry, "json")
+    for path, diff in item["changed"]:
+        out += ["", f"`{path}`" + ("" if item["files"][path] else " (removed)"), ""] + _fenced(diff, "diff")
+    return out
 
 
-def _print_apply(out, changed, updates, versions, run, diffs, dry_run, olds, mentions):
+def pull_request_body(group, changed, updates, versions, run, security, olds, mentions):
+    out = [f"Updates of the `{group}` group, computed by `python scripts/upstream.py apply --group {group}`.", ""]
+    out += ["### Applied", ""] + ([f"- {_markdown(update.description)}" for update in updates] or ["- Nothing."])
+    if versions:
+        out += ["", "### Package versions", ""] + [f"- {_markdown(line)}" for line in versions]
+    if security is not None:
+        out += ["", "### Security", ""]
+        for label, findings in (("Before", security["findings-before"]), ("After", security["findings-after"])):
+            described = describe_findings(findings)
+            out.append(f"- {label} this change: " + ("ACTION NEEDED: " + "; ".join(map(_markdown, described))
+                                                     if described else "no finding"))
+        if security["cves"]:
+            out.append("- Resolves: " + ", ".join(security["cves"]))
+        for item in security["advisories"]:
+            out.append(f"- Resolves the {_markdown(item['severity'])} advisory {_markdown(item['url'])} for "
+                       f"{_markdown(item['package'])} {_markdown(item['version'])}")
+    if run.group_notes:
+        out += ["", "### Notes", ""] + [f"- {_markdown(note)}" for note in run.group_notes]
+    if run.notes:
+        out += ["", "### Not applied", ""] + [f"- {_markdown(note)}" for note in run.notes]
+    for item in run.build_changes if changed else []:
+        out += build_changes_section(item)
+    if mentions:
+        shown = mentions[:50]
+        out += ["", "### Old versions still mentioned", "",
+                f"These tracked files still mention {', '.join(map(_code, olds))}; update them by hand:", ""]
+        out += [f"- {_code(f'{path}:{number}')}: {_code(line[:160])}" for path, number, line in shown]
+        if len(mentions) > len(shown):
+            out.append(f"- … and {len(mentions) - len(shown)} more")
+    if run.errors:
+        out += ["", "### Lookup errors", "", "These items were skipped (--keep-going):", ""]
+        out += [f"- {_markdown(error)}" for error in run.errors]
+    if not changed:
+        out += ["", "Nothing to change."]
+    # A tracked line may itself contain an HTML comment opener; the pull request tool appends its own marker.
+    return "\n".join(out).replace("<!--", "<! --") + "\n"
+
+
+def build_metadata(group, changed, updates, versions, run, findings_before, findings_after, olds, mentions):
+    security = details = None
+    resolves = False
+    if findings_before is not None:
+        releases, advisories = resolved_findings(findings_before, findings_after)
+        cves = sorted({cve for item in releases for cve in item["cves"] if cve})
+        resolves = bool(changed and (releases or advisories))
+        security = {"before": insecure(findings_before), "after": insecure(findings_after), "cves": cves}
+        details = dict(security, **{"findings-before": findings_before, "findings-after": findings_after,
+                                    "advisories": advisories})
+    return {
+        "group": group,
+        "changed": changed,
+        "target": "; ".join(update.target for update in updates if update.target) if changed else "",
+        "title": pull_request_title(group, updates if changed else [], resolves),
+        "body": pull_request_body(group, changed, updates, versions, run, details, olds, mentions),
+        "updates": [update.description for update in updates] if changed else [],
+        "notes": run.group_notes + run.notes,
+        "errors": list(run.errors),
+        "security": security,
+    }
+
+
+def _print_apply(out, metadata, updates, versions, run, diffs, dry_run, olds, mentions):
     print("Planned changes:" if dry_run else "Applied changes:", file=out)
     for update in updates:
         print(f"  - {update.description}", file=out)
@@ -2055,25 +2221,37 @@ def _print_apply(out, changed, updates, versions, run, diffs, dry_run, olds, men
         print(f"  package version {line}", file=out)
     if dry_run:
         out.writelines(diffs)
-        print("Files that would change: " + (", ".join(changed) or "none"), file=out)
+        print("Files that would change: " + (", ".join(metadata["changed"]) or "none"), file=out)
     else:
-        print("Changed files: " + (", ".join(changed) or "none"), file=out)
-    for title, items in (("Notes:", run.group_notes), ("Not applied:", run.notes)):
+        print("Changed files: " + (", ".join(metadata["changed"]) or "none"), file=out)
+    if metadata["security"] is not None:
+        security = metadata["security"]
+        print(f"Security finding before: {'yes' if security['before'] else 'no'}, after: "
+              f"{'yes' if security['after'] else 'no'}" + (f"; resolves {', '.join(security['cves'])}"
+                                                           if security["cves"] else ""), file=out)
+    for title, items in (("Notes:", run.group_notes), ("Not applied:", run.notes),
+                         ("Lookup errors (skipped with --keep-going):", run.errors)):
         if items:
             print(title, file=out)
             for item in items:
                 print(f"  - {item}", file=out)
-    for item in run.build_changes:
-        _print_build_changes(out, item)
     if mentions:
         print(f"Tracked files that still mention {', '.join(olds)} (update the text by hand):", file=out)
         for relative, number, line in mentions:
             print(f"  {relative}:{number}: {line[:160]}", file=out)
 
 
+def write_metadata(path, metadata):
+    path = Path(path)
+    _replace_file(path, (json.dumps(metadata, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
+
+
 def command_apply(args, client):
     selection = {name for name in INPUT_KINDS if getattr(args, name)} or set(INPUT_KINDS)
-    apply_group(client, args.root, args.group, selection, dry_run=args.dry_run)
+    metadata = apply_group(client, args.root, args.group, selection, dry_run=args.dry_run, keep_going=args.keep_going,
+                           security=bool(args.metadata))
+    if args.metadata:
+        write_metadata(args.metadata, metadata)
     return 0
 
 
@@ -2118,6 +2296,10 @@ def main(argv=None, client=None):
     apply.add_argument("--skiasharp", action="store_true",
                        help="inputs group: SkiaSharp patch releases of the pinned milestones")
     apply.add_argument("--angle", action="store_true", help="inputs group: head of the pinned ANGLE branch")
+    apply.add_argument("--keep-going", action="store_true",
+                       help="record a failed lookup other than .NET and skip that item instead of aborting")
+    apply.add_argument("--metadata", metavar="FILE",
+                       help="write a JSON summary (changed files, title, body, security) for a pull request")
     apply.add_argument("--dry-run", action="store_true", help="print the planned changes without writing files")
     commands.add_parser("groups", help="print the apply groups, one per line")
     commands.add_parser("build-args", help="print the docker build arguments of the Linux build images (offline)")

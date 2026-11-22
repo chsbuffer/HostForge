@@ -1,5 +1,4 @@
-# GitHub Actions versions only; the pinned build inputs are checked by the upstream workflow and applied with
-# task upstream-apply.
+# GitHub Actions versions only; the pinned build inputs are tracked by the upstream workflow.
 # "/" covers .github/workflows (and a root action.yml); the composite actions under .github/actions are
 # listed separately.
 version: 2
