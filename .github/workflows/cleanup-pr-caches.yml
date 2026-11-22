@@ -3,8 +3,8 @@ name: cleanup-pr-caches
 # Caches saved by a pull request belong to refs/pull/<number>/merge, which only that pull request can restore.
 # Deleting the caches of every pull request that is no longer open leaves the repository cache quota to the
 # caches of main.
-# A pull request closed with GITHUB_TOKEN (the upstream workflow closes its own) starts no workflow run, so the
-# daily run also deletes the caches the closed event missed.
+# Closing a pull request does not stop its running workflows, which can save caches after the closed event, so
+# the daily run also deletes those.
 # pull_request_target runs the workflow of the base branch with a token that can delete caches, also for pull
 # requests from forks; it checks out nothing from the pull request.
 on:

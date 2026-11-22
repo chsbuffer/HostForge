@@ -405,13 +405,16 @@ class UpstreamTestCase(unittest.TestCase):
         return code, stdout.getvalue(), stderr.getvalue()
 
     def apply(self, client, *arguments):
-        """apply with --metadata into a file outside the root: (code, stdout, stderr, metadata or None)."""
-        directory = tempfile.TemporaryDirectory(prefix="hostforge-metadata-")
-        self.addCleanup(directory.cleanup)
-        path = Path(directory.name) / "metadata.json"
-        code, stdout, stderr = self.run_main(client, "apply", *arguments, "--metadata", str(path))
-        metadata = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
-        return code, stdout, stderr, metadata
+        """apply through main: (code, stdout, stderr, the report apply_group returned or None)."""
+        reports, apply_group = [], upstream.apply_group
+
+        def recorded(*args, **kwargs):
+            reports.append(apply_group(*args, **kwargs))
+            return reports[-1]
+
+        with mock.patch.object(upstream, "apply_group", side_effect=recorded):
+            code, stdout, stderr = self.run_main(client, "apply", *arguments)
+        return code, stdout, stderr, reports[0] if reports else None
 
     def snapshot(self):
         return {path.relative_to(self.root).as_posix(): path.read_bytes()
@@ -442,6 +445,12 @@ class CheckTests(UpstreamTestCase):
         markdown = summary.read_text(encoding="utf-8")
         self.assertIn("## Upstream check", markdown)
         self.assertIn("action needed", markdown.lower())
+        self.assertTrue(markdown.endswith("Apply a group with `task upstream-apply -- --group <group>` (or "
+                                          "`python scripts/upstream.py apply --group <group>`), then commit and open "
+                                          "a pull request.\n"), markdown[-300:])
+        self.assertTrue(stdout.endswith("\nApply a group with task upstream-apply -- --group <group> (or python "
+                                        "scripts/upstream.py apply --group <group>), then commit and open a pull "
+                                        "request.\n"), stdout[-300:])
 
     def test_json_report_when_everything_is_current(self):
         code, stdout, stderr = self.run_main(fake_upstream(self.root), "check", "--json", "--fail-on-security")
@@ -544,15 +553,14 @@ class ApplyTests(UpstreamTestCase):
         releases["releases"].insert(0, release(newest, sdk, security=True, cves=["CVE-2099-0002"]))
         client.add_json(url, releases)
         client.add_ref(upstream.VMR, f"refs/tags/v{sdk}", fake_commit(sdk))
-        code, _, stderr, metadata = self.apply(client, "--dotnet")
+        code, _, stderr, report = self.apply(client, "--dotnet")
         self.assertEqual(0, code, stderr)
         self.assertEqual(next_patch(runtime), repo_versions.load(self.root)["runtimes"][framework])
-        notes = [note for note in metadata["notes"] if note.startswith(framework)]
-        self.assertEqual(1, len(notes), metadata["notes"])
+        notes = [note for note in report["notes"] if note.startswith(framework)]
+        self.assertEqual(1, len(notes), report["notes"])
         self.assertRegex(notes[0], rf"^{re.escape(f'{framework} {newest} not applied: ')}.*HTTP 404")
         # The update does not claim the CVEs of the release it does not apply.
-        self.assertNotIn("CVE-2099-0002", " ".join(metadata["updates"]))
-        self.assertEqual({"before": True, "after": True, "cves": []}, metadata["security"])
+        self.assertNotIn("CVE-2099-0002", " ".join(report["updates"]))
         self.assert_consistent()
 
     def test_avalonia_patch_update(self):
@@ -664,10 +672,9 @@ class GroupTests(UpstreamTestCase):
 
     def test_unknown_group_is_an_error(self):
         before = self.snapshot()
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root), "--group", "skiasharp-99")
+        code, _, stderr = self.run_main(fake_upstream(self.root), "apply", "--group", "skiasharp-99")
         self.assertEqual(2, code)
         self.assertIn("unknown group skiasharp-99", stderr)
-        self.assertIsNone(metadata)
         self.assertEqual(before, self.snapshot())
 
 
@@ -683,7 +690,7 @@ class AngleTests(UpstreamTestCase):
         records, (_, old_tools) = evaluated(self.root), angle_source(self.root)
         major = int(self.props()["_Major"])
         client = fake_upstream(self.root, angle_head=self.HEAD, angle_depot_tools=self.DEPOT_TOOLS)
-        code, stdout, stderr, metadata = self.apply(client, "--angle")
+        code, stdout, stderr, report = self.apply(client, "--angle")
         self.assertEqual(0, code, stderr)
         self.assertEqual((self.HEAD, self.DEPOT_TOOLS), self.angle())
         # ANGLE keeps AngleVersion, so the package gets the next revision; ANGLE is an AppHost input too.
@@ -692,12 +699,9 @@ class AngleTests(UpstreamTestCase):
         self.assertEqual(f"{base}.{int(revision) + 1}", evaluated(self.root)["ChsBuffer.Angle.Static"]["default"]["version"])
         self.assertEqual(major + 1, int(self.props()["_Major"]))
         self.assertEqual(self.pinned["angle"], self.props()["AngleVersion"])
-        self.assertEqual(["Directory.Build.props", "native/angle/conandata.yml", package_inputs.LOCK], metadata["changed"])
+        self.assertEqual(["Directory.Build.props", "native/angle/conandata.yml", package_inputs.LOCK], report["changed"])
         self.assertIn(f"depot_tools {old_tools} -> {self.DEPOT_TOOLS} from DEPS", stdout)
-        self.assertRegex(metadata["title"], rf"^build\(deps\): update ANGLE to {re.escape(self.pinned['angle-branch'])}@3+$")
-        self.assertIn(self.HEAD, metadata["target"])
-        self.assertIn(self.DEPOT_TOOLS, metadata["target"])
-        self.assertTrue(any(line.startswith("ChsBuffer.Angle.Static: revision") for line in metadata["updates"]))
+        self.assertTrue(any(line.startswith("ChsBuffer.Angle.Static: revision") for line in report["updates"]))
         self.assert_consistent()
 
     def test_unchanged_depot_tools_keeps_its_commit(self):
@@ -732,19 +736,11 @@ class AngleTests(UpstreamTestCase):
         client.responses[f"{url[:-4]}/+/{self.HEAD}/DEPS?format=TEXT"] = \
             base64.b64encode((deps_text("5" * 40) + deps_text("6" * 40)).encode())
         before = self.snapshot()
-        code, _, stderr, metadata = self.apply(client)
+        code, _, stderr = self.run_main(client, "apply")
         self.assertEqual(2, code)
-        self.assertIn("expected one depot_tools revision", stderr)
-        self.assertIsNone(metadata)
+        self.assertRegex(stderr, r"ANGLE: .*expected one depot_tools revision")
+        self.assertIn("Nothing was written", stderr)
         self.assertEqual(before, self.snapshot())
-        pinned = self.angle()
-        code, _, stderr, metadata = self.apply(client, "--keep-going")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual(pinned, self.angle())
-        self.assertEqual(1, len(metadata["errors"]))
-        self.assertRegex(metadata["errors"][0], r"^ANGLE: .*expected one depot_tools revision")
-        self.assertIn("### Lookup errors", metadata["body"])
-        self.assertTrue(any(path == "native/hostlibs/versions.json" for path in metadata["changed"]), ".NET applied")
 
     def test_deps_patch_that_no_longer_applies_is_noted(self):
         _, depot_tools = angle_source(self.root)
@@ -752,17 +748,17 @@ class AngleTests(UpstreamTestCase):
         patch.parent.mkdir(parents=True, exist_ok=True)
         patch.write_text(DEPS_PATCH.replace("DEPOT_TOOLS", depot_tools), encoding="utf-8")
         self.assertEqual([], upstream.deps_patch_problems(patch.read_text(encoding="utf-8"), deps_text(depot_tools)))
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root, angle_head=self.HEAD), "--angle", "--dry-run")
+        code, _, stderr, report = self.apply(fake_upstream(self.root, angle_head=self.HEAD), "--angle", "--dry-run")
         self.assertEqual(0, code, stderr)
-        self.assertEqual([], metadata["notes"])
+        self.assertEqual([], report["notes"])
         # A new depot_tools revision changes a context line of the patch.
         client = fake_upstream(self.root, angle_head=self.HEAD, angle_depot_tools=self.DEPOT_TOOLS)
-        code, _, stderr, metadata = self.apply(client, "--angle", "--dry-run")
+        code, stdout, stderr, report = self.apply(client, "--angle", "--dry-run")
         self.assertEqual(0, code, stderr)
-        self.assertEqual(1, len(metadata["notes"]))
-        self.assertIn("native/angle/patches/angle-deps.patch no longer applies to DEPS", metadata["notes"][0])
-        self.assertIn("@@ -11,10 +11,5 @@", metadata["notes"][0])
-        self.assertIn("### Notes", metadata["body"])
+        self.assertEqual(1, len(report["notes"]))
+        self.assertIn("native/angle/patches/angle-deps.patch no longer applies to DEPS", report["notes"][0])
+        self.assertIn("@@ -11,10 +11,5 @@", report["notes"][0])
+        self.assertIn(f"Notes:\n  - {report['notes'][0]}\n", stdout)
 
     def test_deps_patch_hunks(self):
         deps = deps_text("1" * 40)
@@ -857,50 +853,30 @@ class PackageVersionBumpTests(UpstreamTestCase):
         self.assertEqual(({}, []), self.bump())
 
 
-class KeepGoingTests(UpstreamTestCase):
-    def test_failed_lookup_is_skipped_and_recorded(self):
+class LookupFailureTests(UpstreamTestCase):
+    """A failed upstream lookup aborts apply before anything is written."""
+
+    def test_failed_lookup_aborts(self):
         client = fake_upstream(self.root, dotnet=True, avalonia=True)
         del client.responses[f"{upstream.NUGET}/avalonia.desktop/{next_patch(self.pinned['avalonia'])}/avalonia.desktop.nuspec"]
         before = self.snapshot()
-        code, _, stderr, metadata = self.apply(client)
+        code, _, stderr = self.run_main(client, "apply")
         self.assertEqual(2, code)
+        self.assertRegex(stderr, r"Avalonia: GET .*HTTP 404")
         self.assertIn("Nothing was written", stderr)
-        self.assertIn("--keep-going", stderr)
-        self.assertIsNone(metadata)
         self.assertEqual(before, self.snapshot())
 
-        code, stdout, stderr, metadata = self.apply(client, "--keep-going")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual({next_patch(runtime) for runtime in self.pinned["runtimes"].values()},
-                         set(repo_versions.load(self.root)["runtimes"].values()))
-        self.assertEqual(self.pinned["avalonia"], self.props()["AvaloniaVersion"])
-        self.assertEqual(1, len(metadata["errors"]))
-        self.assertRegex(metadata["errors"][0], r"^Avalonia: GET .*HTTP 404")
-        self.assertIn("Lookup errors", stdout)
-        self.assert_consistent()
-
-    def test_dotnet_failure_aborts_even_with_keep_going(self):
-        # The security verdict does not read the build containers, so only plan_dotnet meets this failure.
-        client = fake_upstream(self.root, dotnet=True, avalonia=True)
-        for url in [url for url in client.responses if upstream.VMR_PIPELINE_RESOURCES in url]:
-            del client.responses[url]
-        before = self.snapshot()
-        for arguments in (("--keep-going",), ("--keep-going", "--dotnet")):
-            code, _, stderr, metadata = self.apply(client, *arguments)
-            self.assertEqual(2, code, arguments)
-            self.assertIn(upstream.VMR_PIPELINE_RESOURCES, stderr)
-            self.assertIsNone(metadata)
-            self.assertEqual(before, self.snapshot())
-        # Without --metadata there is no security verdict, so plan_dotnet is the first to read the releases.
+    def test_failed_dotnet_lookup_aborts(self):
         client = fake_upstream(self.root, avalonia=True)
         channel = ".".join(next(iter(self.pinned["runtimes"].values())).split(".")[:2])
         del client.responses[f"https://example.invalid/release-metadata/{channel}/releases.json"]
-        code, _, stderr = self.run_main(client, "apply", "--keep-going")
+        before = self.snapshot()
+        code, _, stderr = self.run_main(client, "apply")
         self.assertEqual(2, code)
         self.assertIn("releases.json", stderr)
         self.assertEqual(before, self.snapshot())
 
-    def test_failed_vmr_lookup_aborts_even_with_keep_going(self):
+    def test_failed_vmr_lookup_aborts(self):
         # Unlike a nuspec or tag that is not published yet, a failed read leaves the VMR source unknown.
         runtime = next(iter(self.pinned["runtimes"].values()))
         new, sdk = next_patch(runtime), next_patch(self.pinned["hostlibs-sources"][runtime]["tag"][1:])
@@ -914,11 +890,10 @@ class KeepGoingTests(UpstreamTestCase):
                 else:
                     client.ls_remote_failures[upstream.VMR, f"refs/tags/v{sdk}"] = \
                         upstream.UpstreamError(f"git ls-remote {upstream.VMR}: {message}")
-                code, _, stderr, metadata = self.apply(client, "--keep-going")
+                code, _, stderr = self.run_main(client, "apply")
                 self.assertEqual(2, code, stderr)
                 self.assertIn(f".NET {next(iter(self.pinned['runtimes']))} {new}: ", stderr)
                 self.assertIn(message, stderr)
-                self.assertIsNone(metadata)
                 self.assertEqual(before, self.snapshot())
                 # The check keeps its security verdict and shows the failed lookup.
                 code, stdout, stderr = self.run_main(client, "check", "--json", "--fail-on-security")
@@ -931,20 +906,6 @@ class KeepGoingTests(UpstreamTestCase):
                 self.assertEqual(1, len(item["latest-source"]["lookup-errors"]))
                 self.assertIn(message, item["latest-source"]["lookup-errors"][0])
                 self.assertIn(f"latest {new}: lookup failed: ", self.run_main(client, "check")[1])
-
-    def test_security_state_failure_aborts(self):
-        client = fake_upstream(self.root, avalonia=True)
-        del client.responses["https://example.invalid/update.json"]
-        before = self.snapshot()
-        code, _, stderr, metadata = self.apply(client, "--keep-going", "--avalonia")
-        self.assertEqual(2, code)
-        self.assertIn("cannot evaluate the security state", stderr)
-        self.assertIsNone(metadata)
-        self.assertEqual(before, self.snapshot())
-        # Without --metadata the security state is not needed.
-        code, _, stderr = self.run_main(client, "apply", "--keep-going", "--avalonia")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual(next_patch(self.pinned["avalonia"]), self.props()["AvaloniaVersion"])
 
 
 class DotnetPreviewTests(UpstreamTestCase):
@@ -970,7 +931,7 @@ class DotnetPreviewTests(UpstreamTestCase):
     def test_newer_previews_are_report_only(self):
         client = fake_upstream(self.root, dotnet=True)
         newer = next_patch(self.preview)
-        code, stdout, stderr, metadata = self.apply(client, "--keep-going")
+        code, stdout, stderr, report = self.apply(client)
         self.assertEqual(0, code, stderr)
         runtimes = repo_versions.load(self.root)["runtimes"]
         self.assertEqual(self.preview, runtimes[self.framework])
@@ -978,10 +939,7 @@ class DotnetPreviewTests(UpstreamTestCase):
                           if framework != self.framework},
                          {framework: runtime for framework, runtime in runtimes.items() if framework != self.framework})
         self.assertIn(f"{self.framework} {newer} not applied: {self.preview} is a preview; move a preview pin by "
-                      "hand", metadata["notes"])
-        self.assertEqual([], metadata["errors"])
-        # The newer preview is a security release that only a hand-made update resolves.
-        self.assertTrue(metadata["security"]["after"])
+                      "hand", report["notes"])
         self.assert_consistent()
         code, stdout, stderr = self.run_main(client, "check")
         self.assertEqual(0, code, stderr)
@@ -999,105 +957,47 @@ class DotnetPreviewTests(UpstreamTestCase):
         client.add_ref(upstream.VMR, f"refs/tags/v{self.release_sdk}", commit)
         client.add_nuspec("Microsoft.NETCore.App.Ref", self.release, commit=commit)
         add_pipeline_resources(client, commit)
-        code, _, stderr, metadata = self.apply(client, "--dotnet")
+        code, _, stderr, report = self.apply(client, "--dotnet")
         self.assertEqual(0, code, stderr)
         self.assertEqual(self.preview, repo_versions.load(self.root)["runtimes"][self.framework])
         self.assertIn(f"{self.framework} {self.release} not applied: {self.preview} is a preview; move a preview "
-                      "pin by hand", metadata["notes"])
+                      "pin by hand", report["notes"])
         self.assert_consistent()
 
 
-class MetadataTests(UpstreamTestCase):
-    def test_security_release(self):
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root, dotnet=True))
-        self.assertEqual(0, code, stderr)
-        cves = sorted(f"CVE-2099-{'.'.join(runtime.split('.')[:2])}" for runtime in self.pinned["runtimes"].values())
-        self.assertEqual({"before": True, "after": False, "cves": cves}, metadata["security"])
-        self.assertEqual("inputs", metadata["group"])
-        self.assertEqual([package_inputs.PROPS, "native/hostlibs/versions.json", package_inputs.LOCK], metadata["changed"])
-        self.assertTrue(metadata["title"].startswith("fix(deps): update .NET "), metadata["title"])
-        self.assertTrue(metadata["title"].endswith(" (security)"))
-        self.assertLessEqual(len(metadata["title"]), upstream.TITLE_LENGTH)
-        self.assertNotIn("\n", metadata["title"])
-        for cve in cves:
-            self.assertIn(cve, metadata["body"])
-        self.assertIn("ChsBuffer.Avalonia.AppHost: &lt;_Major> -> ", metadata["body"])
-        self.assertNotIn("<!--", metadata["body"])
-        self.assertEqual(len(self.pinned["runtimes"]) + 1, len(metadata["updates"]), "one line per runtime, one bump")
-        self.assertEqual([], metadata["errors"])
+class ReportTests(UpstreamTestCase):
+    """What apply returns and prints."""
 
-    def test_target_is_deterministic(self):
-        client = lambda: fake_upstream(self.root, dotnet=True, avalonia=True, skiasharp=True,  # noqa: E731
-                                       angle_head="3" * 40)
-        first = self.apply(client(), "--dry-run")[3]
-        second = self.apply(client(), "--dry-run")[3]
-        self.assertEqual(first, second)
-        applied = self.apply(client())[3]
-        self.assertEqual(first["target"], applied["target"], "--dry-run and apply describe the same target")
-        self.assertEqual(first["title"], applied["title"])
-        self.assertEqual(first["changed"], applied["changed"])
-        for name in (".NET", "Avalonia", "SkiaSharp", "ANGLE"):
-            self.assertIn(name, first["target"])
-        self.assertNotIn("sha256", first["target"])
-        self.assertLessEqual(len(first["title"]), upstream.TITLE_LENGTH)
-        self.assertEqual("fix(deps): update .NET, Avalonia, SkiaSharp and ANGLE (security)", first["title"])
+    def test_report_of_dotnet_updates(self):
+        code, stdout, stderr, report = self.apply(fake_upstream(self.root, dotnet=True))
+        self.assertEqual(0, code, stderr)
+        self.assertEqual(("inputs", [package_inputs.PROPS, "native/hostlibs/versions.json", package_inputs.LOCK], []),
+                         (report["group"], report["changed"], report["notes"]))
+        self.assertEqual(len(self.pinned["runtimes"]) + 1, len(report["updates"]), "one line per runtime, one bump")
+        for runtime in self.pinned["runtimes"].values():
+            cve = f"CVE-2099-{'.'.join(runtime.split('.')[:2])}"
+            self.assertTrue(any(cve in update for update in report["updates"]), cve)
+        self.assertIn("  - ChsBuffer.Avalonia.AppHost: <_Major> -> ", stdout)
+
+    def test_dry_run_reports_the_files_apply_changes(self):
+        client = fake_upstream(self.root, dotnet=True, avalonia=True, skiasharp=True, angle_head="3" * 40)
+        code, stdout, stderr, planned = self.apply(client, "--dry-run")
+        self.assertEqual(0, code, stderr)
+        self.assertIn("Files that would change: " + ", ".join(planned["changed"]) + "\n", stdout)
+        code, stdout, stderr, applied = self.apply(client)
+        self.assertEqual(0, code, stderr)
+        self.assertEqual(planned["changed"], applied["changed"])
+        self.assertIn("Changed files: " + ", ".join(applied["changed"]) + "\n", stdout)
 
     def test_nothing_to_change(self):
-        before = self.snapshot()
-        code, stdout, stderr, metadata = self.apply(fake_upstream(self.root))
-        self.assertEqual(0, code, stderr)
-        self.assertEqual(before, self.snapshot())
-        self.assertEqual({"group": "inputs", "changed": [], "target": "", "updates": [], "notes": [], "errors": [],
-                          "security": {"before": False, "after": False, "cves": []}},
-                         {key: value for key, value in metadata.items() if key not in ("title", "body")})
-        self.assertEqual("build(deps): no updates for inputs", metadata["title"])
-        self.assertIn("Nothing to change.", metadata["body"])
-        self.assertIn("(none: nothing to update)", stdout)
-
-    def test_resolved_advisory_is_a_security_fix(self):
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root, avalonia=True, vulnerable=True), "--avalonia")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual({"before": True, "after": False, "cves": []}, metadata["security"])
-        self.assertEqual(f"fix(deps): update Avalonia to {next_patch(self.pinned['avalonia'])} (security)",
-                         metadata["title"])
-        self.assertIn("Resolves the critical advisory https://example.invalid/advisory", metadata["body"])
-
-    def test_unresolved_finding_is_not_a_fix(self):
-        client = fake_upstream(self.root, dotnet=True, mismatched_vmr=True, avalonia=True)
-        code, _, stderr, metadata = self.apply(client)
-        self.assertEqual(0, code, stderr)
-        self.assertEqual({"before": True, "after": True, "cves": []}, metadata["security"])
-        self.assertTrue(metadata["title"].startswith("build(deps): update Avalonia"), metadata["title"])
-        self.assertTrue(any("not applied" in note for note in metadata["notes"]))
-        self.assertIn("### Not applied", metadata["body"])
-
-    def test_eol_channel_stays_a_finding(self):
-        channel = ".".join(next(iter(self.pinned["runtimes"].values())).split(".")[:2])
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root, eol=(channel,), avalonia=True))
-        self.assertEqual(0, code, stderr)
-        self.assertEqual({"before": True, "after": True, "cves": []}, metadata["security"])
-        self.assertIn(f".NET {channel}", metadata["body"])
-        self.assertTrue(metadata["title"].startswith("build(deps):"))
-
-    def test_other_groups_have_no_security_state(self):
         client = fake_upstream(self.root)
-        del client.responses[upstream.NUGET_VULNERABILITIES]
-        for group in upstream.group_names(self.root)[1:]:
-            code, _, stderr, metadata = self.apply(client, "--group", group)
+        before = self.snapshot()
+        for group in upstream.group_names(self.root):
+            code, stdout, stderr, report = self.apply(client, "--group", group)
             self.assertEqual(0, code, stderr)
-            self.assertEqual((group, None, [], ""), (metadata["group"], metadata["security"], metadata["changed"],
-                                                     metadata["target"]))
-
-    def test_old_versions_still_mentioned(self):
-        runtime = next(iter(self.pinned["runtimes"].values()))
-        notes = self.root / "docs/notes.md"
-        notes.parent.mkdir()
-        notes.write_text(f"<!-- Built from {runtime}. -->\n", encoding="utf-8")
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root, dotnet=True), "--dotnet")
-        self.assertEqual(0, code, stderr)
-        self.assertIn("### Old versions still mentioned", metadata["body"])
-        self.assertIn("`docs/notes.md:1`", metadata["body"])
-        self.assertNotIn("<!--", metadata["body"])
+            self.assertEqual({"group": group, "changed": [], "updates": [], "notes": []}, report)
+            self.assertIn("(none: nothing to update)", stdout)
+        self.assertEqual(before, self.snapshot())
 
 
 class AvaloniaMinorTests(UpstreamTestCase):
@@ -1107,7 +1007,7 @@ class AvaloniaMinorTests(UpstreamTestCase):
         self.relock()
         major = self.props()["_Major"]
         client = fake_upstream(self.root, avalonia=True, avalonia_minor=True, avalonia_major=True)
-        code, stdout, stderr, metadata = self.apply(client, "--group", "avalonia-minor")
+        code, stdout, stderr, report = self.apply(client, "--group", "avalonia-minor")
         self.assertEqual(0, code, stderr)
         new = avalonia_minor_version(self.pinned["avalonia"])
         values = self.props()
@@ -1118,36 +1018,34 @@ class AvaloniaMinorTests(UpstreamTestCase):
         self.assertEqual({"url": upstream.AVALONIA_ARCHIVE.format(commit=commit), "commit": commit,
                           "sha256": hashlib.sha256(b"archive " + new.encode()).hexdigest()},
                          repo_versions.load(self.root)["avalonia-sources"][new])
-        self.assertEqual(f"build(deps): update Avalonia to {new}", metadata["title"])
-        self.assertIsNone(metadata["security"])
         newer_major = f"{int(self.pinned['avalonia'].split('.')[0]) + 1}.0.0"
-        self.assertEqual([f"Avalonia newer major releases (report only): {newer_major}"], metadata["notes"])
+        self.assertEqual([f"Avalonia newer major releases (report only): {newer_major}"], report["notes"])
         self.assert_consistent()
 
     def test_dependency_change_is_report_only(self):
         before = self.snapshot()
         client = fake_upstream(self.root, avalonia_minor=True, avalonia_minor_skia=next_patch(self.pinned["skiasharp"]))
-        code, _, stderr, metadata = self.apply(client, "--group", "avalonia-minor")
+        code, _, stderr, report = self.apply(client, "--group", "avalonia-minor")
         self.assertEqual(0, code, stderr)
         self.assertEqual(before, self.snapshot())
-        self.assertEqual([], metadata["changed"])
-        self.assertEqual(1, len(metadata["notes"]))
-        self.assertRegex(metadata["notes"][0], r"not applied \(report only\): SkiaSharp: ")
+        self.assertEqual([], report["changed"])
+        self.assertEqual(1, len(report["notes"]))
+        self.assertRegex(report["notes"][0], r"not applied \(report only\): SkiaSharp: ")
 
     def test_tag_that_is_not_the_built_commit_is_report_only(self):
         client = fake_upstream(self.root, avalonia_minor=True)
         new = avalonia_minor_version(self.pinned["avalonia"])
         client.add_ref(upstream.AVALONIA_REPOSITORY, f"refs/tags/{new}", "9" * 40)
         before = self.snapshot()
-        code, _, stderr, metadata = self.apply(client, "--group", "avalonia-minor")
+        code, _, stderr, report = self.apply(client, "--group", "avalonia-minor")
         self.assertEqual(0, code, stderr)
         self.assertEqual(before, self.snapshot())
-        self.assertIn("was built from", metadata["notes"][0])
+        self.assertIn("was built from", report["notes"][0])
 
     def test_patch_releases_belong_to_the_inputs_group(self):
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root, avalonia=True), "--group", "avalonia-minor")
+        code, _, stderr, report = self.apply(fake_upstream(self.root, avalonia=True), "--group", "avalonia-minor")
         self.assertEqual(0, code, stderr)
-        self.assertEqual([], metadata["changed"])
+        self.assertEqual([], report["changed"])
 
 
 class SkiaSharpLineTests(UpstreamTestCase):
@@ -1155,7 +1053,7 @@ class SkiaSharpLineTests(UpstreamTestCase):
         line, other = self.pinned["skiasharp-versions"][:2]
         group = f"skiasharp-{line.split('.')[0]}"
         client = fake_upstream(self.root, skiasharp=True, skiasharp_milestone=True)
-        code, _, stderr, metadata = self.apply(client, "--group", group)
+        code, stdout, stderr = self.run_main(client, "apply", "--group", group)
         self.assertEqual(0, code, stderr)
         new = skiasharp_milestone_version(line)
         sources = repo_versions.load(self.root)["skiasharp-sources"]
@@ -1165,8 +1063,7 @@ class SkiaSharpLineTests(UpstreamTestCase):
                          sources[new])
         self.assertEqual(self.pinned["skiasharp-sources"][other], sources[other])
         self.assertNotIn(line, sources)
-        self.assertEqual(f"build(deps): update SkiaSharp to {new}", metadata["title"])
-        self.assertIn("ChsBuffer.SkiaSharp.Static (skia", metadata["body"])
+        self.assertIn("  package version ChsBuffer.SkiaSharp.Static (skia", stdout)
         self.assert_consistent()
 
     def test_package_docs_follow_the_new_versions(self):
@@ -1179,13 +1076,13 @@ class SkiaSharpLineTests(UpstreamTestCase):
         readme.write_text(f"Use {line} ({package}, HarfBuzzSharp {harfbuzz}); not {line}.9 or 1{line}.\n",
                           encoding="utf-8")
         client = fake_upstream(self.root, skiasharp=True, skiasharp_milestone=True)
-        code, _, stderr, metadata = self.apply(client, "--group", f"skiasharp-{line.split('.')[0]}")
+        code, _, stderr, report = self.apply(client, "--group", f"skiasharp-{line.split('.')[0]}")
         self.assertEqual(0, code, stderr)
         new = skiasharp_milestone_version(line)
         new_harfbuzz = repo_versions.load(self.root)["skiasharp-sources"][new]["harfbuzz"]
         self.assertEqual(f"Use {new} ({new}.1, HarfBuzzSharp {new_harfbuzz}); not {line}.9 or 1{line}.\n",
                          readme.read_text(encoding="utf-8"))
-        self.assertIn("src/package-skiasharp-static/README.md", metadata["changed"])
+        self.assertIn("src/package-skiasharp-static/README.md", report["changed"])
 
     def build_record(self):
         return json.loads((self.root / upstream.SKIASHARP_BUILD).read_text(encoding="utf-8"))
@@ -1194,51 +1091,54 @@ class SkiaSharpLineTests(UpstreamTestCase):
         line = self.pinned["skiasharp-versions"][0]
         files = self.build_record()[line]
         client = fake_upstream(self.root, skiasharp=True, skiasharp_milestone=True)
-        code, _, stderr, metadata = self.apply(client, "--group", f"skiasharp-{line.split('.')[0]}")
+        code, stdout, stderr, report = self.apply(client, "--group", f"skiasharp-{line.split('.')[0]}")
         self.assertEqual(0, code, stderr)
         record = self.build_record()
         self.assertNotIn(line, record)
         self.assertEqual(files, record[skiasharp_milestone_version(line)])
-        self.assertIn(upstream.SKIASHARP_BUILD, metadata["changed"])
-        self.assertNotIn("Upstream build changes", metadata["body"])
+        self.assertIn(upstream.SKIASHARP_BUILD, report["changed"])
+        self.assertNotIn("Upstream build changes", stdout)
 
     def test_changed_build_files_need_a_review(self):
         line = self.pinned["skiasharp-versions"][0]
-        changed, removed = sorted(self.build_record()[line])[:2]
+        files = self.build_record()[line]
+        changed, removed = sorted(files)[:2]
         client = fake_upstream(self.root, skiasharp=True, skiasharp_milestone=True,
-                               skiasharp_build={changed: "new ~~~ text\n", removed: None})
-        code, _, stderr, metadata = self.apply(client, "--group", f"skiasharp-{line.split('.')[0]}")
+                               skiasharp_build={changed: "new text\n", removed: None})
+        code, stdout, stderr, report = self.apply(client, "--group", f"skiasharp-{line.split('.')[0]}")
         self.assertEqual(0, code, stderr)
         new = skiasharp_milestone_version(line)
         record = self.build_record()
         self.assertNotIn(line, record)
         self.assertNotIn(new, record, "a changed build needs a review before it is recorded")
-        body = metadata["body"]
-        self.assertIn(f"### Upstream build changes ({line} -> {new})", body)
-        self.assertIn(f"-old {changed}", body)
-        self.assertIn("+new ~~~ text", body)
-        self.assertIn("~~~~diff", body, "the fence is longer than any run of tildes in the diff")
-        self.assertIn(f"`{removed}` (removed)", body)
-        self.assertIn(f'"{changed}": "{hashlib.sha1(b"new ~~~ text" + chr(10).encode()).hexdigest()}"', body)
-        self.assertIn(f'"{removed}": null', body)
-        self.assertTrue(any("see Upstream build changes" in note for note in metadata["notes"]))
+        self.assertTrue(any("see Upstream build changes" in note for note in report["notes"]))
+        section = stdout[stdout.index(f"Upstream build changes (SkiaSharp {line} -> {new}):\n"):]
+        self.assertIn(f"{upstream.SKIASHARP_REPOSITORY}/compare/v{line}...v{new}", section)
+        self.assertIn(f"add this entry to {upstream.SKIASHARP_BUILD}", section)
+        # The entry to add: the blobs at the new tag, null for a file the tag no longer has.
+        entry = {new: dict(sorted(files.items()), **{changed: hashlib.sha1(b"new text\n").hexdigest(), removed: None})}
+        self.assertIn(json.dumps(entry, indent=2)[1:-1].strip("\n") + "\n", section)
+        self.assertIn(f'"{removed}": null', section)
+        self.assertIn(f"--- v{line}/{changed}\n+++ v{new}/{changed}\n", section)
+        self.assertIn(f"-old {changed}\n+new text\n", section)
+        self.assertIn(f"--- v{line}/{removed}\n+++ /dev/null\n", section)
 
     def test_newer_major_is_report_only(self):
         majors = sorted({int(line.split(".")[0]) for line in self.pinned["skiasharp-versions"]})
         before = self.snapshot()
         client = fake_upstream(self.root, skiasharp_major=True)
-        code, _, stderr, metadata = self.apply(client, "--group", f"skiasharp-{majors[-1]}")
+        code, _, stderr, report = self.apply(client, "--group", f"skiasharp-{majors[-1]}")
         self.assertEqual(0, code, stderr)
         self.assertEqual(before, self.snapshot())
-        self.assertEqual([f"SkiaSharp newer major releases (report only): {majors[-1] + 1}.0.0"], metadata["notes"])
+        self.assertEqual([f"SkiaSharp newer major releases (report only): {majors[-1] + 1}.0.0"], report["notes"])
         # Reported once, by the group of the closest pinned line below it.
         self.assertEqual([], self.apply(client, "--group", f"skiasharp-{majors[0]}")[3]["notes"])
 
     def test_patch_releases_belong_to_the_inputs_group(self):
         group = f"skiasharp-{self.pinned['skiasharp-versions'][0].split('.')[0]}"
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root, skiasharp=True), "--group", group)
+        code, _, stderr, report = self.apply(fake_upstream(self.root, skiasharp=True), "--group", group)
         self.assertEqual(0, code, stderr)
-        self.assertEqual([], metadata["changed"])
+        self.assertEqual([], report["changed"])
 
 
 class ToolsTests(UpstreamTestCase):
@@ -1250,7 +1150,7 @@ class ToolsTests(UpstreamTestCase):
         before = package_inputs.compute(self.root)
         msbuild = re.search(r'Include="Microsoft\.Build" Version="([^"]+)"',
                             (self.root / "tests/HostForge.TestInfra/HostForge.TestInfra.csproj").read_text(encoding="utf-8"))
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root, tools=True), "--group", "tools")
+        code, _, stderr, report = self.apply(fake_upstream(self.root, tools=True), "--group", "tools")
         self.assertEqual(0, code, stderr)
         after = tool_pins(self.root)
         for tool in upstream.TOOLS:
@@ -1259,36 +1159,21 @@ class ToolsTests(UpstreamTestCase):
         self.assertEqual("version = 1\n", lock.read_text(encoding="utf-8"))
         self.assertEqual([".github/actions/install-task/action.yml", ".github/actions/install-uv/action.yml",
                           "pyproject.toml", "tests/Directory.Build.targets",
-                          "tests/HostForge.TestInfra/HostForge.TestInfra.csproj"], metadata["changed"])
+                          "tests/HostForge.TestInfra/HostForge.TestInfra.csproj"], report["changed"])
         self.assertIn(msbuild.group(0), (self.root / "tests/HostForge.TestInfra/HostForge.TestInfra.csproj")
                       .read_text(encoding="utf-8"), "Microsoft.Build follows the SDK")
         self.assertEqual(before, package_inputs.compute(self.root))
-        self.assertEqual("build(deps): update 6 tools", metadata["title"], "too long with all names")
-        self.assertEqual(6, len(metadata["updates"]))
-        self.assertIsNone(metadata["security"])
+        self.assertEqual(6, len(report["updates"]))
 
-    def test_failed_lookup_skips_only_that_tool(self):
+    def test_failed_lookup_aborts(self):
         client = fake_upstream(self.root, tools=True)
         del client.responses[f"{upstream.PYPI}/conan/json"]
-        pins = tool_pins(self.root)
         before = self.snapshot()
-        code, _, stderr, metadata = self.apply(client, "--group", "tools")
+        code, _, stderr = self.run_main(client, "apply", "--group", "tools")
         self.assertEqual(2, code)
         self.assertIn("conan: GET", stderr)
+        self.assertIn("Nothing was written", stderr)
         self.assertEqual(before, self.snapshot())
-        code, _, stderr, metadata = self.apply(client, "--group", "tools", "--keep-going")
-        self.assertEqual(0, code, stderr)
-        after = tool_pins(self.root)
-        self.assertEqual(pins["conan"], after["conan"])
-        self.assertEqual(next_patch(pins["ninja"]), after["ninja"])
-        self.assertEqual(next_patch(pins["Task"]), after["Task"])
-        self.assertEqual(1, len(metadata["errors"]))
-        self.assertTrue(metadata["errors"][0].startswith("conan: GET "))
-
-    def test_current_tools_change_nothing(self):
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root), "--group", "tools")
-        self.assertEqual(0, code, stderr)
-        self.assertEqual(([], ""), (metadata["changed"], metadata["target"]))
 
     def test_build_args_are_the_pins_of_the_image_tools(self):
         pins = tool_pins(self.root)
@@ -1322,8 +1207,8 @@ class RepositoryRecordTests(unittest.TestCase):
         record = json.loads((ROOT / upstream.SKIASHARP_BUILD).read_text(encoding="utf-8"))
         missing = sorted(set(versions) - set(record))
         self.assertEqual([], missing, f"The upstream build files of SkiaSharp {', '.join(missing)} are not reviewed: "
-                         "port the changes listed in the pull request to native/skiasharp, then add the entry it "
-                         f"shows to {upstream.SKIASHARP_BUILD}")
+                         "port the upstream build changes that `upstream.py apply` printed to native/skiasharp, then "
+                         f"add the entry it printed to {upstream.SKIASHARP_BUILD}")
         self.assertEqual(sorted(versions), sorted(record), f"{upstream.SKIASHARP_BUILD} lists other versions")
         for version, files in record.items():
             self.assertTrue(files and all(isinstance(sha, str) for sha in files.values()), version)
@@ -1336,27 +1221,25 @@ class LlvmTests(UpstreamTestCase):
 
     def test_updates_both_pins(self):
         version = next_patch(self.pins()[0])
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root, llvm=version), "--group", "llvm")
+        code, stdout, stderr, report = self.apply(fake_upstream(self.root, llvm=version), "--group", "llvm")
         self.assertEqual(0, code, stderr)
         self.assertEqual([version, version], self.pins())
-        self.assertEqual([upstream.LLVM_ACTION], metadata["changed"])
-        self.assertEqual(f"build(deps): update LLVM to {version}", metadata["title"])
-        self.assertEqual([upstream.LLVM_NOTE], metadata["notes"])
-        self.assertIn("bumps no package version", metadata["body"])
-        self.assertIsNone(metadata["security"])
+        self.assertEqual([upstream.LLVM_ACTION], report["changed"])
+        self.assertEqual([upstream.LLVM_NOTE], report["notes"])
+        self.assertIn(f"Notes:\n  - {upstream.LLVM_NOTE}\n", stdout)
 
     def test_release_without_the_windows_installer_is_report_only(self):
         before, version = self.snapshot(), next_patch(self.pins()[0])
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root, llvm=version, llvm_asset=False), "--group", "llvm")
+        code, _, stderr, report = self.apply(fake_upstream(self.root, llvm=version, llvm_asset=False), "--group", "llvm")
         self.assertEqual(0, code, stderr)
         self.assertEqual(before, self.snapshot())
         self.assertEqual([f"LLVM {version} not applied: the release has no LLVM-{version}-win64.msi (yet)"],
-                         metadata["notes"])
+                         report["notes"])
 
     def test_pins_that_disagree_are_an_error(self):
         action = self.root / upstream.LLVM_ACTION
         set_text(action, r"(key: llvm-)[\w.]+(-win64)", r"\g<1>1.2.3\g<2>")
-        code, _, stderr, metadata = self.apply(fake_upstream(self.root), "--group", "llvm")
+        code, _, stderr = self.run_main(fake_upstream(self.root), "apply", "--group", "llvm")
         self.assertEqual(2, code)
         self.assertIn("pin different LLVM versions", stderr)
 

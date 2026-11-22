@@ -1,20 +1,12 @@
 name: upstream
 
-# Daily upstream tracking. `plan` (read-only token) reports upstream releases and computes one patch per update
-# group; `pr` turns the patches into pull requests from upstream/<group> into main, never merged automatically.
-# The workflow fails when the plan cannot be computed, when the upstream or .NET/advisory data cannot be read,
-# when a security problem remains after the automatic updates, when a security update has no open pull request
-# for its current target (e.g. it was closed or has outdated maintainer commits), or when a git or gh operation
-# fails. Failures of the other groups are only reported in the job summary.
+# Daily upstream check with a read-only token: the job summary lists newer upstream releases with the apply group
+# that handles each, which the maintainer applies locally (task upstream-apply -- --group <group>) and opens as a
+# pull request. The job fails on a newer .NET security release, an end-of-life .NET channel or a vulnerable
+# pinned package, and when the .NET or advisory data cannot be read; the other sections only report.
 # GitHub's Actions notifications, if enabled in that user's settings, go to the user who created the workflow,
 # last changed its cron syntax or re-enabled it. GitHub disables the schedule of a public repository after 60
 # days without repository activity.
-# Pull requests created or updated with GITHUB_TOKEN start CI only after a user with write access selects
-# "Approve workflows to run" in the pull request, so unchanged branches are never pushed again. Creating them
-# requires Settings > Actions > General > "Allow GitHub Actions to create and approve pull requests".
-# GITHUB_TOKEN cannot push changes to .github/workflows (that needs the "workflows" permission, which it never
-# has); the groups only edit .github/actions/*, which contents: write covers.
-# To retry, start a new run (Actions > upstream > Run workflow); "Re-run" never updates pull requests.
 on:
   schedule:
     # Off the top of the hour, when GitHub delays scheduled runs under load.
@@ -29,88 +21,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  plan:
+  check:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    permissions:
-      contents: read
     steps:
-      - name: Re-runs do not update pull requests
-        if: github.run_attempt != 1
-        run: >-
-          echo "::notice::This is a re-run: the pr job runs only on the first attempt of a run, so pull requests are
-          not updated. To retry, start a new run (Actions > upstream > Run workflow)."
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Check upstream releases and plan the updates
+      - name: Check upstream releases
         env:
-          # Raises the GitHub API rate limit; the token is read-only and sent to api.github.com only.
           GITHUB_TOKEN: ${{ github.token }}
-          PLAN: ${{ runner.temp }}/plan
-        run: |
-          mkdir -p "$PLAN"
-          # The pr job compares this with main to tell a stale plan from a broken patch.
-          commit=$(git rev-parse HEAD)
-          check=0
-          python scripts/upstream.py check || check=$?
-          groups=$(python scripts/upstream.py groups)
-          if [[ -z "$groups" ]]; then
-            echo "::error::scripts/upstream.py groups printed no groups."
-            exit 1
-          fi
-          # An array, not a read loop: apply must not consume the group list from stdin.
-          mapfile -t group_list <<< "$groups"
-          status="{\"check\": $check, \"commit\": \"$commit\", \"groups\": {"
-          separator=
-          for group in "${group_list[@]}"; do
-            if [[ ! "$group" =~ ^[a-z0-9][a-z0-9.-]{0,63}$ ]]; then
-              echo "::error::Invalid group name from scripts/upstream.py groups."
-              exit 1
-            fi
-            # Each group starts from the checked-out commit in its own worktree.
-            worktree="$RUNNER_TEMP/worktrees/$group"
-            git worktree add --quiet --detach "$worktree" "$commit"
-            rc=0
-            python scripts/upstream.py --root "$worktree" apply --group "$group" --keep-going \
-              --metadata "$PLAN/$group.json" || rc=$?
-            # Stage everything so new files are part of the patch (.gitignore still applies).
-            git -C "$worktree" add --all
-            git -C "$worktree" diff --cached --binary > "$PLAN/$group.patch"
-            status+="$separator\"$group\": $rc"
-            separator=", "
-            echo "apply --group $group exited with $rc"
-          done
-          printf '%s}}\n' "$status" > "$PLAN/status.json"
-          cat "$PLAN/status.json"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: upstream-plan
-          path: ${{ runner.temp }}/plan
-          if-no-files-found: error
-          retention-days: 14
-
-  pr:
-    needs: plan
-    # Patches are computed against the dispatched commit; only main may turn them into pull requests. A re-run
-    # reuses the plan artifact of its run, which may be older than the open pull requests (and miss groups added
-    # since): only the first attempt applies it. github.run_attempt is a string; == 1 compares it as a number.
-    if: github.ref == 'refs/heads/main' && github.run_attempt == 1
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      # Only the stdlib script, git and gh run here; nothing processes upstream data beyond the plan files.
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: actions/download-artifact@v8.0.2
-        with:
-          name: upstream-plan
-          path: ${{ runner.temp }}/plan
-      - name: Open, update or close the upstream pull requests
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/upstream_pr.py "$RUNNER_TEMP/plan"
+        run: python scripts/upstream.py check --fail-on-security

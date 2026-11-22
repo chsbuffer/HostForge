@@ -23,14 +23,13 @@ task build-hostlibs
 task build-hostlibs HOSTLIBS_VERSION=<runtime version from versions.json>
 ```
 
-The `inputs` group of the upstream workflow moves each runtime pinned to a release to
-its newest patch release whose VMR source is confirmed: its `Microsoft.NETCore.App.Ref`
-package names a commit that the VMR tag of one of its 1xx SDKs points to. It updates
-`HostLibsNet<N>Version` in `Directory.Build.props` and records the tag, the commit and
-the build containers in `versions.json`; the pull request lists the newer releases it
-passes over under "Not applied". A runtime pinned to a preview is only reported.
-`task upstream-apply -- --dotnet` computes the same change locally; see
-[DEVELOPMENT.md](../../DEVELOPMENT.md#更新组).
+`task upstream-apply -- --dotnet` (the `inputs` group of `scripts/upstream.py apply`)
+moves each runtime pinned to a release to its newest patch release whose VMR source is
+confirmed: its `Microsoft.NETCore.App.Ref` package names a commit that the VMR tag of one
+of its 1xx SDKs points to. It updates `HostLibsNet<N>Version` in `Directory.Build.props`
+and records the tag, the commit and the build containers in `versions.json`, and lists
+the newer releases it passes over under "Not applied". A runtime pinned to a preview is
+only reported; see [DEVELOPMENT.md](../../DEVELOPMENT.md#更新组).
 
 On Linux, Task's `RID` selects the host profile: `linux-x64` (the default),
 `linux-musl-x64` or `linux-musl-arm64`. The musl profiles set `libc=musl`, and the
@@ -50,7 +49,7 @@ The upstream LLVM of the container applies the profile data that the Runtime res
 .NET 11 PGO build compiles the GC with LTO, so `libcoreclr_static.a` contains LLVM bitcode,
 and linking it needs an LLVM at least as new as the container's.
 
-The upstream workflow takes the containers of a new runtime from
+`upstream-apply` takes the containers of a new runtime from
 `src/runtime/eng/pipelines/common/templates/pipeline-with-resources.yml` at its VMR
 commit and pins a container named by tag to the digest the tag has at that time.
 
