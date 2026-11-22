@@ -27,8 +27,8 @@ the root `BUILD.gn` defines `xxhash`, whose path has no `third_party` directory.
 recipe copies ANGLE's `LICENSE`, Chromium's license for the Chromium code in
 `src/common/base` (from the `buildtools` checkout), and the license of every mapped
 component found in the archives. It fails when a member below a `third_party`
-directory has no entry or a license file is missing. When an upgrade links new third-party code, add its
-object directory and license file to the table.
+directory has no entry or a license file is missing. When an upgrade links new
+third-party code, add its object directory and license file to the table.
 
 ## Pinned sources
 
