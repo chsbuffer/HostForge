@@ -268,7 +268,13 @@ dotnet test --project .\tests\HostForge.AvaloniaAppHost.Tests\HostForge.Avalonia
 
 Avalonia 测试包含平台特定用例：Windows 用例在非 Windows 系统跳过，Linux 用例在非 Linux 系统跳过。Linux 用例使用当前系统的 RID（可用 `HOSTFORGE_NATIVE_RID` 覆盖）：glibc 上为 `linux-x64`，Alpine 上为 `linux-musl-x64` / `linux-musl-arm64`；它们同时审计模板的 ELF 架构、解释器、libc 依赖，以及单文件宿主是否导出上游 singlefilehost 的诊断符号。
 
-测试、示例和元包从仓库打出的包还原：根目录的 [`NuGet.Config`](NuGet.Config) 只从 `artifacts/packages/Release` 还原 `ChsBuffer.*` 包，其余包取自 nuget.org。缺少本地包时还原失败，不会改用 nuget.org 上同版本的已发布包；全局包目录 `artifacts/tmp/nuget/packages` 中已有的包则直接使用，不再核对来源。用镜像源代替 nuget.org 时，在用户级 NuGet.Config 中为镜像源加上 `<package pattern="*" />` 映射，它与仓库配置中的映射合并。[`samples/avalonia-nativeaot-smoke`](samples/avalonia-nativeaot-smoke/README.md) 也能发布已发布的版本，它的 `NuGet.Config` 取消了这一限制，由 `SmokePackageSource` 和已配置的源提供包。
+测试、示例和元包从仓库打出的包还原：根目录的 [`NuGet.Config`](NuGet.Config) 只从 `artifacts/packages/Release` 还原 `ChsBuffer.*` 包，其余包取自 nuget.org。缺少本地包时还原失败，不会改用 nuget.org 上同版本的已发布包。包目录中已有的版本 NuGet 直接使用，不再读取包源，而开发中会以不变的版本重新打包：
+
+- 示例和元包使用全局包目录 `artifacts/tmp/nuget/packages`（设置了 `NUGET_PACKAGES` 时为该目录）；以同一版本重新打包后，先删除其中对应的 `chsbuffer.*` 目录再还原。
+- 测试生成的工程以 `RepoContext.TestPackagesRoot`（`artifacts/tmp/build-tests/packages/<测试程序集>`）为 `RestorePackagesPath`，`NUGET_PACKAGES` 和 `globalPackagesFolder` 都不改变它。每个测试进程先删除其中的 `chsbuffer.*`，因此还原本次打出的包；其余包是不会变化的已发布版本，留给下次运行。
+- NativeAOT 矩阵为每次发布新建工作区，以工作区的 `obj/packages` 为包目录。
+
+用镜像源代替 nuget.org 时，在用户级 NuGet.Config 中为镜像源加上 `<package pattern="*" />` 映射，它与仓库配置中的映射合并。[`samples/avalonia-nativeaot-smoke`](samples/avalonia-nativeaot-smoke/README.md) 也能发布已发布的版本，它的 `NuGet.Config` 取消了这一限制，由 `SmokePackageSource` 和已配置的源提供包。
 
 ## 产物布局
 
