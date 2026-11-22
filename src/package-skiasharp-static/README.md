@@ -1,7 +1,7 @@
 # ChsBuffer.SkiaSharp.Static
 
 Static SkiaSharp and HarfBuzzSharp libraries for NativeAOT. Reference the meta
-package alongside Avalonia; managed graphics dependencies are selected automatically:
+package alongside Avalonia; graphics package dependencies are selected automatically:
 
 ```xml
 <PropertyGroup>
@@ -25,6 +25,11 @@ Both versions support `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`,
 | 3.119.4 | 3.119.4 | 8.3.1.5 |
 | 4.157.0 | 4.157.0 | 14.4.0.200 |
 
+SkiaSharp and HarfBuzzSharp bring their Windows and macOS native libraries themselves.
+The `linux-*` RID packages also depend on `SkiaSharp.NativeAssets.Linux` and
+`HarfBuzzSharp.NativeAssets.Linux` of these versions, so the Linux libraries match the
+managed packages instead of staying at the versions Avalonia depends on.
+
 Only NativeAOT with a matching RID activates the integration. The targets add
 `NativeLibrary`, `DirectPInvoke` and system link inputs, and remove corresponding
 dynamic graphics libraries before publishing. Linux archives are grouped to resolve
@@ -35,7 +40,8 @@ Conflicting native lines fail with `HFG0001`; incompatible managed SkiaSharp
 major.minor or HarfBuzzSharp major.minor.patch fail with `HFG0002` or `HFG0003`.
 An incomplete selected payload fails with `HFG0005`. `HFG1001` warns when an AOT
 build selects a nonempty Windows, Linux or macOS RID without a matching payload.
-Builds without a RID or without NativeAOT remain inactive and silent.
+Builds without a RID or without NativeAOT remain inactive and silent, and load the
+dynamic libraries of the native asset packages.
 
 Linux requires system fontconfig and libstdc++. SkiaSharp 4 also bundles static
 libc++ with its [LLVM license](https://github.com/llvm/llvm-project/blob/llvmorg-20.1.8/libcxx/LICENSE.TXT).

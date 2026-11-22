@@ -248,7 +248,7 @@ task matrix
 python -m unittest discover -s tests/native
 ```
 
-`matrix-nativeaot` 按 .NET SDK 的 RID（`NETCoreSdkPortableRuntimeIdentifier`，即测试进程所在运行时的 RID）和 `SKIASHARP_VERSION`（默认为 `Directory.Build.props` 的 `SkiaSharpVersion`）打包 SkiaSharp 静态库，Windows 还会打包 ANGLE；随后通过 `HOSTFORGE_NATIVE_RID` 与 `HOSTFORGE_SKIA_VERSION` 把同一 RID 与版本交给测试，发布并运行 `samples/nativeaot-matrix`，检查 SkiaSharp、HarfBuzzSharp 和 Windows ANGLE 的原生调用，以及发布目录中没有对应动态本机库。运行前需先构建该 RID 与版本的原生库。
+`matrix-nativeaot` 按 .NET SDK 的 RID（`NETCoreSdkPortableRuntimeIdentifier`，即测试进程所在运行时的 RID）和 `SKIASHARP_VERSION`（默认为 `Directory.Build.props` 的 `SkiaSharpVersion`）打包 SkiaSharp 静态库，Windows 还会打包 ANGLE；随后通过 `HOSTFORGE_NATIVE_RID` 与 `HOSTFORGE_SKIA_VERSION` 把同一 RID 与版本交给测试，发布并运行 `samples/nativeaot-matrix`，检查 SkiaSharp、HarfBuzzSharp 和 Windows ANGLE 的原生调用，以及发布目录中没有对应动态本机库。同一程序还以非 AOT 自包含方式发布并运行，检查加载的 SkiaSharp / HarfBuzzSharp 动态库版本与托管包一致。运行前需先构建该 RID 与版本的原生库。
 
 可通过环境变量调整 Static AppHost 矩阵：
 
@@ -417,9 +417,9 @@ flowchart LR
 | `plan-all` | Linux | 读取规范文件中的版本；`tests/native`（缓存键边界、版本一致性、包文档版本、包输入锁守卫）；与 `main` 首父历史中的包输入锁比对；两个 SkiaSharp 版本与完整 8 RID 矩阵 |
 | `build-skia-windows` | Windows x64 | 两个版本 × 两种架构的静态库、RID 包，以及 x64 AOT / 版本保护 |
 | `test-skia-windows-arm64` | Windows 11 ARM64 | ARM64 NativeAOT 原生发布、实际运行与架构审计 |
-| `build-skia-linux` | Linux | 固定 LLVM 20 / bionic sysroot 静态库、RID 包、AOT 运行及 ABI 审计 |
+| `build-skia-linux` | Linux | 固定 LLVM 20 / bionic sysroot 静态库、RID 包、AOT 运行及 ABI 审计、非 AOT 运行 |
 | `build-skia-linux-cross` | Linux x64 | linux-arm64 / musl-x64 / musl-arm64 × 两版本的静态库、RID 包及固定目标 sysroot |
-| `test-skia-linux-cross` | Linux x64 / ARM64 | glibc ARM64 原生 AOT 与 ABI 审计；musl 在原生 Alpine 容器内发布、运行及解释器审计 |
+| `test-skia-linux-cross` | Linux x64 / ARM64 | glibc ARM64 原生 AOT 与 ABI 审计；musl 在原生 Alpine 容器内发布、运行及解释器审计；两者都运行非 AOT 消费者 |
 | `build-skia-macos` | macOS 15 Intel / ARM64 | 两个版本的 Metal + GL 静态库、RID 包、AOT 实际运行、Mach-O 架构 / 部署版本审计 |
 | `pack-all` | Linux | 依赖全部 RID 的正式元包、消费 feed 与包体积审计 |
 | `test-all` | Windows / Linux / macOS 的原生 x64 / ARM64 | 三元包消费者（每个 TFM）、无 RID build、16 个发布运行单元、ABI 审计；静态 ANGLE / Vulkan / EGL / GLX 与 macOS 绘制证明 |

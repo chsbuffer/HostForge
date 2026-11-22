@@ -58,6 +58,33 @@ public class PackageVersionTests
         }
     }
 
+    public static IEnumerable<Func<(string SkiaVersion, string Rid)>> SkiaAndRidCases() =>
+        from skiaVersion in RepoContext.SupportedSkiaSharpVersions
+        from rid in new[] { "win-x64", "win-arm64", "linux-x64", "linux-musl-x64", "linux-musl-arm64" }
+        select (Func<(string, string)>)(() => (skiaVersion, rid));
+
+    // SkiaSharp and HarfBuzzSharp depend on their Windows and macOS native assets but not on the Linux ones, and
+    // builds that no template covers load the dynamic libraries.
+    [Test]
+    [MethodDataSource(nameof(SkiaAndRidCases))]
+    public async Task LinuxRidPackagesDependOnTheLinuxNativeAssetsOfTheManagedVersions(string skiaVersion, string rid)
+    {
+        string harfBuzzVersion = RepoContext.GetHarfBuzzVersion(skiaVersion);
+        string project = Path.Combine(RepoContext.RepoRoot, "src", "package-avalonia-apphost", "AvaloniaAppHost.Rid.csproj");
+        CommandResult result = await CommandRunner.RunAsync("dotnet",
+            $"msbuild \"{project}\" -nologo -p:SkiaSharpVersion={skiaVersion} -p:AvaloniaHostRid={rid} -getItem:PackageReference",
+            RepoContext.RepoRoot);
+        AssertEx.Success(result, $"AvaloniaAppHost.Rid.csproj ({rid}, {skiaVersion})");
+        using JsonDocument document = JsonDocument.Parse(result.StandardOutput);
+        IEnumerable<string> actual = document.RootElement.GetProperty("Items").GetProperty("PackageReference").EnumerateArray()
+            .Select(reference => $"{reference.GetProperty("Identity").GetString()} {reference.GetProperty("Version").GetString()}")
+            .Where(reference => reference.Contains(".NativeAssets.", StringComparison.Ordinal));
+        string[] expected = rid.StartsWith("linux-", StringComparison.Ordinal)
+            ? [$"HarfBuzzSharp.NativeAssets.Linux {harfBuzzVersion}", $"SkiaSharp.NativeAssets.Linux {skiaVersion}"]
+            : [];
+        Equal(string.Join(", ", actual.Order(StringComparer.Ordinal)), string.Join(", ", expected));
+    }
+
     private static void Equal(string actual, string expected)
     {
         if (!string.Equals(actual, expected, StringComparison.Ordinal))

@@ -40,6 +40,8 @@ Current coverage:
   dependency in the musl templates, and the diagnostics exports of the upstream singlefilehost
 - Linux Skia/HarfBuzz native runtime copy suppression switch behavior
 - Skia 3 / 4 package versions, optional preview labels, managed dependencies and unchanged template paths
+- Dependencies of the Linux RID packages on `SkiaSharp.NativeAssets.Linux` and `HarfBuzzSharp.NativeAssets.Linux`
+  at the managed versions, in the project for every RID and in the packed package of the test system's RID
 
 Link the templates for every template TFM first: `task link-avalonia TARGET_OS=windows` on Windows, the container
 commands in [Linux templates](../../src/package-avalonia-apphost/DEVELOPMENT.md#linux-templates) on Linux.

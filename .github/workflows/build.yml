@@ -372,7 +372,7 @@ jobs:
           dotnet-version: 11.0.x
       - name: Pack RID package
         run: dotnet pack src/package-skiasharp-static/SkiaSharp.Static.csproj -c Release -p:AvaloniaHostRid=linux-x64 -p:SkiaSharpVersion=${{ matrix.version }}
-      - name: Publish, run and audit NativeAOT against the target sysroot
+      - name: Publish, run and audit NativeAOT against the target sysroot; run the non-AOT consumer
         env:
           HOSTFORGE_SKIA_VERSION: ${{ matrix.version }}
           HOSTFORGE_CHECK_ANGLE: 'false'
@@ -501,13 +501,13 @@ jobs:
         if: matrix.target.rid == 'linux-arm64'
         with:
           dotnet-version: 11.0.x
-      - name: Publish, run and audit glibc NativeAOT
+      - name: Publish, run and audit glibc NativeAOT; run the non-AOT consumer
         if: matrix.target.rid == 'linux-arm64'
         run: |
           sudo apt-get update
           sudo apt-get install -y clang lld binutils fontconfig fonts-dejavu-core
           dotnet test --project tests/HostForge.NativeAot.Tests/HostForge.NativeAot.Tests.csproj -c Release
-      - name: Publish, run and audit musl NativeAOT in native Alpine
+      - name: Publish, run and audit musl NativeAOT and run the non-AOT consumer in native Alpine
         if: startsWith(matrix.target.rid, 'linux-musl-')
         run: |
           docker run --rm -v "$PWD:$PWD" -w "$PWD" \
@@ -662,10 +662,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang lld binutils fontconfig fonts-dejavu-core
-      - name: Build without RID and publish and run the three-meta consumer
+      - name: Build without RID and publish and run the three-meta consumer with and without NativeAOT
         if: ${{ !startsWith(matrix.target.rid, 'linux-musl-') }}
         run: dotnet test --project tests/HostForge.NativeAot.Tests -c Release
-      - name: Build and publish the three-meta consumer in native Alpine
+      - name: Build without RID and publish and run the three-meta consumer with and without NativeAOT in native Alpine
         if: startsWith(matrix.target.rid, 'linux-musl-')
         run: |
           docker run --rm -v "$PWD:$PWD" -w "$PWD" \

@@ -47,6 +47,7 @@ public class PackageLayoutTests
         using ZipArchive zip = ZipFile.OpenRead(path);
         if (version.StartsWith("4.", StringComparison.Ordinal) && rid.StartsWith("linux-", StringComparison.Ordinal) && zip.GetEntry("licenses/libcxx.LICENSE.TXT") is null)
             throw new InvalidOperationException("The bundled libc++ runtime license is missing.");
+        await AssertGraphicsDependenciesAsync(zip, version, rid);
         string nativeRoot = $"build/native/{rid}/";
         ZipArchiveEntry manifest = zip.GetEntry(nativeRoot + "manifest.json") ?? throw new InvalidOperationException("Missing native manifest.");
         using JsonDocument provenance = await JsonDocument.ParseAsync(manifest.Open());
@@ -72,5 +73,23 @@ public class PackageLayoutTests
         if (zip.Entries.Any(entry => entry.FullName.Contains("/default/", StringComparison.Ordinal) || entry.FullName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException("The static package includes a variant directory or dynamic payload.");
         Console.WriteLine($"Verified {path}: {new FileInfo(path).Length} bytes and all manifest hashes.");
+    }
+
+    // SkiaSharp and HarfBuzzSharp depend on their Windows and macOS native assets but not on the Linux ones, so the
+    // Linux RID packages add those at the managed versions. Upstream excludes the same assets from these dependencies.
+    private static async Task AssertGraphicsDependenciesAsync(ZipArchive zip, string skiaVersion, string rid)
+    {
+        string harfBuzzVersion = RepoContext.GetHarfBuzzVersion(skiaVersion);
+        var expected = new List<string> { $"SkiaSharp {skiaVersion}", $"HarfBuzzSharp {harfBuzzVersion}" };
+        if (rid.StartsWith("linux-", StringComparison.Ordinal))
+            expected.AddRange([$"SkiaSharp.NativeAssets.Linux {skiaVersion}", $"HarfBuzzSharp.NativeAssets.Linux {harfBuzzVersion}"]);
+
+        using Stream stream = zip.Entries.Single(entry => entry.FullName.EndsWith(".nuspec", StringComparison.Ordinal)).Open();
+        XElement[] dependencies = XDocument.Load(stream).Descendants().Where(element => element.Name.LocalName == "dependency").ToArray();
+        IEnumerable<string> actual = dependencies.Select(element => $"{(string?)element.Attribute("id")} {(string?)element.Attribute("version")}");
+        await Assert.That(string.Join(", ", actual.Order(StringComparer.Ordinal)))
+            .IsEqualTo(string.Join(", ", expected.Order(StringComparer.Ordinal)));
+        foreach (XElement dependency in dependencies)
+            await Assert.That((string?)dependency.Attribute("exclude")).IsEqualTo("Build,Analyzers");
     }
 }

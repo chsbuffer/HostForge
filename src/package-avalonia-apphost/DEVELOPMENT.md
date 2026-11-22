@@ -72,6 +72,8 @@ The Build package's `.targets` matches `$(RuntimeIdentifier)` and the project's 
 resolver with exactly those assemblies, and only for the libraries that the main program exports, so the
 application assembly keeps the default loading under `dotnet`, test hosts and the previewer.
 
+Each RID package also depends on SkiaSharp and HarfBuzzSharp at the linked versions. The managed packages depend on their Windows and macOS native assets but not on the Linux ones, which otherwise stay at the older versions Avalonia.Skia depends on, so the Linux RID packages add `SkiaSharp.NativeAssets.Linux` and `HarfBuzzSharp.NativeAssets.Linux` at the same versions. Builds without an active template, and the Avalonia designer, load these dynamic libraries.
+
 ## SkiaSharp variants and package versions
 
 `SKIASHARP_VERSION` selects the native libraries and managed package dependencies
