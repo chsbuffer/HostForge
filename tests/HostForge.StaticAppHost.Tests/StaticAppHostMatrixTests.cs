@@ -39,24 +39,40 @@ public class StaticAppHostMatrixTests
         // Kept bin/obj can already hold the links of the first build of each kind, which then relinks only
         // if its inputs changed since the previous run.
         bool? firstBuildLinks = noClean ? null : true;
-        var steps = new (string Name, string Arguments, bool? ExpectUpToDate)[]
+        string outputDir = Path.Combine(consumerDir, "bin", configuration, targetFramework);
+        string executableName = GetPublishedExecutableFileName();
+        string noRidExecutable = Path.Combine(outputDir, executableName);
+        string ridExecutable = Path.Combine(outputDir, rid, executableName);
+        string publishedExecutable = Path.Combine(outputDir, rid, "publish", executableName);
+
+        var steps = new (string Name, string Arguments, bool? ExpectUpToDate, string Executable)[]
         {
-            ("01-build-no-rid-first", $"build \"{consumerProject}\" {properties}", firstBuildLinks),
-            ("02-build-no-rid-second", $"build \"{consumerProject}\" {properties}", false),
-            ("03-build-rid-first", $"build \"{consumerProject}\" {properties} -r {rid}", firstBuildLinks),
-            ("04-build-rid-second", $"build \"{consumerProject}\" {properties} -r {rid}", false),
-            ("05-publish-first", $"publish \"{consumerProject}\" {properties} -r {rid} /p:PublishSingleFile=true", firstBuildLinks),
-            ("06-publish-second", $"publish \"{consumerProject}\" {properties} -r {rid} /p:PublishSingleFile=true", false)
+            ("01-build-no-rid-first", $"build \"{consumerProject}\" {properties}", firstBuildLinks, noRidExecutable),
+            ("02-build-no-rid-second", $"build \"{consumerProject}\" {properties}", false, noRidExecutable),
+            ("03-build-rid-first", $"build \"{consumerProject}\" {properties} -r {rid}", firstBuildLinks, ridExecutable),
+            ("04-build-rid-second", $"build \"{consumerProject}\" {properties} -r {rid}", false, ridExecutable),
+            ("05-publish-first", $"publish \"{consumerProject}\" {properties} -r {rid} /p:PublishSingleFile=true", firstBuildLinks, publishedExecutable),
+            ("06-publish-second", $"publish \"{consumerProject}\" {properties} -r {rid} /p:PublishSingleFile=true", false, publishedExecutable)
         };
 
-        foreach ((string name, string arguments, bool? expectedUpToDate) in steps)
+        foreach ((string name, string arguments, bool? expectedUpToDate, string executable) in steps)
         {
+            // Skipping the link is not enough: a host rewritten after its link makes the SDK regenerate and copy it again.
+            DateTime? executableWriteTime = expectedUpToDate == false ? File.GetLastWriteTimeUtc(executable) : null;
+
             CommandResult result = await CommandRunner.RunAsync(
                 "dotnet",
                 arguments,
                 RepoContext.RepoRoot);
 
             AssertEx.Success(result, $"{targetFramework} {name}");
+            AssertEx.FileExists(executable);
+
+            if (executableWriteTime is not null && File.GetLastWriteTimeUtc(executable) != executableWriteTime)
+            {
+                throw new InvalidOperationException(
+                    $"Step {name} ({targetFramework}) rewrote {executable} although nothing changed.{Environment.NewLine}{result.CombinedOutput}");
+            }
 
             if (expectedUpToDate is not null)
             {
@@ -73,21 +89,10 @@ public class StaticAppHostMatrixTests
 
         if (!skipExeRun)
         {
-            string executablePath = Path.Combine(
-                consumerDir,
-                "bin",
-                configuration,
-                targetFramework,
-                rid,
-                "publish",
-                GetPublishedExecutableFileName());
-
-            AssertEx.FileExists(executablePath);
-
             CommandResult runResult = await CommandRunner.RunAsync(
-                executablePath,
+                publishedExecutable,
                 string.Empty,
-                Path.GetDirectoryName(executablePath)!);
+                Path.GetDirectoryName(publishedExecutable)!);
 
             AssertEx.Success(runResult, $"{targetFramework} 07-run-exe");
             AssertEx.Contains(runResult.CombinedOutput, "Hello, World!2");

@@ -14,12 +14,14 @@
       <_HostVariant Include="AppHost">
         <StampPath>$(AppHostStampFullPath)</StampPath>
         <CommandText>@(_AppHostLinkerArg, '&#x0A;')</CommandText>
+        <PostLinkCommand>$(_AppHostPostLinkCommand)</PostLinkCommand>
         <FilesText>@(_AppHostFingerprintFile->'%(FullPath)|%(ModifiedTime)', '&#x0A;')&#x0A;@(_NativeLibraryInput->'%(FullPath)|%(ModifiedTime)', '&#x0A;')&#x0A;@(LinkerInput->'%(FullPath)|%(ModifiedTime)', '&#x0A;')&#x0A;@(_AppHostModuleDefinition->'%(FullPath)|%(ModifiedTime)', '&#x0A;')</FilesText>
       </_HostVariant>
 
       <_HostVariant Include="SingleFileHost">
         <StampPath>$(SingleFileHostStampFullPath)</StampPath>
         <CommandText>@(_SingleFileHostLinkerArg, '&#x0A;')</CommandText>
+        <PostLinkCommand>$(_SingleFileHostPostLinkCommand)</PostLinkCommand>
         <FilesText>@(_SingleFileHostFingerprintFile->'%(FullPath)|%(ModifiedTime)', '&#x0A;')&#x0A;@(_NativeLibraryInput->'%(FullPath)|%(ModifiedTime)', '&#x0A;')&#x0A;@(LinkerInput->'%(FullPath)|%(ModifiedTime)', '&#x0A;')&#x0A;@(_SingleFileHostModuleDefinition->'%(FullPath)|%(ModifiedTime)', '&#x0A;')</FilesText>
       </_HostVariant>
     </ItemGroup>
@@ -28,7 +30,7 @@
     <WriteLinesToFile File="%(_HostVariant.StampPath)"
                       Overwrite="true"
                       WriteOnlyWhenDifferent="true"
-                      Lines="Variant=%(_HostVariant.Identity)&#x0A;Rid=$(StaticHostRid)&#x0A;CppLinker=$(CppLinker)&#x0A;Command&#x0A;%(_HostVariant.CommandText)&#x0A;Files&#x0A;%(_HostVariant.FilesText)" />
+                      Lines="Variant=%(_HostVariant.Identity)&#x0A;Rid=$(StaticHostRid)&#x0A;CppLinker=$(CppLinker)&#x0A;PostLink=%(_HostVariant.PostLinkCommand)&#x0A;Command&#x0A;%(_HostVariant.CommandText)&#x0A;Files&#x0A;%(_HostVariant.FilesText)" />
   </Target>
 
   <Target Name="LinkAppHost"
@@ -43,10 +45,22 @@
              Text="[HostForge.StaticAppHost] LinkAppHost executed for $(StaticHostRid): $(AppHostLinkFullPath)" />
     <Exec Command="&quot;$(CppLinker)&quot; @(_AppHostLinkerArg, ' ')"
           WorkingDirectory="$(StaticHostAssetsDir)" />
+    <Exec Command="$(_AppHostPostLinkCommand)"
+          Condition="'$(_AppHostPostLinkCommand)' != ''" />
 
     <PropertyGroup>
       <AppHostSourcePath>$(AppHostLinkFullPath)</AppHostSourcePath>
     </PropertyGroup>
+
+    <OnError ExecuteTargets="_DeleteAppHostLink" />
+  </Target>
+
+  <!--
+    The post-link command rewrites the host in place. A host left by a failed step is newer than the stamp and
+    would pass as up to date, so a failed link deletes it.
+  -->
+  <Target Name="_DeleteAppHostLink">
+    <Delete Files="$(AppHostLinkFullPath)" />
   </Target>
 
   <Target Name="LinkSingleFileHost"
@@ -61,10 +75,18 @@
              Text="[HostForge.StaticAppHost] LinkSingleFileHost executed for $(StaticHostRid): $(SingleFileHostLinkFullPath)" />
     <Exec Command="&quot;$(CppLinker)&quot; @(_SingleFileHostLinkerArg, ' ')"
           WorkingDirectory="$(StaticHostAssetsDir)" />
+    <Exec Command="$(_SingleFileHostPostLinkCommand)"
+          Condition="'$(_SingleFileHostPostLinkCommand)' != ''" />
 
     <PropertyGroup>
       <SingleFileHostSourcePath>$(SingleFileHostLinkFullPath)</SingleFileHostSourcePath>
     </PropertyGroup>
+
+    <OnError ExecuteTargets="_DeleteSingleFileHostLink" />
+  </Target>
+
+  <Target Name="_DeleteSingleFileHostLink">
+    <Delete Files="$(SingleFileHostLinkFullPath)" />
   </Target>
 
 </Project>

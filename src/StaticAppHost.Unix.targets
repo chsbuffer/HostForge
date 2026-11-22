@@ -82,6 +82,12 @@
       <_SingleFileHostLinkFlags Condition="false and '$(_IsApplePlatform)' != 'true'">$(_SingleFileHostLinkFlags) -Wl,--version-script=&quot;$(_SingleFileHostExportsFile)&quot;</_SingleFileHostLinkFlags>
     </PropertyGroup>
 
+    <!-- The link targets run these after linking, so stripping shares their up-to-date check instead of rewriting a current host. -->
+    <PropertyGroup Condition="'$(_IsApplePlatform)' != 'true'">
+      <_AppHostPostLinkCommand>&quot;$(ObjCopyName)&quot; --strip-debug --strip-unneeded &quot;$(AppHostLinkFullPath)&quot;</_AppHostPostLinkCommand>
+      <_SingleFileHostPostLinkCommand>&quot;$(ObjCopyName)&quot; --strip-debug --strip-unneeded &quot;$(SingleFileHostLinkFullPath)&quot;</_SingleFileHostPostLinkCommand>
+    </PropertyGroup>
+
     <ItemGroup>
       <_CommonLinkerArg Include="-fuse-ld=$(LinkerFlavor)" Condition="'$(LinkerFlavor)' != ''" />
       <_CommonLinkerArg Include="@(AdditionalNativeLibraryDirectories->'-L&quot;%(Identity)&quot;')" />
@@ -118,17 +124,5 @@
       <_SingleFileHostLinkerArg Include="-Wl,--end-group" Condition="'$(GroupNativeLibraries)' == 'true'" />
       <_SingleFileHostLinkerArg Include="-o &quot;$(SingleFileHostLinkFullPath)&quot;" />
     </ItemGroup>
-  </Target>
-
-  <Target Name="StripAppHostSymbols"
-          AfterTargets="LinkAppHost"
-          Condition="'$(_IsApplePlatform)' != 'true' and Exists('$(AppHostLinkFullPath)')">
-    <Exec Command="&quot;$(ObjCopyName)&quot; --strip-debug --strip-unneeded &quot;$(AppHostLinkFullPath)&quot;" />
-  </Target>
-
-  <Target Name="StripSingleFileHostSymbols"
-          AfterTargets="LinkSingleFileHost"
-          Condition="'$(_IsApplePlatform)' != 'true' and Exists('$(SingleFileHostLinkFullPath)')">
-    <Exec Command="&quot;$(ObjCopyName)&quot; --strip-debug --strip-unneeded &quot;$(SingleFileHostLinkFullPath)&quot;" />
   </Target>
 </Project>
