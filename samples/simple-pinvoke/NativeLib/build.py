@@ -14,15 +14,13 @@ def error(text):
 
 
 def execv(cmd: str, cwd: Path | None = None, env=None):
-    out = None
     print(cmd)
+    # A command line, not an argument list, for cmd.exe: list2cmdline would escape the quotes inside cmd as \",
+    # which cmd.exe does not understand. /s strips only the outer quotes added here.
     proc = subprocess.run(
-        ["cmd.exe", "/d", "/c", cmd] if is_windows else ["bash", "-c", cmd],
+        f'cmd.exe /d /s /c "{cmd}"' if is_windows else ["bash", "-c", cmd],
         cwd=cwd,
         env=env,
-        stdout=out,
-        stderr=out,
-        shell=False,
     )
     if proc.returncode != 0:
         error(f"Command failed ({proc.returncode}): {cmd}")
@@ -31,7 +29,7 @@ def execv(cmd: str, cwd: Path | None = None, env=None):
 
 
 def run_in_vs_env(cmd: str, cwd: Path, arch: str, env=None):
-    full_cmd = f"call {INIT_VS_ENV_CMD} {arch} && cd /d {cwd} && {cmd}"
+    full_cmd = f'call "{INIT_VS_ENV_CMD}" {arch} && cd /d "{cwd}" && {cmd}'
     execv(full_cmd)
 
 
