@@ -18,10 +18,10 @@
           [--dry-run]
           Update the files of one group, computed from the repository as it is (one pull request per group):
             inputs          (default) .NET runtime patch releases with the official Linux build
-                            containers of their VMR commit, the Avalonia patch release of the pinned
-                            minor, SkiaSharp patch releases of the pinned milestones and the head of the pinned
-                            ANGLE branch with the depot_tools revision of its DEPS. --dotnet, --avalonia,
-                            --skiasharp and --angle select a subset.
+                            containers of their VMR commit (a preview pin is report only), the Avalonia patch
+                            release of the pinned minor, SkiaSharp patch releases of the pinned milestones and the
+                            head of the pinned ANGLE branch with the depot_tools revision of its DEPS. --dotnet,
+                            --avalonia, --skiasharp and --angle select a subset.
             avalonia-minor  the newest release of the newest Avalonia minor of the pinned major, when it declares
                             the SkiaSharp, HarfBuzzSharp and ANGLE versions of the pinned Avalonia; otherwise
                             report only, like newer majors.
@@ -1010,8 +1010,13 @@ def _sections(report):
                              "tag and Microsoft.NETCore.App.Ref commit agree with native/hostlibs/versions.json")
             if item["newer"] and _source_problems(latest):
                 notes.append(f"{item['framework']} latest {item['latest']}: " + "; ".join(_source_problems(latest)))
-        if any(item["newer"] for item in report["dotnet"]):
+        if any(item["newer"] and is_stable(item["pinned"]) for item in report["dotnet"]):
             notes.append("newer patch releases: apply group inputs")
+        previews = [f"{item['framework']} {item['latest']}" for item in report["dotnet"]
+                    if item["newer"] and not is_stable(item["pinned"])]
+        if previews:
+            notes.append("newer releases of preview pins (report only; move a preview pin by hand): "
+                         + ", ".join(previews))
         sections.append((".NET runtimes", ["TFM", "pinned", "latest", "VMR tag", "VMR commit", "newer security", "support"],
                          rows, notes))
     if report.get("avalonia") is not None:
@@ -1512,8 +1517,16 @@ class Run:
 
 
 def dotnet_target(run, item):
-    """(version, VMR source) of the newest newer release of a dotnet_report item whose VMR source is published,
-    or None; the newer releases passed over are noted. A failed lookup raises."""
+    """(version, VMR source) of the newest newer release of a dotnet_report item whose VMR source is published, or
+    None; the newer releases passed over are noted. A failed lookup raises.
+
+    A preview pin is report only: a newer preview is no patch release, and the release itself would move the
+    version of ChsBuffer.AppHost.Static (<runtime>-alpha.N) back."""
+    if not is_stable(item["pinned"]):
+        if item["newer"]:
+            run.notes.append(f"{item['framework']} {item['latest']} not applied: {item['pinned']} is a preview; "
+                             "move a preview pin by hand")
+        return None
     releases = None
     for version in reversed(item["newer"]):
         if version == item["latest"]:

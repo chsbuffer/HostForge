@@ -508,7 +508,7 @@ native RID 包及聚合包统一使用上游版本的前三段加第四段修复
 | `tools` | Task、uv、conan、ninja、TUnit、Microsoft.Build.Locator |
 | `llvm` | [`install-llvm`](.github/actions/install-llvm/action.yml) 的 LLVM 版本（新版本仍提供该 action 使用的安装包时） |
 
-只报告、手动处理：新主版本、依赖有变化的新 Avalonia、ANGLE 换分支。不跟踪：Microsoft.Build（版本随 SDK）、runner 镜像。
+只报告、手动处理：新主版本、依赖有变化的新 Avalonia、ANGLE 换分支、固定为预览版的 .NET 运行时的新版本（含正式版）。不跟踪：Microsoft.Build（版本随 SDK）、runner 镜像。
 
 最新的 .NET 补丁版在 nuget.org 上还没有 `Microsoft.NETCore.App.Ref`、或 VMR 还没有它的标签时，`inputs` 组改用此前最新的就绪补丁版；PR 正文的 “Not applied” 列出跳过的版本。
 

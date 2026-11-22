@@ -946,6 +946,66 @@ class KeepGoingTests(UpstreamTestCase):
         self.assertEqual(next_patch(self.pinned["avalonia"]), self.props()["AvaloniaVersion"])
 
 
+class DotnetPreviewTests(UpstreamTestCase):
+    """A runtime pinned to a preview, as a new TFM may be before its release."""
+
+    def setUp(self):
+        super().setUp()
+        (self.framework, runtime), = list(self.pinned["runtimes"].items())[-1:]
+        self.release, self.release_sdk = runtime, self.pinned["hostlibs-sources"][runtime]["tag"][1:]
+        self.preview = f"{runtime}-preview.7.25380.108"
+        props = self.root / package_inputs.PROPS
+        number = self.framework[3:].split(".")[0]
+        set_text(props, rf"(<HostLibsNet{number}Version>){re.escape(runtime)}<", rf"\g<1>{self.preview}<")
+        hostlibs = self.root / "native/hostlibs/versions.json"
+        entries = json.loads(hostlibs.read_text(encoding="utf-8"))
+        entry = entries.pop(runtime)
+        entry["tag"] = f"v{entry['tag'][1:]}-preview.7.25380.108"
+        hostlibs.write_text(json.dumps({**entries, self.preview: entry}, indent=2), encoding="utf-8")
+        self.relock()
+        self.pinned = repo_versions.load(self.root)
+        self.assertEqual([], repo_versions.problems(self.pinned))
+
+    def test_newer_previews_are_report_only(self):
+        client = fake_upstream(self.root, dotnet=True)
+        newer = next_patch(self.preview)
+        code, stdout, stderr, metadata = self.apply(client, "--keep-going")
+        self.assertEqual(0, code, stderr)
+        runtimes = repo_versions.load(self.root)["runtimes"]
+        self.assertEqual(self.preview, runtimes[self.framework])
+        self.assertEqual({framework: next_patch(runtime) for framework, runtime in self.pinned["runtimes"].items()
+                          if framework != self.framework},
+                         {framework: runtime for framework, runtime in runtimes.items() if framework != self.framework})
+        self.assertIn(f"{self.framework} {newer} not applied: {self.preview} is a preview; move a preview pin by "
+                      "hand", metadata["notes"])
+        self.assertEqual([], metadata["errors"])
+        # The newer preview is a security release that only a hand-made update resolves.
+        self.assertTrue(metadata["security"]["after"])
+        self.assert_consistent()
+        code, stdout, stderr = self.run_main(client, "check")
+        self.assertEqual(0, code, stderr)
+        self.assertIn("newer releases of preview pins (report only; move a preview pin by hand): "
+                      f"{self.framework} {newer}", stdout)
+
+    def test_release_of_a_preview_pin_is_report_only(self):
+        # <runtime>-alpha.N of ChsBuffer.AppHost.Static would move back from the preview to the release.
+        client = fake_upstream(self.root, dotnet=True)
+        url = f"https://example.invalid/release-metadata/{'.'.join(self.release.split('.')[:2])}/releases.json"
+        releases = json.loads(client.responses[url])
+        releases["releases"].insert(0, release(self.release, self.release_sdk))
+        client.add_json(url, releases)
+        commit = fake_commit(self.release_sdk)
+        client.add_ref(upstream.VMR, f"refs/tags/v{self.release_sdk}", commit)
+        client.add_nuspec("Microsoft.NETCore.App.Ref", self.release, commit=commit)
+        add_pipeline_resources(client, commit)
+        code, _, stderr, metadata = self.apply(client, "--dotnet")
+        self.assertEqual(0, code, stderr)
+        self.assertEqual(self.preview, repo_versions.load(self.root)["runtimes"][self.framework])
+        self.assertIn(f"{self.framework} {self.release} not applied: {self.preview} is a preview; move a preview "
+                      "pin by hand", metadata["notes"])
+        self.assert_consistent()
+
+
 class MetadataTests(UpstreamTestCase):
     def test_security_release(self):
         code, _, stderr, metadata = self.apply(fake_upstream(self.root, dotnet=True))
