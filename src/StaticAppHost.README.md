@@ -32,6 +32,12 @@ vswhere (Desktop development with C++, plus the ARM64 build tools for `win-arm64
 `/DEF`, so the `/DEF:` items of `@(LinkerArg)` are merged into one generated module-definition file per host, for
 SingleFileHost together with the runtime's `singlefilehost.def`; such files may contain only an `EXPORTS` section.
 
+On Windows only, the hardening and delay-load options (`/guard:*`, `/CETCOMPAT`, `/DELAYLOAD:*`) come from the
+`<host>.linkflags` that the host libs record, so the relinked hosts match the official ones: on x64 they link
+with `/guard:ehcont`, which fails with `LNK1386` when a `NativeLibrary` has C++ exception handling but was not
+compiled with `/guard:ehcont`. Set `StaticHostGuardEHCont=false` to link such libraries without the EH
+continuation table.
+
 Linux (`StaticAppHost.Unix.targets`) links with `CppCompilerAndLinker` (`clang++`, or `g++` when `clang++` is not on
 `PATH`) and `LinkerFlavor` (`lld` by default), then strips debug information and unneeded symbols with
 `llvm-objcopy` (`objcopy` when `CppCompilerAndLinker` is not Clang or `llvm-objcopy` is missing).
@@ -43,12 +49,6 @@ each other.
 Each host has an input stamp next to it (`*.inputs.stamp`) that records the RID, the linker, the link and post-link
 commands, and the paths and timestamps of the response file, `@(NativeLibrary)`, `@(LinkerInput)` and module
 definitions. A host is relinked only when its stamp changes or the host is missing; a failed link deletes the host.
-
-The hardening and delay-load options (`/guard:*`, `/CETCOMPAT`, `/DELAYLOAD:*`) come from the `<host>.linkflags`
-that the host libs record, so the relinked hosts match the official ones: on x64 they link with
-`/guard:ehcont`, which fails with `LNK1386` when a `NativeLibrary` has C++ exception handling but was not
-compiled with `/guard:ehcont`. Set `StaticHostGuardEHCont=false` to link such libraries without the EH
-continuation table.
 
 ## Usage
 
