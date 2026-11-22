@@ -603,7 +603,8 @@ class ApplyTests(UpstreamTestCase):
         self.assertEqual(0, code, stderr)
         pinned = repo_versions.load(self.root)
         expected = {next_patch(line): {"skia-commit": fake_commit("skia " + next_patch(line)),
-                                       "harfbuzz": next_patch(self.pinned["skiasharp-sources"][line]["harfbuzz"])}
+                                       "harfbuzz": next_patch(self.pinned["skiasharp-sources"][line]["harfbuzz"]),
+                                       "skiasharp-commit": fake_commit("skiasharp " + next_patch(line))}
                     for line in self.pinned["skiasharp-versions"]}
         self.assertEqual(expected, pinned["skiasharp-sources"])
         self.assertEqual(next_patch(self.pinned["skiasharp"]), pinned["skiasharp"])
@@ -1159,7 +1160,8 @@ class SkiaSharpLineTests(UpstreamTestCase):
         new = skiasharp_milestone_version(line)
         sources = repo_versions.load(self.root)["skiasharp-sources"]
         self.assertEqual({"skia-commit": fake_commit("skia " + new),
-                          "harfbuzz": next_patch(next_patch(self.pinned["skiasharp-sources"][line]["harfbuzz"]))},
+                          "harfbuzz": next_patch(next_patch(self.pinned["skiasharp-sources"][line]["harfbuzz"])),
+                          "skiasharp-commit": fake_commit("skiasharp " + new)},
                          sources[new])
         self.assertEqual(self.pinned["skiasharp-sources"][other], sources[other])
         self.assertNotIn(line, sources)

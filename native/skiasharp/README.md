@@ -3,13 +3,17 @@
 This Conan 2 recipe builds the SkiaSharp and HarfBuzzSharp static libraries for
 Windows, Linux glibc/musl and macOS x64/arm64. It supports the SkiaSharp versions
 in [`versions.json`](versions.json) (one SkiaSharp 3 and one SkiaSharp 4 version,
-each with its mono/skia commit and HarfBuzzSharp version) and deploys to
-`artifacts/skiasharp/<version>/<rid>/`. Pass the version with `--version`; Task's
-`SKIASHARP_VERSION` defaults to `SkiaSharpVersion` in `Directory.Build.props`.
+each with its mono/skia commit, HarfBuzzSharp version and the commit of its
+mono/SkiaSharp tag) and deploys to `artifacts/skiasharp/<version>/<rid>/`. Pass the
+version with `--version`; Task's `SKIASHARP_VERSION` defaults to `SkiaSharpVersion` in
+`Directory.Build.props`.
 
 The GN arguments and project settings follow the build files of the mono/SkiaSharp tag.
 [`upstream-build.json`](upstream-build.json) records, for each version in `versions.json`, the git blob
-SHAs of the upstream build files the recipe was checked against.
+SHAs of the upstream build files the recipe was checked against. The SkiaSharp 4 Windows
+build compiles two of them, the HarfBuzzSharp project and its `harfbuzz-subset-msvc.cc`:
+the recipe downloads them at the tag commit and fails when their blob SHAs differ from
+the record.
 
 SkiaSharp 4 also packages the separate `jsonreader` archive required by Skottie.
 Linux SkiaSharp 4 includes the matching target `cxx/libc++.a` archive.

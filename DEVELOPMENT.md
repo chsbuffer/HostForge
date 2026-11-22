@@ -12,7 +12,7 @@
 | --- | --- |
 | [`Directory.Build.props`](Directory.Build.props) | `AvaloniaVersion` / `AvaloniaNativeVersion`（两者必须相等）、`AngleVersion`、默认 `SkiaSharpVersion`、各 SkiaSharp 版本对应的 `HarfBuzzVersion`、`HostForgeTargetFrameworks` 与各 TFM 的 `HostLibsNet*Version`；以及各包的版本公式 |
 | [`native/hostlibs/versions.json`](native/hostlibs/versions.json) | 每个 .NET 运行时版本对应的 VMR 标签与 commit，以及该 commit 的 Linux 官方构建容器（`containers`，每个 Linux RID 一个，以 digest 固定） |
-| [`native/skiasharp/versions.json`](native/skiasharp/versions.json) | 每个 SkiaSharp 版本对应的 mono/skia commit 与 HarfBuzzSharp 版本 |
+| [`native/skiasharp/versions.json`](native/skiasharp/versions.json) | 每个 SkiaSharp 版本对应的 mono/skia commit、HarfBuzzSharp 版本，以及 mono/SkiaSharp 版本标签的 commit |
 | [`native/avalonianative/conandata.yml`](native/avalonianative/conandata.yml) | 每个 Avalonia 版本的源码归档 URL、SHA-256 与 commit |
 | [`native/angle/conandata.yml`](native/angle/conandata.yml) | ANGLE 的分支（仅记录）、固定 commit，以及 depot_tools commit |
 | [`native/angle/conanfile.py`](native/angle/conanfile.py) | recipe 的 `version`，必须等于 `AngleVersion` |
@@ -130,7 +130,7 @@ task build-skiasharp
 task build-skiasharp ARCH=arm64
 ```
 
-SkiaSharp 3 的 Windows HarfBuzzSharp 项目由 [`scripts/libHarfBuzzSharp.vcxproj.in`](scripts/libHarfBuzzSharp.vcxproj.in) 原样导出后实例化，仓库中的模板不由 recipe 修改。SkiaSharp 4 使用 mono/SkiaSharp 对应标签的 `native/windows/libHarfBuzzSharp` 工程及其 `harfbuzz-subset-msvc.cc`：recipe 把它改为静态库并关闭全程序优化，换用 profile 的工具集与 Windows SDK，去掉需要可选 Spectre 库的 Spectre 缓解。两个版本都以 `/Z7` 把调试信息嵌入对象。只有 SkiaSharp 3 的 Windows 原生库缓存键包含该模板。
+SkiaSharp 3 的 Windows HarfBuzzSharp 项目由 [`scripts/libHarfBuzzSharp.vcxproj.in`](scripts/libHarfBuzzSharp.vcxproj.in) 原样导出后实例化，仓库中的模板不由 recipe 修改。SkiaSharp 4 使用 mono/SkiaSharp 对应标签的 `native/windows/libHarfBuzzSharp` 工程及其 `harfbuzz-subset-msvc.cc`，两者按 `versions.json` 记录的标签 commit 下载，内容与 [`upstream-build.json`](native/skiasharp/upstream-build.json) 记录的 git blob SHA 不符时构建失败；recipe 把工程改为静态库并关闭全程序优化，换用 profile 的工具集与 Windows SDK，去掉需要可选 Spectre 库的 Spectre 缓解。两个版本都以 `/Z7` 把调试信息嵌入对象。只有 SkiaSharp 3 的 Windows 原生库缓存键包含该模板。
 
 ### 3. 构建 ANGLE
 
@@ -514,7 +514,7 @@ native RID 包及聚合包统一使用上游版本的前三段加第四段修复
 
 `inputs` 组从最新版往下逐个核对比固定版本新的 .NET 补丁版，应用第一个 VMR 来源已确定的版本：nuget.org 上它的 `Microsoft.NETCore.App.Ref` 声明了 commit，且 releases.json 为它列出的某个 1xx SDK 的 VMR 标签指向该 commit。PR 正文的 “Not applied” 列出跳过的版本及原因。
 
-SkiaSharp 的 recipe 按 mono/SkiaSharp 对应标签的构建文件（各平台 `build.cake`、共享 cake 脚本、Xcode 与 vcxproj 工程）编写。[`native/skiasharp/upstream-build.json`](native/skiasharp/upstream-build.json) 按版本记录核对过的这些文件的 git blob SHA：新版本中它们不变时，bot 沿用记录；有变化时，PR 正文列出 diff 和新记录，原生测试失败，直到把变化同步到 recipe 并补上记录。
+SkiaSharp 的 recipe 按 mono/SkiaSharp 对应标签的构建文件（各平台 `build.cake`、共享 cake 脚本、Xcode 与 vcxproj 工程，以及 Windows HarfBuzzSharp 工程编译的 `harfbuzz-subset-msvc.cc`）编写。[`native/skiasharp/upstream-build.json`](native/skiasharp/upstream-build.json) 按版本记录核对过的这些文件的 git blob SHA：新版本中它们不变时，bot 沿用记录；有变化时，PR 正文列出 diff 和新记录，原生测试失败，直到把变化同步到 recipe 并补上记录。SkiaSharp 4 的 Windows 构建直接使用其中两个文件，下载后按这份记录校验；bot 同时把新标签的 commit 写入 `versions.json`，作为下载这两个文件的固定版本。
 
 包输入变化而版本不变时，自动按 [包输入锁](#包输入锁) 的规则递增版本并追加锁。`tools`、`llvm` 和 Dependabot 的 PR 不改包版本，合并后不发布新包。
 

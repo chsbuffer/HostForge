@@ -14,6 +14,7 @@
     "native/macos/libHarfBuzzSharp/libHarfBuzzSharp.xcodeproj/project.pbxproj": "380d5b15460c63d9006a1f91a88797b1741c0d90",
     "native/macos/libSkiaSharp/libSkiaSharp.xcodeproj/project.pbxproj": "80a17daef5eff0631d7261442b1fc9e1f2098c37",
     "native/windows/build.cake": "f496ddbf38c4434b3cff84a97afff4ac700d70c4",
+    "native/windows/libHarfBuzzSharp/harfbuzz-subset-msvc.cc": "51634f7b4da59015896180af7392b4501c630a6f",
     "native/windows/libHarfBuzzSharp/libHarfBuzzSharp.vcxproj": "5e14fa59d5310db6b1c95fd469452ab8bfef84c1",
     "scripts/infra/native/shared/native-shared.cake": "acc869cb5703bc81d82158c7dbc918489651cbd1"
   }

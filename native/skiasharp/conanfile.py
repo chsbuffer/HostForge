@@ -18,7 +18,13 @@ from windows import WindowsBuild
 from linux import LinuxBuild
 from macos import MacosBuild
 
+# Each version: [mono/skia commit, HarfBuzzSharp version, commit of the mono/SkiaSharp tag].
 VERSIONS = json.loads((Path(__file__).parent / "versions.json").read_text())
+# The git blob SHAs of the mono/SkiaSharp build files that the recipes were checked against.
+UPSTREAM_BUILD = json.loads((Path(__file__).parent / "upstream-build.json").read_text())
+# The HarfBuzzSharp project and the translation unit it compiles, which the SkiaSharp 4 Windows build uses.
+WINDOWS_HARFBUZZ = ("native/windows/libHarfBuzzSharp/libHarfBuzzSharp.vcxproj",
+                    "native/windows/libHarfBuzzSharp/harfbuzz-subset-msvc.cc")
 
 class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
     name = "skiasharp"
@@ -34,7 +40,7 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
     # instead of Conan's revision-dependent ../skias<hash>/s paths.
     # https://github.com/google/skia/blob/chrome/m150/tools/git-sync-deps
     exports_sources = "git-sync-deps"
-    exports = "windows.py", "linux.py", "macos.py", "versions.json"
+    exports = "windows.py", "linux.py", "macos.py", "versions.json", "upstream-build.json"
 
     def set_version(self):
         # No default here: Taskfile.yml always passes --version, defaulting to the version scripts/repo_versions.py reads.
@@ -128,9 +134,15 @@ class SkiaSharpConan(WindowsBuild, LinuxBuild, MacosBuild, ConanFile):
         else:
             raise ConanException("git-sync-deps failed")
         if self._modern:
-            upstream = f"https://raw.githubusercontent.com/mono/SkiaSharp/v{self.version}/native/windows/libHarfBuzzSharp"
-            for name in ("libHarfBuzzSharp.vcxproj", "harfbuzz-subset-msvc.cc"):
-                download(self, f"{upstream}/{name}", str(Path(self.source_folder) / name))
+            commit, reviewed = VERSIONS[str(self.version)][2], UPSTREAM_BUILD.get(str(self.version), {})
+            for path in WINDOWS_HARFBUZZ:
+                target = Path(self.source_folder) / Path(path).name
+                download(self, f"https://raw.githubusercontent.com/mono/SkiaSharp/{commit}/{path}", str(target))
+                data = target.read_bytes()
+                blob = hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+                if blob != reviewed.get(path):
+                    raise ConanException(f"mono/SkiaSharp {path} at {commit} is blob {blob}, but "
+                                         f"upstream-build.json records {reviewed.get(path)} for {self.version}")
 
     def generate(self):
         env = Environment()

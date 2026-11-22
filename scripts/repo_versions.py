@@ -5,7 +5,8 @@ Taskfile defaults, CI matrices and tests read these values instead of repeating 
 - Directory.Build.props: Avalonia, AvaloniaNative, ANGLE, the default SkiaSharp line, the HarfBuzzSharp
   version of each SkiaSharp line, the supported target frameworks and the .NET runtime of each one.
 - native/hostlibs/versions.json: VMR tag and commit of each .NET runtime.
-- native/skiasharp/versions.json: mono/skia commit and HarfBuzzSharp version of each SkiaSharp version.
+- native/skiasharp/versions.json: mono/skia commit, HarfBuzzSharp version and mono/SkiaSharp tag commit of each
+  SkiaSharp version.
 - native/avalonianative/conandata.yml: Avalonia source archive of each version.
 - native/angle/conandata.yml: ANGLE source branch and commit.
 
@@ -91,8 +92,8 @@ def load(root=ROOT):
         "angle-commit": angle.get("commit", ""),
         "skiasharp": _literal(properties, "SkiaSharpVersion"),
         "skiasharp-versions": list(skiasharp),
-        "skiasharp-sources": {version: {"skia-commit": commit, "harfbuzz": harfbuzz}
-                              for version, (commit, harfbuzz) in skiasharp.items()},
+        "skiasharp-sources": {version: {"skia-commit": commit, "harfbuzz": harfbuzz, "skiasharp-commit": tag_commit}
+                              for version, (commit, harfbuzz, tag_commit) in skiasharp.items()},
         "harfbuzz": _harfbuzz(properties),
         "target-frameworks": frameworks,
         "runtimes": runtimes,

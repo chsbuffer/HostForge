@@ -131,7 +131,7 @@ public static class RepoContext
 
     private static KeyValuePair<string, string>[] ReadSkiaSharpSources()
     {
-        // Each entry maps a SkiaSharp version to [mono/skia commit, HarfBuzzSharp version].
+        // Each entry maps a SkiaSharp version to [mono/skia commit, HarfBuzzSharp version, mono/SkiaSharp tag commit].
         string path = Path.Combine(RepoRoot, "native", "skiasharp", "versions.json");
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
         return document.RootElement.EnumerateObject()

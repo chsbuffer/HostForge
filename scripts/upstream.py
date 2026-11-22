@@ -609,7 +609,8 @@ def avalonia_report(client, pinned):
 # --- SkiaSharp / HarfBuzzSharp -------------------------------------------------------------------
 
 def skiasharp_source(client, version):
-    """skia commit (externals/skia at tag v<version>) and HarfBuzzSharp version (SkiaSharp.HarfBuzz nuspec)."""
+    """skia commit (externals/skia at tag v<version>), HarfBuzzSharp version (SkiaSharp.HarfBuzz nuspec) and the
+    commit of the tag, from which the recipe downloads build files."""
     problems = []
     contents = client.json(f"{GITHUB_API}/repos/mono/SkiaSharp/contents/externals/skia?ref=v{version}")
     # The contents API answers with a list for a directory and an object for a file or submodule.
@@ -626,8 +627,10 @@ def skiasharp_source(client, version):
         problems.append(f"tag v{version} is {tag} but SkiaSharp {version} was built from {built_from}")
     harfbuzz_version = minimum(harfbuzz[0]) if len(harfbuzz) == 1 else None
     problems += _malformed(version=(version, _VERSION), **{"skia commit": (skia_commit, _COMMIT),
-                                                            "HarfBuzzSharp version": (harfbuzz_version, _VERSION)})
-    return {"version": version, "skia-commit": skia_commit, "harfbuzz": harfbuzz_version, "problems": problems}
+                                                            "HarfBuzzSharp version": (harfbuzz_version, _VERSION),
+                                                            "SkiaSharp commit": (tag, _COMMIT)})
+    return {"version": version, "skia-commit": skia_commit, "harfbuzz": harfbuzz_version, "skiasharp-commit": tag,
+            "problems": problems}
 
 
 def skiasharp_blob(client, path, version):
@@ -1742,7 +1745,8 @@ def skiasharp_update(run, line, source, build):
 
         _edit(root, package_inputs.PROPS, props)
         _edit(root, "native/skiasharp/versions.json",
-              lambda text: _replace_entry(text, line, new, [source["skia-commit"], source["harfbuzz"]]))
+              lambda text: _replace_entry(text, line, new, [source["skia-commit"], source["harfbuzz"],
+                                                            source["skiasharp-commit"]]))
         _edit(root, SKIASHARP_BUILD, record)
 
     return [Update("skiasharp", f"SkiaSharp {line} -> {new} (skia {source['skia-commit']}, HarfBuzzSharp "
