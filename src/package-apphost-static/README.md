@@ -27,7 +27,9 @@ On supported builds, the imported targets relink `apphost` and `singlefilehost` 
 ## Requirements
 
 - MSVC toolchain
-- One or more `NativeLibrary` items provided by the project or by another package, e.g. ChsBuffer.SkiaSharp.Static.win-x64
+- One or more `NativeLibrary` items, which the project declares itself. Without them the SDK host is used unchanged, without a warning.
+
+The NativeAOT packages of HostForge, such as `ChsBuffer.SkiaSharp.Static`, add their `NativeLibrary` items only when publishing with NativeAOT, which this package leaves to the SDK, so they provide no input here.
 
 ## Usage
 
@@ -51,25 +53,32 @@ Common approaches are:
 such files may contain only an `EXPORTS` section.
 
 After that, you can P/Invoke directly against the main executable. If you are using a prebuilt binding assembly, use `NativeLibrary.SetDllImportResolver` to redirect its `DllImport` calls to `NativeLibrary.GetMainProgramHandle()`.
+The resolver receives the library name as the `DllImport` attribute spells it: SkiaSharp and HarfBuzzSharp use `libSkiaSharp` and `libHarfBuzzSharp`, without an extension.
 
-Example for SkiaSharp:
+Example for SkiaSharp and HarfBuzzSharp:
 
 ```csharp
 using System;
+using System.Collections.Generic;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 internal static class ModuleInitializer
 {
+    private static readonly HashSet<string> StaticLibraryNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "libSkiaSharp", "libSkiaSharp.dll", "libHarfBuzzSharp", "libHarfBuzzSharp.dll"
+    };
+
     [ModuleInitializer]
     internal static void Init()
     {
-        NativeLibrary.SetDllImportResolver(
-            typeof(SkiaSharp.SkiaSharpVersion).Assembly,
-            static (libraryName, _, _) =>
-                libraryName is "libSkiaSharp.dll"
-                    ? NativeLibrary.GetMainProgramHandle()
-                    : IntPtr.Zero);
+        NativeLibrary.SetDllImportResolver(typeof(SkiaSharp.SkiaSharpVersion).Assembly, Resolve);
+        NativeLibrary.SetDllImportResolver(typeof(HarfBuzzSharp.Blob).Assembly, Resolve);
     }
+
+    private static IntPtr Resolve(string libraryName, Assembly assembly, DllImportSearchPath? searchPath) =>
+        StaticLibraryNames.Contains(libraryName) ? NativeLibrary.GetMainProgramHandle() : IntPtr.Zero;
 }
 ```
