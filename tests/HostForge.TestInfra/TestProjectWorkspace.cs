@@ -25,6 +25,7 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         bool? disableSkiaHarfBuzzRuntimeCopy = null,
         bool? disableAngleRuntimeCopy = null,
         bool publishSingleFile = false,
+        string? appHostPackageRid = null,
         CancellationToken cancellationToken = default)
     {
         string guid = Guid.NewGuid().ToString("N");
@@ -48,7 +49,8 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
             includeNativeAssetsPackages,
             disableSkiaHarfBuzzRuntimeCopy,
             disableAngleRuntimeCopy,
-            publishSingleFile);
+            publishSingleFile,
+            appHostPackageRid ?? runtimeIdentifier);
 
         return new TestProjectWorkspace(rootDirectory, projectDirectory, projectFilePath, projectName);
     }
@@ -88,7 +90,8 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         bool includeNativeAssetsPackages,
         bool? disableSkiaHarfBuzzRuntimeCopy,
         bool? disableAngleRuntimeCopy,
-        bool publishSingleFile)
+        bool publishSingleFile,
+        string appHostPackageRid)
     {
         ProjectRootElement project = ProjectRootElement.Create();
         project.Sdk = "Microsoft.NET.Sdk";
@@ -133,11 +136,17 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
                 disableAngleRuntimeCopy.Value.ToString().ToLowerInvariant());
         }
 
+        // As in an application, the RID package brings the Build package and the SkiaSharp and HarfBuzzSharp
+        // versions that its templates link.
         ProjectItemGroupElement itemGroup = project.AddItemGroup();
-        AddPackageReference(itemGroup, RepoContext.GetAvaloniaRidPackageId(runtimeIdentifier), "$(AvaloniaAppHostPackageVersion)");
-        AddPackageReference(itemGroup, RepoContext.AvaloniaAppHostBuildPackageId, "$(AvaloniaAppHostPackageVersion)");
-        AddPackageReference(itemGroup, "SkiaSharp", "$(SkiaSharpVersion)");
-        AddPackageReference(itemGroup, "HarfBuzzSharp", "$(HarfBuzzVersion)");
+        AddPackageReference(itemGroup, RepoContext.GetAvaloniaRidPackageId(appHostPackageRid), "$(AvaloniaAppHostPackageVersion)");
+
+        // The RID packages have dependencies only for their own target framework, net10.0, and later ones.
+        // An application on an earlier target framework gets SkiaSharp and HarfBuzzSharp from Avalonia alone.
+        ProjectItemGroupElement avaloniaGraphics = project.AddItemGroup();
+        avaloniaGraphics.Condition = "!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net10.0'))";
+        AddPackageReference(avaloniaGraphics, "SkiaSharp", "$(SkiaSharpVersion)");
+        AddPackageReference(avaloniaGraphics, "HarfBuzzSharp", "$(HarfBuzzVersion)");
 
         if (includeNativeAssetsPackages)
         {

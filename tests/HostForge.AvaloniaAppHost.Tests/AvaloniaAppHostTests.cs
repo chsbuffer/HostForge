@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.Json;
+using System.Xml.Linq;
 using HostForge.TestInfra;
 
 namespace HostForge.AvaloniaAppHost.Tests;
@@ -8,6 +9,8 @@ namespace HostForge.AvaloniaAppHost.Tests;
 public class AvaloniaAppHostTests
 {
     private static readonly string[] AllRids = ["win-x64", "win-arm64"];
+
+    private const string InactiveMarker = "ChsBuffer.Avalonia.AppHost is inactive";
 
     [Before(Class)]
     public static async Task PackAvaloniaPackage()
@@ -90,6 +93,43 @@ public class AvaloniaAppHostTests
     }
 
     [Test]
+    public async Task RidPackages_DependOnBuildPackageAndLinkedManagedVersions()
+    {
+        var packedRids = GetPackedRids();
+        if (packedRids.Count == 0)
+            throw new InvalidOperationException("No RID packages found.");
+
+        foreach (string rid in packedRids)
+        {
+            string packageId = RepoContext.GetAvaloniaRidPackageId(rid);
+            using ZipArchive zip = ZipFile.OpenRead(NupkgPath(packageId));
+            using Stream stream = zip.GetEntry($"{packageId}.nuspec")!.Open();
+            XElement[] groups = XDocument.Load(stream).Descendants().Where(element => element.Name.LocalName == "group").ToArray();
+
+            // Applications reference only a RID package, which brings the integration and the managed
+            // libraries that match the native code linked into its templates.
+            XElement group = groups.SingleOrDefault(element => (string?)element.Attribute("targetFramework") == "net10.0")
+                ?? throw new InvalidOperationException($"{packageId} has no net10.0 dependency group: {string.Join(", ", groups.Select(element => (string?)element.Attribute("targetFramework")))}");
+            var expected = new Dictionary<string, string>
+            {
+                [RepoContext.AvaloniaAppHostBuildPackageId] = RepoContext.AvaloniaPackageIdentityVersion,
+                ["SkiaSharp"] = RepoContext.SkiaSharpVersion,
+                ["HarfBuzzSharp"] = RepoContext.HarfBuzzVersion
+            };
+            if (rid.StartsWith("win", StringComparison.Ordinal))
+                expected["Avalonia.Angle.Windows.Natives"] = RepoContext.AngleVersion;
+
+            foreach ((string id, string version) in expected)
+            {
+                XElement dependency = group.Elements().SingleOrDefault(element => (string?)element.Attribute("id") == id)
+                    ?? throw new InvalidOperationException($"{packageId} does not depend on {id}.");
+                if ((string?)dependency.Attribute("version") != version)
+                    throw new InvalidOperationException($"{packageId} depends on {id} {dependency.Attribute("version")?.Value}, expected {version}.");
+            }
+        }
+    }
+
+    [Test]
     public async Task BuildPackage_ContainsTargetsAndModuleInitializer()
     {
         string packageId = RepoContext.AvaloniaAppHostBuildPackageId;
@@ -131,7 +171,7 @@ public class AvaloniaAppHostTests
             project.ProjectDirectory);
 
         AssertEx.Success(result, "windows-angle-pinvoke:publish");
-        AssertActivationState(result.CombinedOutput, expectedActive: true, targetFramework, "win-x64");
+        AssertEx.NotContains(result.CombinedOutput, InactiveMarker);
         string outputDirectory = project.GetPublishDirectory("Release", targetFramework, "win-x64");
         string executable = Path.Combine(outputDirectory, $"{project.ProjectName}.exe");
         string angleDll = Path.Combine(outputDirectory, "av_libglesv2.dll");
@@ -162,7 +202,7 @@ public class AvaloniaAppHostTests
             project.ProjectDirectory,
             includeNativeLibrariesForSelfExtract ? "-p:IncludeNativeLibrariesForSelfExtract=true" : null);
         AssertEx.Success(result, $"{caseName}:publish");
-        AssertActivationState(result.CombinedOutput, expectedActive: true, targetFramework, "win-x64");
+        AssertEx.NotContains(result.CombinedOutput, InactiveMarker);
 
         // The bundle runs on the runtime embedded in the template, with ANGLE, Skia and HarfBuzz
         // resolved from the executable instead of extracted or adjacent native libraries.
@@ -191,16 +231,27 @@ public class AvaloniaAppHostTests
 
         foreach (string rid in packedRids)
         {
-            cases.Add(new($"net9.0_publish_{rid}", "net9.0", rid, ExpectedActive: false, ExpectNativeRuntimeCopy: true, RunExecutable: rid == "win-x64"));
+            // The RID packages have no dependencies for net9.0, so the project gets no Build package:
+            // it publishes the SDK host with the native libraries, without a warning.
+            cases.Add(new($"net9.0_publish_{rid}", "net9.0", rid, rid, ExpectInactiveWarning: false, ExpectNativeRuntimeCopy: true, RunExecutable: rid == "win-x64"));
             foreach (string tfm in RepoContext.AvaloniaTemplateTfms)
-                cases.Add(new($"{tfm}_publish_{rid}", tfm, rid, ExpectedActive: true, ExpectNativeRuntimeCopy: false, RunExecutable: rid == "win-x64"));
+                cases.Add(new($"{tfm}_publish_{rid}", tfm, rid, rid, ExpectInactiveWarning: false, ExpectNativeRuntimeCopy: false, RunExecutable: rid == "win-x64"));
         }
 
         if (packedRids.Contains("win-x64"))
         {
             // Templates depend only on the .NET version, so an OS-specific TFM selects the same template.
             string windowsTfm = $"{RepoContext.AvaloniaTemplateTfms[^1]}-windows";
-            cases.Add(new($"{windowsTfm}_publish_win-x64", windowsTfm, "win-x64", ExpectedActive: true, ExpectNativeRuntimeCopy: false, RunExecutable: true));
+            cases.Add(new($"{windowsTfm}_publish_win-x64", windowsTfm, "win-x64", "win-x64", ExpectInactiveWarning: false, ExpectNativeRuntimeCopy: false, RunExecutable: true));
+        }
+
+        if (packedRids.Count != 0)
+        {
+            // A project that publishes for a RID whose package it does not reference keeps the SDK host and gets the warning.
+            string packageRid = packedRids[0];
+            string otherRid = AllRids.First(rid => rid != packageRid);
+            string tfm = RepoContext.AvaloniaTemplateTfms[0];
+            cases.Add(new($"{tfm}_publish_{otherRid}_with_{packageRid}_package", tfm, otherRid, packageRid, ExpectInactiveWarning: true, ExpectNativeRuntimeCopy: true, RunExecutable: false));
         }
 
         PublishRuleCase[] allCases = cases.ToArray();
@@ -212,12 +263,13 @@ public class AvaloniaAppHostTests
                 await using var project = await TestProjectWorkspace.CreateAsync(
                     targetFramework: testCase.TargetFramework,
                     runtimeIdentifier: testCase.RuntimeIdentifier,
-                    includeNativeAssetsPackages: true);
+                    includeNativeAssetsPackages: true,
+                    appHostPackageRid: testCase.PackageRid);
 
                 CommandResult result = await RunDotNetCommandAsync("publish", project.ProjectFilePath, project.ProjectDirectory);
 
                 AssertEx.Success(result, testCase.Name);
-                AssertActivationState(result.CombinedOutput, testCase.ExpectedActive, testCase.TargetFramework, testCase.RuntimeIdentifier);
+                AssertInactiveWarning(result.CombinedOutput, testCase.ExpectInactiveWarning, testCase.TargetFramework, testCase.RuntimeIdentifier);
 
                 string outputDirectory = project.GetPublishDirectory("Release", testCase.TargetFramework, testCase.RuntimeIdentifier);
                 AssertNativeRuntimeCopy(
@@ -258,7 +310,7 @@ public class AvaloniaAppHostTests
                 CommandResult result = await RunDotNetCommandAsync("publish", project.ProjectFilePath, project.ProjectDirectory);
 
                 AssertEx.Success(result, testCase.Name);
-                AssertActivationState(result.CombinedOutput, expectedActive: true, "net10.0", "win-x64");
+                AssertEx.NotContains(result.CombinedOutput, InactiveMarker);
 
                 string outputDirectory = project.GetPublishDirectory("Release", "net10.0", "win-x64");
 
@@ -400,21 +452,19 @@ public class AvaloniaAppHostTests
         }
     }
 
-    private static void AssertActivationState(
+    private static void AssertInactiveWarning(
         string combinedOutput,
-        bool expectedActive,
+        bool expected,
         string targetFramework,
         string runtimeIdentifier)
     {
-        string inactiveMarker = "ChsBuffer.Avalonia.AppHost is inactive";
-
-        if (expectedActive)
+        if (!expected)
         {
-            AssertEx.NotContains(combinedOutput, inactiveMarker);
+            AssertEx.NotContains(combinedOutput, InactiveMarker);
             return;
         }
 
-        AssertEx.Contains(combinedOutput, inactiveMarker);
+        AssertEx.Contains(combinedOutput, InactiveMarker);
         AssertEx.Contains(combinedOutput, $"TargetFramework='{targetFramework}'");
         AssertEx.Contains(combinedOutput, $"RuntimeIdentifier='{runtimeIdentifier}'");
     }
@@ -435,7 +485,8 @@ public class AvaloniaAppHostTests
         string Name,
         string TargetFramework,
         string RuntimeIdentifier,
-        bool ExpectedActive,
+        string PackageRid,
+        bool ExpectInactiveWarning,
         bool ExpectNativeRuntimeCopy,
         bool RunExecutable);
 

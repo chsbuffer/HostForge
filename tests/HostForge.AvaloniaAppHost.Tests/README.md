@@ -6,8 +6,12 @@ Current coverage:
 
 - Windows-only package contract validation for `ChsBuffer.Avalonia.AppHost.Windows`: templates for every
   `AvaloniaTemplateTfms` entry and generated `AvaloniaAppHostRids` registrations evaluated by MSBuild
-- Windows activation and inactive-warning behavior across `net9.0` (inactive), `net10.0`, `net11.0` and
-  `net11.0-windows`, `win-x64` / `win-arm64`
+- Windows RID package dependencies: the Build package and the SkiaSharp, HarfBuzzSharp and ANGLE versions that
+  the templates link
+- Consumer projects reference only a RID package, as applications do. Windows activation across `net10.0`,
+  `net11.0` and `net11.0-windows`, `win-x64` / `win-arm64`; `net9.0`, for which the RID packages have no
+  dependencies, keeps the SDK host and the native libraries without a warning; publishing for a RID whose package
+  the project does not reference keeps them with the inactive warning
 - Windows Skia/HarfBuzz native runtime copy suppression switch behavior
 - Windows ANGLE P/Invoke resolution from the apphost and runtime copy suppression for every template TFM
 - Self-contained single-file publish on Windows and Linux for every template TFM, without and with
