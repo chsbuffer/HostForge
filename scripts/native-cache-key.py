@@ -24,6 +24,22 @@ def rootfs_key(root, rid):
     return f"target-rootfs-v2-{rid}-{digest}"
 
 
+def version_conandata(text, version):
+    """conandata.yml without the `sources` entries of other versions. The recipe builds from the entry of its
+    version and names the others only in errors; every other section stays, because the recipe may read it."""
+    kept, section, entry = [], None, None
+    for line in text.splitlines(keepends=True):
+        if line.strip() and not line.startswith(" "):
+            section, entry = line.split(":", 1)[0], None
+        elif section == "sources" and re.match(r"  \S", line):
+            entry = line.strip().rstrip(":").strip("\"'")
+        if section != "sources" or entry in (None, version):
+            kept.append(line)
+    if not any(re.fullmatch(rf"  [\"']?{re.escape(version)}[\"']?:\s*", line) for line in kept):
+        raise ValueError(f"conandata.yml has no source for {version}")
+    return "".join(kept)
+
+
 def fingerprint(root, component, version, rid, toolchain, generator=""):
     platform, arch = rid.rsplit("-", 1)
     profile_os = {"win": "windows", "osx": "macos"}.get(platform, platform)
@@ -55,7 +71,8 @@ def fingerprint(root, component, version, rid, toolchain, generator=""):
         values["generator"] = generator
     elif component == "avalonianative":
         profile = rid
-        files += [f"{directory}/conandata.yml"]
+        conandata = f"{directory}/conandata.yml"
+        files += [conandata]
         tasks = ["build-avalonianative"]
     else:
         raise ValueError(component)
@@ -70,6 +87,8 @@ def fingerprint(root, component, version, rid, toolchain, generator=""):
     dependencies = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["dependencies"]
     values["build-tools"] = sorted(d for d in dependencies if d.startswith(("conan==", "ninja==")))
     inputs = {path: (root / path).read_text(encoding="utf-8").replace("\r\n", "\n") for path in sorted(set(files))}
+    if component == "avalonianative":
+        inputs[conandata] = version_conandata(inputs[conandata], version)
     digest = hashlib.sha256(json.dumps([values, inputs], sort_keys=True).encode()).hexdigest()[:24]
     tools = hashlib.sha256(toolchain.encode()).hexdigest()[:12]
     return {"key": f"native-v3-{component}-{version}-{rid}-{tools}-{digest}",

@@ -449,7 +449,7 @@ job 通过 `scripts/repo_versions.py` 读取上游版本，workflow 中不写这
 
 推送到 `main` 时运行完整构建，覆盖 `native/skiasharp/versions.json` 中的两个 SkiaSharp 版本、全部 8 个 RID、AvaloniaNative 的两个 macOS RID，以及 AppHost 构建与回归测试。`pack-all` 聚合所有原生 RID 包与正式元包，上传 `nuget-native-all`，随后在 8 个原生 RID 上验收。musl 测试在对应架构的 Alpine 容器中执行；macOS runner 无 Metal 设备时验收 Software，并记录检测结果。`nuget-native-all` 保留 7 天，跨 job sysroot 最多保留 3 天；成功完成后的清理可能更早删除中间工件。
 
-原生库产物键按组件、版本、RID、实际工具链版本，以及对应 recipe 核心 / 平台模块 / profile / Dockerfile / 校验和与相关 Task 片段生成。版本表只读取当前版本条目；无关 Task、其它平台 profile 和 Python 项目元数据不参与。AppHost 与 NativeAOT 共享 Skia 3 产物。`plan-all` 运行 `tests/native` 的缓存键边界测试。
+原生库产物键按组件、版本、RID、实际工具链版本，以及对应 recipe 核心 / 平台模块 / profile / Dockerfile / 校验和与相关 Task 片段生成。版本表（HostLibs、SkiaSharp 的 `versions.json` 与 AvaloniaNative `conandata.yml` 的 `sources`）只读取当前版本条目；无关 Task、其它平台 profile 和 Python 项目元数据不参与。AppHost 与 NativeAOT 共享 Skia 3 产物。`plan-all` 运行 `tests/native` 的缓存键边界测试。
 
 产物 miss 时恢复同组件、版本、RID、工具链前缀的编译缓存。Skia、HarfBuzz、ANGLE 和 HostLibs 使用 sccache 0.18，关闭直接模式。HostLibs 保留 MSVC 预编译头，只缓存独立对象；Clang 预编译头在当前目录重新生成。AvaloniaNative 使用 ccache depend 模式与正常模块头文件校验。单元上限：Windows Skia 128 MiB、ANGLE 64 MiB、Windows HostLibs 256 MiB、Linux glibc / musl HostLibs 512 MiB、Linux / macOS Skia 64 MiB、AvaloniaNative 32 MiB，合计 5.44 GiB；另为产物、目标 sysroot 和工具缓存留出空间。旧输入代际由 Actions LRU 回收。
 

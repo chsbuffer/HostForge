@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import re
 import shutil
 import tempfile
 import unittest
@@ -23,6 +24,7 @@ SKIA = VERSIONS["skiasharp"]
 OTHER_SKIA = next((v for v in VERSIONS["skiasharp-versions"] if v != SKIA), None)
 HOSTLIBS = VERSIONS["hostlibs"]
 OTHER_HOSTLIBS = next((v for v in VERSIONS["hostlibs-versions"] if v != HOSTLIBS), None)
+AVALONIA = VERSIONS["avalonia-native"]
 # The RIDs whose HostLibs build in an upstream container.
 HOSTLIBS_LINUX_RIDS = ("linux-x64", "linux-musl-x64", "linux-musl-arm64")
 
@@ -84,6 +86,33 @@ class NativeCacheKeyTests(unittest.TestCase):
         file.write_text(json.dumps(versions))
         self.assertEqual(selected, self.key(HOSTLIBS, component="hostlibs"))
         self.assertNotEqual(other, self.key(OTHER_HOSTLIBS, component="hostlibs"))
+
+    def test_avalonianative_source_is_scoped_to_selected_version(self):
+        others = [version for version in VERSIONS["avalonia-sources"] if version != AVALONIA]
+        if not others:
+            self.skipTest("needs two Avalonia sources")
+        file = self.root / "native/avalonianative/conandata.yml"
+        text = file.read_text(encoding="utf-8")
+
+        def keys():
+            return {rid: self.key(AVALONIA, rid, "avalonianative") for rid in ("osx-x64", "osx-arm64")}
+
+        def entry(version):
+            return re.compile(rf'^  "{re.escape(version)}":\n(?:    .*\n)+', re.M)
+
+        original = keys()
+        file.write_text(entry(others[0]).sub("", text.replace(VERSIONS["avalonia-sources"][others[-1]]["sha256"],
+                                                                "0" * 64)), encoding="utf-8")
+        self.assertEqual(original, keys(), "other versions removed or changed")
+        file.write_text(text.replace(VERSIONS["avalonia-sources"][AVALONIA]["sha256"], "0" * 64), encoding="utf-8")
+        for rid, key in keys().items():
+            self.assertNotEqual(original[rid], key, rid)
+        file.write_text(text + 'patches:\n  "0.0.0":\n    - patch_file: "patches/x.patch"\n', encoding="utf-8")
+        for rid, key in keys().items():
+            self.assertNotEqual(original[rid], key, f"{rid}: another section")
+        file.write_text(entry(AVALONIA).sub("", text), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "no source"):
+            keys()
 
     def test_hostlibs_container_is_scoped_to_selected_rid(self):
         for changed in HOSTLIBS_LINUX_RIDS:
