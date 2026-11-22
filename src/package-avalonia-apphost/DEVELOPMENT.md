@@ -57,6 +57,21 @@ The Build package's `.targets` matches `$(RuntimeIdentifier)` and the project's 
 `@(AvaloniaAppHostRids)`. The TFM is normalized to `net<major>.<minor>`, so OS-specific TFMs such as
 `net11.0-windows` use the `net11.0` template. Each RID package depends on the Build package, so consumers install only the RID packages they need. The meta-package `ChsBuffer.Avalonia.AppHost` installs every supported RID package.
 
+`ResolveAvaloniaAppHostActivation` leaves the package inactive, with the native libraries in the output, for:
+
+- builds without a RuntimeIdentifier, silently: their output is portable, and the publish step removes the
+  native libraries by file name, which would drop them for every RID;
+- builds of a project with `PublishAot=true`, not only its publish, as in `AppHost.Static.targets`, because
+  the NativeAOT executable it publishes has no apphost, and `UseAppHost=false` builds, which run on `dotnet`; the NativeAOT
+  warning is omitted when any static graphics package is imported (`HostForgeStaticGraphicsImported`);
+- projects whose `$(Language)` is not C#, because the resolver is the C# source `ModuleInitializer.cs`
+  compiled into the application.
+
+`InjectAvaloniaModuleInitializer` defines `HOSTFORGE_<ASSEMBLY>` for each assembly with `libSkiaSharp`,
+`libHarfBuzzSharp` or ANGLE imports that `@(ReferencePath)` contains. `ModuleInitializer.cs` registers its
+resolver with exactly those assemblies, and only for the libraries that the main program exports, so the
+application assembly keeps the default loading under `dotnet`, test hosts and the previewer.
+
 ## SkiaSharp variants and package versions
 
 `SKIASHARP_VERSION` selects the native libraries and managed package dependencies

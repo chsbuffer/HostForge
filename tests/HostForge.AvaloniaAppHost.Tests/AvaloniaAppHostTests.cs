@@ -160,10 +160,12 @@ public class AvaloniaAppHostTests
     [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
     public async Task WindowsAnglePInvoke_ResolvesFromAppHost_WinX64(string targetFramework)
     {
+        // The module initializer registers its ANGLE resolver with Avalonia.Win32, which only this consumer references.
         await using var project = await TestProjectWorkspace.CreateAsync(
             targetFramework: targetFramework,
             runtimeIdentifier: "win-x64",
-            includeNativeAssetsPackages: true);
+            includeNativeAssetsPackages: true,
+            referenceAvaloniaWin32: true);
 
         CommandResult result = await RunDotNetCommandAsync(
             "publish",
@@ -183,6 +185,8 @@ public class AvaloniaAppHostTests
             outputDirectory);
         AssertEx.Success(runResult, "windows-angle-pinvoke:run");
         AssertEx.Contains(runResult.CombinedOutput, "AngleError=0x");
+        AssertEx.Contains(runResult.CombinedOutput, "AvaloniaWin32Angle=True");
+        AssertSkottieAndLoadedLibraries(runResult.CombinedOutput, expectPrelinked: true);
     }
 
     [Test]
@@ -280,9 +284,143 @@ public class AvaloniaAppHostTests
                 if (testCase.RunExecutable)
                 {
                     string exePath = Path.Combine(outputDirectory, $"{project.ProjectName}.exe");
-                    await RunExeAndAssertSuccess(testCase.Name, exePath);
+                    await RunExeAndAssertSuccess(testCase.Name, exePath, expectPrelinked: !testCase.ExpectNativeRuntimeCopy);
                 }
             });
+        }
+    }
+
+    [Test]
+    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
+    public async Task BuildOutput_RunsOnTheTemplateAndOnDotNet_WinX64(string targetFramework)
+    {
+        string caseName = $"{targetFramework}_build_win-x64";
+        await using var project = await TestProjectWorkspace.CreateAsync(
+            targetFramework: targetFramework,
+            runtimeIdentifier: "win-x64",
+            includeNativeAssetsPackages: true);
+
+        CommandResult result = await RunDotNetCommandAsync("build", project.ProjectFilePath, project.ProjectDirectory);
+        AssertEx.Success(result, caseName);
+        AssertInactiveWarning(result.CombinedOutput, expected: false, targetFramework, "win-x64");
+
+        string outputDirectory = Path.Combine(project.ProjectDirectory, "bin", "Release", targetFramework, "win-x64");
+        await RunExeAndAssertSuccess(caseName, Path.Combine(outputDirectory, $"{project.ProjectName}.exe"));
+
+        // Under dotnet the main program exports none of the libraries, so the resolver of the application
+        // assembly leaves them to the files in the build output, as for a test project that references it.
+        CommandResult runResult = await CommandRunner.RunAsync("dotnet", $"\"{project.ProjectName}.dll\"", outputDirectory);
+        AssertEx.Success(runResult, $"{caseName}:dotnet");
+        AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        AssertSkottieAndLoadedLibraries(runResult.CombinedOutput, expectPrelinked: false);
+        AssertEx.Contains(runResult.CombinedOutput, "AngleError=0x");
+    }
+
+    [Test]
+    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
+    public async Task PublishWithoutRuntimeIdentifier_KeepsTheNativeLibrariesOfEveryRid(string targetFramework)
+    {
+        await using var project = await TestProjectWorkspace.CreateAsync(
+            targetFramework: targetFramework,
+            runtimeIdentifier: "win-x64",
+            includeNativeAssetsPackages: true,
+            setRuntimeIdentifier: false);
+
+        CommandResult result = await RunDotNetCommandAsync("publish", project.ProjectFilePath, project.ProjectDirectory);
+        AssertEx.Success(result, $"{targetFramework}_publish_no-rid");
+        // dotnet run and IDE builds have no RID either, so the inactive package stays silent.
+        AssertEx.NotContains(result.CombinedOutput, InactiveMarker);
+
+        string outputDirectory = project.GetPublishDirectory("Release", targetFramework, string.Empty);
+        foreach (string rid in AllRids)
+        {
+            string nativeDirectory = Path.Combine(outputDirectory, "runtimes", rid, "native");
+            AssertNativeRuntimeCopy(nativeDirectory, expectSkiaHarfBuzzRuntimeCopy: true, expectAngleRuntimeCopy: true);
+        }
+
+        // The portable output runs on dotnet and loads the libraries of the running RID from runtimes/.
+        CommandResult runResult = await CommandRunner.RunAsync("dotnet", $"\"{project.ProjectName}.dll\"", outputDirectory);
+        AssertEx.Success(runResult, $"{targetFramework}_publish_no-rid:run");
+        AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        AssertSkottieAndLoadedLibraries(runResult.CombinedOutput, expectPrelinked: false);
+        AssertEx.Contains(runResult.CombinedOutput, "AngleError=0x");
+    }
+
+    [Test]
+    [Arguments("-p:UseAppHost=false", "because UseAppHost is false", false)]
+    [Arguments("-p:PublishAot=true", "because PublishAot is true", true)]
+    public async Task PublishWithoutAppHost_StaysInactiveAndKeepsNativeLibraries_WinX64(string property, string reason, bool runExecutable)
+    {
+        string targetFramework = RepoContext.AvaloniaTemplateTfms[0];
+        string caseName = $"{targetFramework}_publish_{property}";
+        await using var project = await TestProjectWorkspace.CreateAsync(
+            targetFramework: targetFramework,
+            runtimeIdentifier: "win-x64",
+            includeNativeAssetsPackages: true);
+
+        CommandResult result = await RunDotNetCommandAsync("publish", project.ProjectFilePath, project.ProjectDirectory, property);
+        AssertEx.Success(result, caseName);
+        AssertInactiveWarning(result.CombinedOutput, expected: true, targetFramework, "win-x64");
+        AssertEx.Contains(result.CombinedOutput, reason);
+
+        // Neither NativeAOT nor dotnet loads the libraries from a template, so the dynamic libraries stay.
+        string outputDirectory = project.GetPublishDirectory("Release", targetFramework, "win-x64");
+        AssertNativeRuntimeCopy(outputDirectory, expectSkiaHarfBuzzRuntimeCopy: true, expectAngleRuntimeCopy: true);
+
+        CommandResult runResult = runExecutable
+            ? await CommandRunner.RunAsync(Path.Combine(outputDirectory, $"{project.ProjectName}.exe"), string.Empty, outputDirectory)
+            : await CommandRunner.RunAsync("dotnet", $"\"{project.ProjectName}.dll\"", outputDirectory);
+        AssertEx.Success(runResult, $"{caseName}:run");
+        AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        AssertSkottieAndLoadedLibraries(runResult.CombinedOutput, expectPrelinked: false);
+        AssertEx.Contains(runResult.CombinedOutput, "AngleError=0x");
+    }
+
+    [Test]
+    public async Task FSharpProject_StaysInactiveAndKeepsNativeLibraries_WinX64()
+    {
+        string targetFramework = RepoContext.AvaloniaTemplateTfms[0];
+        string projectName = $"FSharpTest_{Guid.NewGuid():N}"[..19];
+        string projectDirectory = Path.Combine(RepoContext.ArtifactsTestRoot, projectName);
+        string projectFilePath = Path.Combine(projectDirectory, $"{projectName}.fsproj");
+        Directory.CreateDirectory(projectDirectory);
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(projectDirectory, "Program.fs"),
+                "printfn \"SkiaSharpVersion.Native=%O\" SkiaSharp.SkiaSharpVersion.Native\n");
+            await File.WriteAllTextAsync(projectFilePath, $$"""
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <OutputType>Exe</OutputType>
+                    <TargetFramework>{{targetFramework}}</TargetFramework>
+                    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+                    <RestorePackagesPath>{{RepoContext.TestPackagesRoot}}</RestorePackagesPath>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <Compile Include="Program.fs" />
+                    <PackageReference Include="{{RepoContext.GetAvaloniaRidPackageId("win-x64")}}" Version="$(AvaloniaAppHostPackageVersion)" />
+                    <PackageReference Include="SkiaSharp" Version="$(SkiaSharpVersion)" />
+                    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="$(SkiaSharpVersion)" />
+                  </ItemGroup>
+                </Project>
+                """);
+
+            CommandResult result = await RunDotNetCommandAsync("publish", projectFilePath, projectDirectory);
+            AssertEx.Success(result, "fsharp:publish");
+            AssertInactiveWarning(result.CombinedOutput, expected: true, targetFramework, "win-x64");
+            AssertEx.Contains(result.CombinedOutput, "because the project language is F#");
+
+            string outputDirectory = Path.Combine(projectDirectory, "bin", "Release", targetFramework, "win-x64", "publish");
+            AssertEx.FileExists(Path.Combine(outputDirectory, "libSkiaSharp.dll"));
+            CommandResult runResult = await CommandRunner.RunAsync(
+                Path.Combine(outputDirectory, $"{projectName}.exe"), string.Empty, outputDirectory);
+            AssertEx.Success(runResult, "fsharp:run");
+            AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        }
+        finally
+        {
+            Directory.Delete(projectDirectory, recursive: true);
         }
     }
 
@@ -408,7 +546,8 @@ public class AvaloniaAppHostTests
         string caseName,
         string exePath,
         string? expectedRuntimeVersion = null,
-        IReadOnlyDictionary<string, string>? environmentVariables = null)
+        IReadOnlyDictionary<string, string>? environmentVariables = null,
+        bool expectPrelinked = true)
     {
         AssertEx.FileExists(exePath);
 
@@ -420,6 +559,7 @@ public class AvaloniaAppHostTests
 
         AssertEx.Success(runResult, $"{caseName}:run-exe");
         AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        AssertSkottieAndLoadedLibraries(runResult.CombinedOutput, expectPrelinked);
         AssertEx.Contains(runResult.CombinedOutput, "AngleError=0x");
         if (expectedRuntimeVersion is not null)
         {
@@ -449,6 +589,26 @@ public class AvaloniaAppHostTests
         {
             throw new InvalidOperationException(
                 $"Expected native SkiaSharp {RepoContext.SkiaSharpVersion}, but got '{value}'.{Environment.NewLine}{output}");
+        }
+    }
+
+    private static void AssertSkottieAndLoadedLibraries(string output, bool expectPrelinked)
+    {
+        // SkiaSharp.Skottie, SceneGraph and Resources import libSkiaSharp themselves.
+        AssertEx.Contains(output, "Skottie=True");
+        AssertEx.Contains(output, "HarfBuzzLength=9");
+        if (!expectPrelinked)
+            return;
+
+        const string prefix = "GraphicsLibraryFiles=";
+        AssertEx.Contains(output, prefix);
+        int start = output.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length;
+        int end = output.IndexOfAny(['\r', '\n'], start);
+        string loaded = output[start..(end < 0 ? output.Length : end)].Trim();
+        if (loaded.Length != 0)
+        {
+            throw new InvalidOperationException(
+                $"The template loaded {loaded} instead of resolving it from the executable.{Environment.NewLine}{output}");
         }
     }
 

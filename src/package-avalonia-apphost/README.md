@@ -15,7 +15,13 @@ Prelinked Avalonia 12 apphost and single-file host templates for .NET 10 (10.0.1
 
 Use the package without a suffix for all supported targets, or reference only the RID packages the project publishes. RID packages bring in the shared `ChsBuffer.Avalonia.AppHost.Build` integration automatically.
 
-The templates activate when the project targets .NET 10 or .NET 11 (including OS-specific TFMs such as `net11.0-windows`) and publishes for an installed RID. Other target combinations keep the standard .NET SDK host behavior.
+The templates activate for a C# project that targets .NET 10 or .NET 11 (including OS-specific TFMs such as `net11.0-windows`) and builds for the RuntimeIdentifier of an installed RID package: `-r <RID>`, `<RuntimeIdentifier>`, or the RID that `PublishSingleFile` infers. Other builds keep the standard .NET SDK host and publish the dynamic native libraries:
+
+- Builds without a RuntimeIdentifier, such as `dotnet run` or a portable `dotnet publish`, keep the libraries of every RID, without a warning.
+- Projects with `PublishAot=true` warn that the package is inactive in every build for a RuntimeIdentifier, not only when publishing, because the NativeAOT executable they publish has no apphost; the output of `dotnet build -r <RID>` uses the SDK apphost. The warning is omitted when the project references a HostForge static graphics package, such as `ChsBuffer.SkiaSharp.Static` or `ChsBuffer.Angle.Static`, which link these libraries into the NativeAOT executable.
+- `UseAppHost=false` builds run on `dotnet` and warn that the package is inactive.
+- F# and Visual Basic projects warn that the package is inactive: the executable resolves the libraries through a C# module initializer that the package compiles into the project.
+- Other target framework and RID combinations warn that no template matches.
 
 The single-file host embeds the native .NET runtime it was built from (10.0.15 or 11.0.0), while the managed framework comes from the runtime pack chosen at publish time. The .NET SDK 11.0.100 selects exactly these runtime packs; with another SDK, set `RuntimeFrameworkVersion` to the template's version for the closest match.
 
@@ -26,4 +32,4 @@ The single-file host embeds the native .NET runtime it was built from (10.0.15 o
 | `DisableSkiaHarfBuzzRuntimeCopy` | `true` | Keeps the SkiaSharp and HarfBuzzSharp dynamic libraries and their symbol files out of the publish directory and the single-file bundle. |
 | `DisableAngleRuntimeCopy` | `true` | Keeps the ANGLE library (`av_libglesv2.dll`) out of the publish directory and the single-file bundle. |
 
-The package registers a `DllImport` resolver for SkiaSharp, HarfBuzzSharp and Avalonia.Win32 that loads these libraries from the executable. When the application has already registered its own resolver for one of these assemblies, that resolver stays in effect; set the matching property to `false` so the libraries it loads are published.
+The package registers a `DllImport` resolver that loads these libraries from the executable with each of the following assemblies that the project references: SkiaSharp, SkiaSharp.Skottie, SkiaSharp.SceneGraph, SkiaSharp.Resources, HarfBuzzSharp and, for Windows RIDs, Avalonia.Win32 (ANGLE). It names them statically, so it loads no assembly the application does not reference and trimming keeps the ones it registers. It registers a library only when the running executable exports it, so the application assembly also works under another host, such as `dotnet App.dll`, a test project that references the application, or the XAML previewer, where the libraries load from their files as usual. A module initializer registers the resolvers before `Main` runs, and `NativeLibrary.SetDllImportResolver` accepts one resolver per assembly: a resolver registered earlier for one of these assemblies stays in effect, and setting the matching property to `false` publishes the libraries it loads; registering one later, for example in `Main`, throws `InvalidOperationException`.

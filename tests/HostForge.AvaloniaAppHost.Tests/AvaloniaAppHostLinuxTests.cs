@@ -51,6 +51,7 @@ public class AvaloniaAppHostLinuxTests
 
         AssertEx.Success(runResult, $"{Rid}-run");
         AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        AssertSkottieAndLoadedLibraries(runResult.CombinedOutput, expectPrelinked: true);
     }
 
     [Test]
@@ -95,8 +96,74 @@ public class AvaloniaAppHostLinuxTests
         }
 
         AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        AssertSkottieAndLoadedLibraries(runResult.CombinedOutput, expectPrelinked: true);
         // The bundle pins its managed framework to the runtime embedded in the template.
         AssertEx.Contains(runResult.CombinedOutput, $"RuntimeVersion={RepoContext.GetHostLibsVersion(targetFramework)}");
+    }
+
+    [Test]
+    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
+    public async Task BuildOutput_RunsOnTheTemplateAndOnDotNet_Linux(string targetFramework)
+    {
+        await using var project = await TestProjectWorkspace.CreateAsync(
+            targetFramework: targetFramework,
+            runtimeIdentifier: Rid,
+            includeNativeAssetsPackages: true);
+
+        CommandResult result = await CommandRunner.RunAsync(
+            "dotnet",
+            $"build \"{project.ProjectFilePath}\" -c Release -v:minimal",
+            project.ProjectDirectory);
+
+        AssertEx.Success(result, $"{Rid} build ({targetFramework})");
+        AssertEx.NotContains(result.CombinedOutput, "ChsBuffer.Avalonia.AppHost is inactive");
+
+        string outputDirectory = GetBuildOutputDirectory(project, targetFramework, Rid);
+        CommandResult templateRun = await CommandRunner.RunAsync(
+            Path.Combine(outputDirectory, project.ProjectName), string.Empty, outputDirectory);
+        AssertEx.Success(templateRun, $"{Rid} build output run ({targetFramework})");
+        AssertLoadedSkiaSharpNativeVersion(templateRun.CombinedOutput);
+        AssertSkottieAndLoadedLibraries(templateRun.CombinedOutput, expectPrelinked: true);
+
+        // Under dotnet the main program exports none of the libraries, so the resolver of the application
+        // assembly leaves them to the files in the build output, as for a test project that references it.
+        CommandResult dotnetRun = await CommandRunner.RunAsync("dotnet", $"\"{project.ProjectName}.dll\"", outputDirectory);
+        AssertEx.Success(dotnetRun, $"{Rid} build output on dotnet ({targetFramework})");
+        AssertLoadedSkiaSharpNativeVersion(dotnetRun.CombinedOutput);
+        AssertSkottieAndLoadedLibraries(dotnetRun.CombinedOutput, expectPrelinked: false);
+    }
+
+    [Test]
+    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
+    public async Task PublishWithoutRuntimeIdentifier_KeepsTheNativeLibraries_Linux(string targetFramework)
+    {
+        await using var project = await TestProjectWorkspace.CreateAsync(
+            targetFramework: targetFramework,
+            runtimeIdentifier: Rid,
+            includeNativeAssetsPackages: true,
+            setRuntimeIdentifier: false);
+
+        CommandResult result = await CommandRunner.RunAsync(
+            "dotnet",
+            $"publish \"{project.ProjectFilePath}\" -c Release -v:minimal",
+            project.ProjectDirectory);
+
+        AssertEx.Success(result, $"{targetFramework} publish without a RID");
+        // dotnet run and IDE builds have no RID either, so the inactive package stays silent.
+        AssertEx.NotContains(result.CombinedOutput, "ChsBuffer.Avalonia.AppHost is inactive");
+
+        string outputDirectory = project.GetPublishDirectory("Release", targetFramework, string.Empty);
+        foreach (string library in new[] { "libSkiaSharp.so", "libHarfBuzzSharp.so" })
+        {
+            if (!Directory.EnumerateFiles(Path.Combine(outputDirectory, "runtimes"), library, SearchOption.AllDirectories).Any())
+                throw new InvalidOperationException($"The portable publish output has no {library} under runtimes/.");
+        }
+
+        // The portable output runs on dotnet and loads the libraries of the running RID from runtimes/.
+        CommandResult runResult = await CommandRunner.RunAsync("dotnet", $"\"{project.ProjectName}.dll\"", outputDirectory);
+        AssertEx.Success(runResult, $"{targetFramework} run without a RID");
+        AssertLoadedSkiaSharpNativeVersion(runResult.CombinedOutput);
+        AssertSkottieAndLoadedLibraries(runResult.CombinedOutput, expectPrelinked: false);
     }
 
     [Test]
@@ -219,6 +286,26 @@ public class AvaloniaAppHostLinuxTests
         {
             throw new InvalidOperationException(
                 $"Expected native SkiaSharp {RepoContext.SkiaSharpVersion}, but got '{value}'.{Environment.NewLine}{output}");
+        }
+    }
+
+    private static void AssertSkottieAndLoadedLibraries(string output, bool expectPrelinked)
+    {
+        // SkiaSharp.Skottie, SceneGraph and Resources import libSkiaSharp themselves.
+        AssertEx.Contains(output, "Skottie=True");
+        AssertEx.Contains(output, "HarfBuzzLength=9");
+        if (!expectPrelinked)
+            return;
+
+        const string prefix = "GraphicsLibraryFiles=";
+        AssertEx.Contains(output, prefix);
+        int start = output.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length;
+        int end = output.IndexOfAny(['\r', '\n'], start);
+        string loaded = output[start..(end < 0 ? output.Length : end)].Trim();
+        if (loaded.Length != 0)
+        {
+            throw new InvalidOperationException(
+                $"The template loaded {loaded} instead of resolving it from the executable.{Environment.NewLine}{output}");
         }
     }
 

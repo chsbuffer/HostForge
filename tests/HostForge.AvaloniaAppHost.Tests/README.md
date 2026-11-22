@@ -14,7 +14,14 @@ Current coverage:
   dependencies, keeps the SDK host and the native libraries without a warning; publishing for a RID whose package
   the project does not reference keeps them with the inactive warning
 - Windows Skia/HarfBuzz native runtime copy suppression switch behavior
-- Windows ANGLE P/Invoke resolution from the apphost and runtime copy suppression for every template TFM
+- Windows ANGLE P/Invoke resolution from the apphost and runtime copy suppression for every template TFM: the
+  consumer references Avalonia.Win32 and calls its `EGL_GetProcAddress` import, which the module initializer
+  resolves from the executable
+- The other consumer projects do not reference Avalonia.Win32, so their runs on a Windows template also check that
+  the module initializer registers its resolver only with referenced assemblies
+- The consumer programs call SkiaSharp, SkiaSharp.Skottie, SkiaSharp.SceneGraph and SkiaSharp.Resources, which
+  each import libSkiaSharp, and HarfBuzzSharp; every run on a template checks that no Skia, HarfBuzz or ANGLE
+  library file is loaded
 - Self-contained single-file publish on Windows and Linux for every template TFM, without and with
   `IncludeNativeLibrariesForSelfExtract`: `RuntimeFrameworkVersion` is pinned to the template's runtime version,
   as the package README requires; the bundle runs on the prelinked singlefilehost (exact runtime version checked)
@@ -22,6 +29,13 @@ Current coverage:
   symbol files) in the publish directory or extracted from the bundle (`DOTNET_BUNDLE_EXTRACT_BASE_DIR` points extraction into the test project)
 - Linux publish-and-run output validation for every template TFM, on the RID of the test system (`linux-x64` on
   glibc, `linux-musl-x64` / `linux-musl-arm64` on Alpine; `HOSTFORGE_NATIVE_RID` overrides it)
+- Build output on Windows and Linux for every template TFM: runs on the template, and on `dotnet`, whose main
+  program exports no native library, the resolver of the application assembly leaves them to the build output
+- Publish without a RuntimeIdentifier on Windows and Linux for every template TFM: no inactive warning, the native
+  libraries of every RID stay under `runtimes/`, and the portable output runs on `dotnet`
+- Windows `UseAppHost=false` and NativeAOT publishes: inactive with the matching warning, the dynamic libraries stay in
+  the publish directory, and the output runs on `dotnet` or as the NativeAOT executable
+- Windows F# project: builds and publishes inactive with the language warning, keeping the dynamic libraries
 - Linux ELF audit of the linked templates: architecture, the glibc or musl program interpreter, no glibc
   dependency in the musl templates, and the diagnostics exports of the upstream singlefilehost
 - Linux Skia/HarfBuzz native runtime copy suppression switch behavior
@@ -30,7 +44,7 @@ Current coverage:
 Link the templates for every template TFM first: `task link-avalonia TARGET_OS=windows` on Windows, the container
 commands in [Linux templates](../../src/package-avalonia-apphost/DEVELOPMENT.md#linux-templates) on Linux.
 Running the published executables needs the matching shared runtimes: .NET 9, 10 and 11 on Windows; .NET 10 and 11
-on Linux. The Linux ELF audit needs `readelf` (binutils).
+on Linux. The Windows NativeAOT publish needs the MSVC build tools. The Linux ELF audit needs `readelf` (binutils).
 
 Run:
 
