@@ -53,9 +53,21 @@ def pinned_versions(versions, packages):
 
 def pattern(versions):
     # A version, also as a v-prefixed tag, that is not part of a longer number or version (11.2.3, 1.2.30 and
-    # 1.2.3.4 do not contain 1.2.3). "_" and "-" may join it to a name, as in skia_1.2.3.zip.
+    # 1.2.3.4 do not contain 1.2.3). "_", "-" and "." may join it to a name, as in skia_1.2.3.zip and
+    # Name.win-x64.1.2.3.nupkg; literals() drops the matches that follow a numeric part instead (0.1.2.3).
     literals = "|".join(re.escape(version) for version in sorted(versions, key=len, reverse=True))
-    return re.compile(rf"(?<![0-9A-Za-z.])v?(?:{literals})(?![0-9A-Za-z]|\.\d)")
+    return re.compile(rf"(?<![0-9A-Za-z])v?(?:{literals})(?![0-9A-Za-z]|\.\d)")
+
+
+# The text before a match that makes it the end of a longer version: a part that is a number and a dot, such as
+# "0.", "v1." or the "1." of "Name.1.", but not the "x64." of a runtime identifier. A lookbehind of fixed width
+# cannot tell them apart.
+_LONGER_VERSION = re.compile(r"(?:^|[^0-9A-Za-z])v?\d+\.$")
+
+
+def literals(regex, line):
+    """The matches of `regex` in `line` that are whole versions."""
+    return [match.group() for match in regex.finditer(line) if not _LONGER_VERSION.search(line, 0, match.start())]
 
 
 def scanned_files(root):
@@ -77,8 +89,7 @@ def find_literals(root, regex):
         for number, line in enumerate(text.splitlines(), 1):
             if allowed is not None and allowed.match(line):
                 continue
-            for match in regex.finditer(line):
-                found.append(f"{path}:{number}: {match.group()}")
+            found += [f"{path}:{number}: {literal}" for literal in literals(regex, line)]
     return found
 
 
@@ -91,10 +102,14 @@ class VersionLiteralTests(unittest.TestCase):
     def test_pattern_respects_number_boundaries(self):
         regex = pattern(["1.2.3", "4.5.6.7"])
         for text in ("1.2.3", '"1.2.3"', "/1.2.3/", "1.2.3-rc.1", "v=4.5.6.7;", "tag v1.2.3", "/tree/v1.2.3/",
-                     "skia_1.2.3.zip", "1.2.3_x64"):
-            self.assertRegex(text, regex)
-        for text in ("11.2.3", "1.2.30", "1.2.3.4", "14.5.6.7", "4.5.6.70", "x1.2.3", "xv1.2.3", "1.2.3a"):
-            self.assertNotRegex(text, regex)
+                     "skia_1.2.3.zip", "1.2.3_x64", "Pkg.1.2.3.nupkg", "Pkg.win-x64.1.2.3.nupkg",
+                     "Pkg.linux-musl-arm64.4.5.6.7.nupkg", "pkg/1.2.3/pkg.1.2.3.nupkg", "a.b.1.2.3"):
+            with self.subTest(text=text):
+                self.assertTrue(literals(regex, text))
+        for text in ("11.2.3", "1.2.30", "1.2.3.4", "14.5.6.7", "4.5.6.70", "x1.2.3", "xv1.2.3", "1.2.3a",
+                     "0.1.2.3", "9.1.2.3", "v1.1.2.3", "Pkg.1.1.2.3", "Pkg.x64.9.4.5.6.7"):
+            with self.subTest(text=text):
+                self.assertEqual([], literals(regex, text))
 
 
 if __name__ == "__main__":
