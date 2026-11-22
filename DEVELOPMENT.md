@@ -274,7 +274,7 @@ Avalonia 测试包含平台特定用例：Windows 用例在非 Windows 系统跳
 - 测试生成的工程以 `RepoContext.TestPackagesRoot`（`artifacts/tmp/build-tests/packages/<测试程序集>`）为 `RestorePackagesPath`，`NUGET_PACKAGES` 和 `globalPackagesFolder` 都不改变它。每个测试进程先删除其中的 `chsbuffer.*`，因此还原本次打出的包；其余包是不会变化的已发布版本，留给下次运行。
 - NativeAOT 矩阵为每次发布新建工作区，以工作区的 `obj/packages` 为包目录。
 
-用镜像源代替 nuget.org 时，在用户级 NuGet.Config 中为镜像源加上 `<package pattern="*" />` 映射，它与仓库配置中的映射合并。[`samples/avalonia-nativeaot-smoke`](samples/avalonia-nativeaot-smoke/README.md) 也能发布已发布的版本，它的 `NuGet.Config` 取消了这一限制，由 `SmokePackageSource` 和已配置的源提供包。
+用镜像源代替 nuget.org 时，在用户级 NuGet.Config 中为镜像源加上 `<package pattern="*" />` 映射，它与仓库配置中的映射合并。[`samples/avalonia-nativeaot-smoke`](samples/avalonia-nativeaot-smoke/README.md) 也能发布已发布的版本，它的 `NuGet.Config` 取消了这一限制，由 `SmokePackageSource` 和已配置的源提供包。配方在 `build/conan` 下构建的上游源码（.NET Runtime、Avalonia）从自己配置的源还原，[`build/NuGet.Config`](build/NuGet.Config) 同样取消这一限制，并停用 `artifacts/packages/Release` 源。
 
 ## 产物布局
 

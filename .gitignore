@@ -5,6 +5,7 @@ __pycache__
 .idea/
 .vs/
 .venv/
-/build/
+/build/*
+!/build/NuGet.Config
 /repo/
 uv.lock
