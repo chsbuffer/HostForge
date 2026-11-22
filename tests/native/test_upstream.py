@@ -14,6 +14,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -1545,6 +1546,21 @@ class ClientTests(unittest.TestCase):
                     mock.patch("time.sleep"):
                 with self.assertRaisesRegex(upstream.UpstreamError, rf"{type(error).__name__}.*after 2 attempts"):
                     client.get("https://example.invalid/x")
+
+    def test_ls_remote_retries_failures(self):
+        client, url = upstream.Client(attempts=3), "https://example.invalid/r"
+        results = [subprocess.CompletedProcess([], 128, "", "fatal: unable to access: Could not resolve host\n"),
+                   subprocess.TimeoutExpired(["git"], 120),
+                   subprocess.CompletedProcess([], 0, f"{'a' * 40}\trefs/tags/v1\n", "")]
+        with mock.patch.object(upstream.subprocess, "run", side_effect=results) as run, mock.patch("time.sleep"):
+            self.assertEqual({"refs/tags/v1": "a" * 40}, client.ls_remote(url, "refs/tags/v1"))
+        self.assertEqual(3, run.call_count)
+        failed = subprocess.CompletedProcess([], 128, "", "fatal: repository not found\n")
+        with mock.patch.object(upstream.subprocess, "run", return_value=failed) as run, mock.patch("time.sleep"):
+            with self.assertRaisesRegex(upstream.UpstreamError,
+                                        rf"^git ls-remote {url}: fatal: repository not found \(after 3 attempts\)$"):
+                client.ls_remote(url, "refs/tags/v1")
+        self.assertEqual(3, run.call_count)
 
     def test_token_is_not_sent_after_a_redirect(self):
         client = upstream.Client(token="secret")

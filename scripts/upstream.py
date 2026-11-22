@@ -244,17 +244,24 @@ class Client:
                 yield chunk
 
     def ls_remote(self, repository, *patterns):
+        """{ref: commit} of the refs matching `patterns`, retrying failures like the HTTP reads."""
         command = ["git", "ls-remote", repository, *patterns]
         environment = dict(os.environ, GIT_TERMINAL_PROMPT="0")
-        try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=self.timeout * 2,
-                                    env=environment, check=False)
-        except FileNotFoundError:
-            raise UpstreamError("git is required for ls-remote") from None
-        except subprocess.TimeoutExpired:
-            raise UpstreamError(f"git ls-remote {repository}: timed out") from None
-        if result.returncode != 0:
-            raise UpstreamError(f"git ls-remote {repository}: {result.stderr.strip() or result.returncode}")
+        for attempt in range(1, self.attempts + 1):
+            try:
+                result = subprocess.run(command, capture_output=True, text=True, timeout=self.timeout * 2,
+                                        env=environment, check=False)
+            except FileNotFoundError:
+                raise UpstreamError("git is required for ls-remote") from None
+            except subprocess.TimeoutExpired:
+                reason = f"timed out after {self.timeout * 2}s"
+            else:
+                if result.returncode == 0:
+                    break
+                reason = result.stderr.strip() or f"exit code {result.returncode}"
+            if attempt == self.attempts:
+                raise UpstreamError(f"git ls-remote {repository}: {reason} (after {attempt} attempts)")
+            time.sleep(2 * attempt)
         refs = {}
         for line in result.stdout.splitlines():
             commit, _, ref = line.partition("\t")
