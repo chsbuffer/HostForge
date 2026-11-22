@@ -54,12 +54,14 @@ dependency separator (`|`, `||`, `|@`). Libraries passed inside
 `/WHOLEARCHIVE:<lib>` (.NET 11 links `runtimeinfo.lib` that way) are packaged too.
 
 On Windows the recipe rewrites the Runtime's `/Zi` compiles to `/Z7`, precompiled
-headers included, so every packaged object carries its own debug information: the
+headers included, so the debug information travels in the packaged objects: the
 relink runs outside the build tree, where the compiler PDBs that `/Zi` writes do not
-exist.
+exist. An object that uses a precompiled header references the types stored in the
+object that created it, which is packaged too.
 
 Each payload records the runtime's own compile and link flags in
-`<host>.linkflags`; the Windows relink reads the `/DELAYLOAD` options from
+`<host>.linkflags`, as the Runtime's link rule passes them (the `/Z7` rewrite changes
+only the compiles); the Windows relink reads the `/DELAYLOAD` options from
 `singlefilehost.linkflags`, because .NET 10 and .NET 11 delay-load different DLLs.
 
 A link input outside the build tree, such as the `libpthread.a` stub that CMake finds
