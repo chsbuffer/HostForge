@@ -10,12 +10,7 @@
   -->
   <PropertyGroup>
     <PackageLicenseFile>THIRD-PARTY-NOTICES.txt</PackageLicenseFile>
-    <_HostForgePackageNotices>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)', 'notices', '$(PackageId)', 'THIRD-PARTY-NOTICES.txt'))</_HostForgePackageNotices>
   </PropertyGroup>
-
-  <ItemGroup>
-    <None Include="$(_HostForgePackageNotices)" Pack="true" PackagePath="" />
-  </ItemGroup>
 
   <UsingTask TaskName="HostForgeWriteNotices" TaskFactory="RoslynCodeTaskFactory"
              AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
@@ -54,8 +49,17 @@
   <Target Name="_HostForgeWritePackageNotices"
           BeforeTargets="_GetPackageFiles"
           DependsOnTargets="$(HostForgePackageNoticesDependsOn)">
+    <!--
+      The path includes PackageVersion so that packages of one ID, such as the SkiaSharp 3 and 4 packages of a
+      RID, write separate files. It is set here because the Sdk.targets that defaults PackageVersion to Version
+      is imported after this file in projects that use the Sdk attribute.
+    -->
+    <PropertyGroup>
+      <_HostForgePackageNotices>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)', 'notices', '$(PackageId)', '$(PackageVersion)', 'THIRD-PARTY-NOTICES.txt'))</_HostForgePackageNotices>
+    </PropertyGroup>
     <ItemGroup>
       <HostForgePackageLicense Include="$(MSBuildThisFileDirectory)../LICENSE.TXT" Notice="hostforge/LICENSE.TXT" />
+      <None Include="$(_HostForgePackageNotices)" Pack="true" PackagePath="" />
     </ItemGroup>
     <HostForgeWriteNotices Title="Licenses of the components in $(PackageId). Each section is headed by a component and its license file."
                            Licenses="@(HostForgePackageLicense)"
