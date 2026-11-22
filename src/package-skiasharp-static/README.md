@@ -31,6 +31,11 @@ dynamic graphics libraries before publishing. Linux archives are grouped to reso
 mutual dependencies. Payloads, source manifests, GN arguments and licenses are under
 `build/native/<rid>/`.
 
+Windows libraries are compiled with Control Flow Guard (`/guard:cf`), and the `win-x64`
+libraries also with EH continuation metadata (`/guard:ehcont`), so they link into
+executables that require it: NativeAOT with `ControlFlowGuard=Guard`, which links with
+`/guard:ehcont` on x64.
+
 Conflicting native lines fail with `HFG0001`; incompatible managed SkiaSharp
 major.minor or HarfBuzzSharp major.minor.patch fail with `HFG0002` or `HFG0003`.
 An incomplete selected payload fails with `HFG0005`. `HFG1001` warns when an AOT

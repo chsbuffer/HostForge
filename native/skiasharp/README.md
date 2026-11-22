@@ -11,6 +11,11 @@ The GN arguments and project settings follow the build files of the mono/SkiaSha
 [`upstream-build.json`](upstream-build.json) records, for each version in `versions.json`, the git blob
 SHAs of the upstream build files the recipe was checked against.
 
+On `win-x64` the recipe also compiles Skia (clang-cl) and HarfBuzzSharp (MSVC, `GuardEHContMetadata`)
+with `/guard:ehcont`, which upstream does not: the .NET hosts link with `/guard:ehcont` on x64, and
+`link.exe` fails with `LNK1386` on objects with C++ exception handling that lack its EH continuation
+metadata.
+
 SkiaSharp 4 also packages the separate `jsonreader` archive required by Skottie.
 Linux SkiaSharp 4 includes the matching target `cxx/libc++.a` archive.
 
