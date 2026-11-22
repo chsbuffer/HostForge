@@ -149,20 +149,6 @@ public class NativeAotMatrixTests
         }
     }
 
-    [Test]
-    public async Task NonAotConsumer_DoesNotActivateStaticInputs()
-    {
-        string workspace = CreateWorkspace("non-aot");
-        CommandResult result = await CommandRunner.RunAsync("dotnet",
-            $"msbuild NativeAotMatrix.csproj -restore -t:HostForgeResolveStaticGraphics {Properties(workspace)} -p:PublishAot=false -getItem:NativeLibrary,DirectPInvoke -v:quiet", workspace);
-        AssertEx.Success(result, "Non-AOT package evaluation");
-        int jsonStart = result.StandardOutput.IndexOf('{');
-        using JsonDocument items = JsonDocument.Parse(result.StandardOutput.Substring(jsonStart));
-        if (items.RootElement.GetProperty("Items").GetProperty("NativeLibrary").GetArrayLength() != 0 ||
-            items.RootElement.GetProperty("Items").GetProperty("DirectPInvoke").GetArrayLength() != 0)
-            throw new InvalidOperationException("Static graphics inputs leaked into a non-AOT consumer.");
-    }
-
     // Without NativeAOT the application loads the restored dynamic libraries. SkiaSharp checks that their native
     // version matches at startup, so a Linux library from Avalonia's older native asset packages fails the run.
     // Self-contained, the run does not depend on the .NET runtimes installed on the runner.

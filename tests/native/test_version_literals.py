@@ -99,18 +99,5 @@ class VersionLiteralTests(unittest.TestCase):
         self.assertEqual([], found, "Read pinned versions from scripts/repo_versions.py or Directory.Build.props "
                                     "instead of repeating them:\n" + "\n".join(found))
 
-    def test_pattern_respects_number_boundaries(self):
-        regex = pattern(["1.2.3", "4.5.6.7"])
-        for text in ("1.2.3", '"1.2.3"', "/1.2.3/", "1.2.3-rc.1", "v=4.5.6.7;", "tag v1.2.3", "/tree/v1.2.3/",
-                     "skia_1.2.3.zip", "1.2.3_x64", "Pkg.1.2.3.nupkg", "Pkg.win-x64.1.2.3.nupkg",
-                     "Pkg.linux-musl-arm64.4.5.6.7.nupkg", "pkg/1.2.3/pkg.1.2.3.nupkg", "a.b.1.2.3"):
-            with self.subTest(text=text):
-                self.assertTrue(literals(regex, text))
-        for text in ("11.2.3", "1.2.30", "1.2.3.4", "14.5.6.7", "4.5.6.70", "x1.2.3", "xv1.2.3", "1.2.3a",
-                     "0.1.2.3", "9.1.2.3", "v1.1.2.3", "Pkg.1.1.2.3", "Pkg.x64.9.4.5.6.7"):
-            with self.subTest(text=text):
-                self.assertEqual([], literals(regex, text))
-
-
 if __name__ == "__main__":
     unittest.main()

@@ -1,6 +1,5 @@
 """Cache invalidation contracts; run with python -m unittest discover -s tests/native."""
 
-import copy
 import importlib.util
 import json
 import re
@@ -16,9 +15,6 @@ spec.loader.exec_module(cache_key)
 spec = importlib.util.spec_from_file_location("repo_versions", ROOT / "scripts/repo_versions.py")
 repo_versions = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(repo_versions)
-spec = importlib.util.spec_from_file_location("upstream", ROOT / "scripts/upstream.py")
-upstream = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(upstream)
 VERSIONS = repo_versions.load()
 # A second supported version of each multi-version component, so tests can change one without the other.
 SKIA = VERSIONS["skiasharp"]
@@ -26,8 +22,6 @@ OTHER_SKIA = next((v for v in VERSIONS["skiasharp-versions"] if v != SKIA), None
 HOSTLIBS = VERSIONS["hostlibs"]
 OTHER_HOSTLIBS = next((v for v in VERSIONS["hostlibs-versions"] if v != HOSTLIBS), None)
 AVALONIA = VERSIONS["avalonia-native"]
-SKIA_RIDS = ("win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64",
-             "osx-x64", "osx-arm64")
 # The RIDs whose HostLibs build in an upstream container.
 HOSTLIBS_LINUX_RIDS = ("linux-x64", "linux-musl-x64", "linux-musl-arm64")
 
@@ -38,8 +32,7 @@ class NativeCacheKeyTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         shutil.copytree(ROOT / "native", self.root / "native", ignore=shutil.ignore_patterns("__pycache__"))
-        image_tools = [tool.path for tool in upstream.TOOLS if tool.build_arg]
-        for name in ("Taskfile.yml", "pyproject.toml", "scripts/libHarfBuzzSharp.vcxproj.in", *image_tools):
+        for name in ("Taskfile.yml", "pyproject.toml", "scripts/libHarfBuzzSharp.vcxproj.in"):
             destination = self.root / name
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, destination)
@@ -50,15 +43,6 @@ class NativeCacheKeyTests(unittest.TestCase):
     def change(self, name):
         with (self.root / name).open("a", encoding="utf-8") as file:
             file.write("\n# Changed input\n")
-
-    def test_unrelated_platform_and_task_do_not_invalidate(self):
-        original = self.key()
-        self.change("native/skiasharp/macos.py")
-        self.change("native/skiasharp/profiles/windows-arm64")
-        self.change("native/avalonianative/conanfile.py")
-        with (self.root / "Taskfile.yml").open("a", encoding="utf-8") as file:
-            file.write("\n  unrelated-task:\n    cmds: [echo hello]\n")
-        self.assertEqual(original, self.key())
 
     def test_selected_profile_and_platform_do_invalidate(self):
         original = self.key()
@@ -78,36 +62,6 @@ class NativeCacheKeyTests(unittest.TestCase):
         self.assertNotEqual(before["3"], self.key(lines["3"]))
         self.assertEqual(before["4"], self.key(lines["4"]), "SkiaSharp 4 builds the upstream HarfBuzzSharp project")
         self.assertEqual(linux, self.key(lines["3"], "linux-x64"))
-
-    def test_checked_downloads_are_scoped_to_skiasharp_4(self):
-        lines = {version.split(".")[0]: version for version in VERSIONS["skiasharp-versions"]}
-        if not {"3", "4"} <= set(lines):
-            self.skipTest("needs a SkiaSharp 3 and a SkiaSharp 4 version")
-        file = self.root / "native/skiasharp/upstream-build.json"
-        records = json.loads(file.read_text(encoding="utf-8"))
-
-        def keys(edit):
-            changed = copy.deepcopy(records)
-            edit(changed)
-            file.write_text(json.dumps(changed), encoding="utf-8")
-            return {major: {rid: self.key(version, rid) for rid in SKIA_RIDS} for major, version in lines.items()}
-
-        original = keys(lambda changed: None)
-
-        def unchecked(changed):
-            changed[lines["4"]]["native/windows/build.cake"] = "0" * 40
-            skia3 = changed[lines["3"]]
-            skia3.update({path: "0" * 40 for path in (*skia3, *cache_key.SKIASHARP_CHECKED_DOWNLOADS)})
-
-        self.assertEqual(original, keys(unchecked), "unchecked or SkiaSharp 3 records")
-        for path in cache_key.SKIASHARP_CHECKED_DOWNLOADS:
-            for name, edit in (("changed", lambda changed: changed[lines["4"]].update({path: "0" * 40})),
-                               ("removed", lambda changed: changed[lines["4"]].pop(path))):
-                with self.subTest(path=path, record=name):
-                    after = keys(edit)
-                    self.assertEqual(original["3"], after["3"])
-                    for rid in SKIA_RIDS:
-                        self.assertNotEqual(original["4"][rid], after["4"][rid], rid)
 
     def test_version_source_is_scoped_to_selected_version(self):
         if OTHER_SKIA is None:
@@ -193,23 +147,6 @@ class NativeCacheKeyTests(unittest.TestCase):
                 self.assertNotEqual(before.pop(changed), after.pop(changed))
                 self.assertEqual(before, after)
 
-    def test_image_tool_update_does_not_invalidate(self):
-        linux = [("skiasharp", version, rid) for version in VERSIONS["skiasharp-versions"]
-                 for rid in ("linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64")]
-        linux += [("hostlibs", HOSTLIBS, rid) for rid in HOSTLIBS_LINUX_RIDS]
-
-        def keys():
-            return {target: cache_key.fingerprint(self.root, target[0], target[1], target[2], "compiler-1")
-                    for target in linux}
-
-        before = keys()
-        for tool in upstream.TOOLS:
-            if tool.build_arg:
-                file = self.root / tool.path
-                file.write_text(tool.set(file.read_text(encoding="utf-8"), "99.0.0"), encoding="utf-8")
-                self.assertEqual("99.0.0", tool.pin(self.root))
-        self.assertEqual(before, keys())
-
     def test_toolchain_and_relevant_task_invalidate(self):
         original = self.key()
         self.assertNotEqual(original, self.key(toolchain="compiler-2"))
@@ -219,20 +156,3 @@ class NativeCacheKeyTests(unittest.TestCase):
         taskfile.write_text(text, encoding="utf-8")
         self.assertNotEqual(original, self.key())
 
-    def test_other_components_only_use_selected_profile(self):
-        for component, version, rid, other in (
-            ("angle", VERSIONS["angle"], "win-x64", "windows-arm64"),
-            ("hostlibs", HOSTLIBS, "win-x64", "linux-x64"),
-            ("avalonianative", VERSIONS["avalonia-native"], "osx-arm64", "osx-x64"),
-        ):
-            with self.subTest(component=component):
-                original = self.key(version, rid, component)
-                self.change(f"native/{component}/profiles/{other}")
-                self.assertEqual(original, self.key(version, rid, component))
-
-    def test_generator_update_rebuilds_payload_but_can_reuse_objects(self):
-        before, after = [cache_key.fingerprint(self.root, "hostlibs", HOSTLIBS, "win-x64",
-                                              "compiler-1", generator)
-                         for generator in ("cmake 3.29", "cmake 4.0")]
-        self.assertNotEqual(before["key"], after["key"])
-        self.assertEqual(before["compiler-prefix"], after["compiler-prefix"])

@@ -6,7 +6,7 @@ Current coverage:
 
 - Windows package contract validation: the RID packages `ChsBuffer.Avalonia.AppHost.win-x64` / `win-arm64` contain
   templates for every `AvaloniaTemplateTfms` entry and generated `AvaloniaAppHostRids` registrations evaluated by
-  MSBuild; the `ChsBuffer.Avalonia.AppHost.Build` package contains the targets and module initializer and no templates
+  MSBuild
 - Windows RID package dependencies: the Build package and the SkiaSharp, HarfBuzzSharp and ANGLE versions that
   the templates link
 - Consumer projects reference only a RID package, as applications do. Windows activation across `net10.0`,
@@ -41,17 +41,15 @@ Current coverage:
 - Windows `UseAppHost=false` and NativeAOT publishes: inactive with the matching warning, the dynamic libraries stay in
   the publish directory, and the output runs on `dotnet` or as the NativeAOT executable
 - Windows F# project: builds and publishes inactive with the language warning, keeping the dynamic libraries
-- Linux ELF audit of the linked templates: architecture, the glibc or musl program interpreter, no glibc
-  dependency in the musl templates, and the diagnostics exports of the upstream singlefilehost
+- Linux: the linked singlefilehost exports the diagnostics symbols of the upstream singlefilehost
 - Linux Skia/HarfBuzz native runtime copy suppression switch behavior
-- Skia 3 / 4 package versions, optional preview labels, managed dependencies and unchanged template paths
-- Dependencies of the Linux RID packages on `SkiaSharp.NativeAssets.Linux` and `HarfBuzzSharp.NativeAssets.Linux`
-  at the managed versions, in the project for every RID and in the packed package of the test system's RID
+- Dependencies of the Linux RID package of the test system's RID on `SkiaSharp.NativeAssets.Linux` and
+  `HarfBuzzSharp.NativeAssets.Linux` at the managed versions
 
 Link the templates for every template TFM first: `task link-avalonia TARGET_OS=windows` on Windows, the container
 commands in [Linux templates](../../src/package-avalonia-apphost/DEVELOPMENT.md#linux-templates) on Linux.
 Running the published executables needs the matching shared runtimes: .NET 9, 10 and 11 on Windows; .NET 10 and 11
-on Linux. The Windows NativeAOT publish needs the MSVC build tools. The Linux ELF audit needs `readelf` (binutils).
+on Linux. The Windows NativeAOT publish needs the MSVC build tools. The Linux export check needs `readelf` (binutils).
 
 Run:
 

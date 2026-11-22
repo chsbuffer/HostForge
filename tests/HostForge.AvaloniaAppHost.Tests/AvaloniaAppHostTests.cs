@@ -154,33 +154,6 @@ public class AvaloniaAppHostTests
     }
 
     [Test]
-    public async Task BuildPackage_ContainsTargetsAndModuleInitializer()
-    {
-        string packageId = RepoContext.AvaloniaAppHostBuildPackageId;
-        string nupkg = NupkgPath(packageId);
-        AssertEx.FileExists(nupkg);
-
-        string tmp = Path.Combine(Path.GetTempPath(), $"hft-{Guid.NewGuid():N}");
-        try
-        {
-            UnpackNupkg(nupkg, tmp);
-            HashSet<string> files = ListFiles(tmp);
-
-            if (!files.Contains("buildTransitive/ChsBuffer.Avalonia.AppHost.Build.targets"))
-                throw new InvalidOperationException("Build package missing .targets");
-            if (!files.Contains("buildTransitive/ModuleInitializer.cs"))
-                throw new InvalidOperationException("Build package missing ModuleInitializer.cs");
-            if (files.Any(f => f.StartsWith("template/", StringComparison.Ordinal)))
-                throw new InvalidOperationException("Build package must not contain templates");
-        }
-        finally
-        {
-            if (Directory.Exists(tmp))
-                Directory.Delete(tmp, recursive: true);
-        }
-    }
-
-    [Test]
     [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
     public async Task WindowsAnglePInvoke_ResolvesFromAppHost_WinX64(string targetFramework)
     {

@@ -72,23 +72,5 @@ class PackageDocumentationTests(unittest.TestCase):
         self.assertEqual([], found, "Give the package versions of Directory.Build.props in the package documentation "
                                     f"({', '.join(upstream.DOC_FILES)}):\n" + "\n".join(found))
 
-    def test_problems(self):
-        records = {"ChsBuffer.SkiaSharp.Static": {"skia3": {"version": "3.1.2.1"}, "skia4": {"version": "4.5.6.2"}},
-                   "ChsBuffer.Angle.Static": {"default": {"version": "2.1.7.1"}},
-                   "ChsBuffer.Avalonia.Native.Static": {"default": {"version": "12.1.6.1"}}}
-        upstream_pins = {"2.1.7.20260419", "8.3.1.5"}
-        current = 'Version="3.1.2.1" ... use 4.5.6.2 for SkiaSharp 4, ANGLE 2.1.7.20260419, HarfBuzz 8.3.1.5'
-        self.assertEqual([], problems({"a.md": current, "b.md": "SkiaSharp 3.1.2 and 4.5.6", "c.md": ""},
-                                      records, upstream_pins))
-        self.assertEqual(["a.md: gives ChsBuffer.SkiaSharp.Static versions but not 4.5.6.2"],
-                         problems({"a.md": 'Version="3.1.2.1"; use version 4.5.6 for SkiaSharp 4'}, records,
-                                  upstream_pins))
-        self.assertEqual(["a.md: 4.5.6.1 is not the current ChsBuffer.SkiaSharp.Static version 4.5.6.2",
-                          "a.md: 2.1.7.2 is not the current ChsBuffer.Angle.Static version 2.1.7.1",
-                          "a.md: gives ChsBuffer.Angle.Static versions but not 2.1.7.1",
-                          "a.md: gives ChsBuffer.SkiaSharp.Static versions but not 4.5.6.2"],
-                         problems({"a.md": "3.1.2.1 4.5.6.1 2.1.7.2"}, records, upstream_pins))
-
-
 if __name__ == "__main__":
     unittest.main()

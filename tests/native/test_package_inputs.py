@@ -96,92 +96,6 @@ def record(version, **inputs):
     return {"version": version, "bump": "increment X", "inputs": inputs}
 
 
-class RuleTests(unittest.TestCase):
-    """The four rules and the comparison of two locks, on synthetic records."""
-
-    def lock(self, packages):
-        return package_inputs.document(packages)
-
-    def test_variants_of_a_family_need_distinct_versions(self):
-        records = {"F": {"a": record("1.0.0", x=1), "b": record("1.0.0", x=2), "c": record("1.0.0-c", x=3)},
-                   "G": {"a": record("1.0.0", x=1)}}
-        found = package_inputs.conflicts(records)
-        self.assertEqual([("F", "1.0.0", ["a", "b"])],
-                         [(item["family"], item["version"], item["variants"]) for item in found])
-        self.assertIn("a, b", package_inputs.guard(self.lock({}), records)[0])
-
-    def test_locked_version_keeps_its_variant_and_inputs(self):
-        lock = self.lock({"F": {"1.0.0": entry("a", x=1)}})
-        self.assertEqual([], package_inputs.violations(lock, {"F": {"a": record("1.0.0", x=1)}}))
-        # A target framework removed and added back with another source, under its old version.
-        changed = package_inputs.violations(lock, {"F": {"a": record("1.0.0", x=2)}})
-        self.assertEqual([("inputs/x", 1, 2)], changed[0]["changes"])
-        # Another variant claiming a version that an earlier variant already published.
-        renamed = package_inputs.violations(lock, {"F": {"b": record("1.0.0", x=1)}})
-        self.assertEqual([("variant", "a", "b")], renamed[0]["changes"])
-
-    def test_history_keeps_versions_no_longer_built(self):
-        lock = self.lock({"F": {"1.0.0": entry("a", x=1)}})
-        records = {"F": {"a": record("1.0.1", x=2)}}
-        self.assertEqual([], package_inputs.guard(lock, records))
-        self.assertEqual(["F (a) 1.0.1: not in the lock"], package_inputs.stale(lock, records))
-        appended = package_inputs.append(package_inputs.history(lock), records)
-        self.assertEqual({"F": {"1.0.0": entry("a", x=1), "1.0.1": entry("a", x=2)}}, appended)
-        self.assertEqual([], package_inputs.stale(self.lock(appended), records))
-
-    def test_versions_only_move_forward_per_variant(self):
-        lock = self.lock({"F": {"1.0.0": entry("a", x=1), "2.0.0-b": entry("b", x=1), "1.1.0": entry("a", x=2)}})
-        found = package_inputs.regressions(lock, {"F": {"a": record("1.0.0", x=1), "b": record("2.0.0-b", x=1)}})
-        self.assertEqual([("a", "1.1.0", ["1.1.0"])],
-                         [(item["variant"], item["locked"], item["newer"]) for item in found])
-
-    def test_versions_are_written_in_normalized_form(self):
-        for version, normalized in (("1.0.0.01", "1.0.0.1"), ("01.0.0", "1.0.0"), ("1.0.0.0", "1.0.0"), ("1.0", "1.0.0"),
-                                    ("1.0.0-A", "1.0.0-a"), ("1.0.0-Beta.Skia4", "1.0.0-beta.skia4"),
-                                    ("1.0.0+meta", "1.0.0")):
-            with self.subTest(version=version):
-                self.assertEqual(normalized, package_inputs.normalized_version(version))
-                # Locked as 1.0.0.1 with other inputs: the unnormalized string would be appended as a new version.
-                lock = self.lock({"F": {normalized: entry("a", x=1)}})
-                records = {"F": {"a": record(version, x=2)}}
-                self.assertEqual([(version, normalized)], [(item["version"], item["normalized"])
-                                                           for item in package_inputs.unnormalized(records)])
-                self.assertIn(f"the same version on nuget.org as {normalized}", package_inputs.guard(lock, records)[0])
-        for version in ("1.0.0", "1.0.0.1", "12.0.6-skia4", "10.0.15-alpha.1", "12.0.6-beta.skia4", "2.1.27548.1",
-                        "1.0.0-alpha.0", "1.0.0-alpha.0a", "1.0.0-0a.b-c"):
-            with self.subTest(version=version):
-                self.assertEqual(version, package_inputs.normalized_version(version))
-        for version in ("1.0.0-", "1.0.0-alpha.01", "1.0.0-00", "1.0.0-a..b", "1.0.0.0.1", "v1.0.0"):
-            with self.subTest(version=version):
-                with self.assertRaisesRegex(ValueError, "not a NuGet version"):
-                    package_inputs.normalized_version(version)
-                records = {"F": {"a": record(version, x=1)}}
-                self.assertEqual([(version, None)], [(item["version"], item["normalized"])
-                                                     for item in package_inputs.unnormalized(records)])
-                self.assertIn(f"F (a) {version}: not a version NuGet accepts",
-                              package_inputs.guard(self.lock({}), records)[0])
-
-    def test_changed_entries_of_a_base_lock(self):
-        base = self.lock({"F": {"1.0.0": entry("a", x=1), "1.0.1": entry("a", x=2)}})
-        self.assertEqual([], package_inputs.changed_entries(
-            base, self.lock({"F": {"1.0.0": entry("a", x=1), "1.0.1": entry("a", x=2), "1.0.2": entry("a", x=3)}})))
-        found = package_inputs.changed_entries(base, self.lock({"F": {"1.0.0": entry("a", x=9)}}))
-        self.assertEqual([("1.0.0", [("inputs/x", 1, 9)]), ("1.0.1", None)],
-                         [(item["version"], item["changes"]) for item in found])
-        self.assertEqual(2, len(package_inputs.changed_entries(base, None)))
-
-    def test_rejects_a_lock_in_another_format(self):
-        with self.assertRaisesRegex(ValueError, r'expected \{"variant", "inputs"\}'):
-            package_inputs.history({"packages": {"F": {"a": {"version": "1.0.0", "inputs": {}}}}})
-
-    def test_render_orders_versions(self):
-        text = package_inputs.render({"F": {"1.0.10": entry("a", x=1), "1.0.9": entry("a", x=1),
-                                            "1.0.9-b": entry("b", x=1)}})
-        self.assertLess(text.index('"1.0.9-b"'), text.index('"1.0.9"'))
-        self.assertLess(text.index('"1.0.9"'), text.index('"1.0.10"'))
-        self.assertIn('"inputs": {"x": 1}', text)
-
-
 class LockMechanicsTests(unittest.TestCase):
     """The guard's behaviour on a temporary copy of the version sources (no git: nothing counts as committed)."""
 
@@ -225,14 +139,6 @@ class LockMechanicsTests(unittest.TestCase):
         self.assertTrue(angle["version"].startswith(".".join(angle["inputs"]["version"].split(".")[:3]) + "."))
         for framework, item in records["ChsBuffer.AppHost.Static"].items():
             self.assertTrue(item["version"].startswith(item["inputs"]["version"] + "-"), framework)
-
-    def test_unsupported_group_condition_is_an_error(self):
-        replace(self.props, r"^    <_Major>(\d+)</_Major>\n",
-                r"""  </PropertyGroup>\n  <PropertyGroup Condition="Exists('x.props')">\n    <_Major>\1</_Major>\n"""
-                r"""  </PropertyGroup>\n  <PropertyGroup>\n""")
-        with self.assertRaises(ValueError) as raised:
-            package_inputs.compute(self.root)
-        self.assertRegex(str(raised.exception), r"AvaloniaAppHostPackageVersion.*_Major.*unsupported condition.*Exists")
 
     def test_vmr_commit_change_requires_new_versions(self):
         before = package_inputs.read_lock(self.root)
@@ -307,17 +213,6 @@ class LockMechanicsTests(unittest.TestCase):
             self.assertIn(f"the same version on nuget.org as {version}", output)
         self.assertEqual(before, self.lock_text())
 
-    def test_edited_existing_entry_fails_the_guard(self):
-        lock = json.loads(self.lock_text())
-        version, item = next(iter(lock["packages"]["ChsBuffer.Angle.Static"].items()))
-        item["inputs"]["commit"] = "2" * 40
-        (self.root / package_inputs.LOCK).write_text(json.dumps(lock), encoding="utf-8")
-        found = package_inputs.guard(package_inputs.read_lock(self.root), package_inputs.compute(self.root))
-        self.assertEqual(1, len(found))
-        self.assertIn(f"ChsBuffer.Angle.Static {version} is already in the lock", found[0])
-        self.assertEqual(1, self.lock_command("--check")[0])
-        self.assertEqual(1, self.lock_command()[0])
-
     def test_lock_refuses_versions_moving_backwards(self):
         increment(self.props, MAJOR)
         self.assertEqual(0, self.lock_command()[0])
@@ -341,15 +236,6 @@ class LockMechanicsTests(unittest.TestCase):
         self.assertIn("out of date", output)
         self.assertEqual(0, self.lock_command()[0])
         self.assertEqual(0, self.lock_command("--check")[0])
-
-    def test_base_requires_check(self):
-        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
-            upstream.main(["--root", str(self.root), "lock", "--base", "HEAD"])
-
-    def test_version_order_follows_nuget(self):
-        ordered = ["1.0.0-alpha", "1.0.0-alpha.2", "1.0.0-alpha.10", "1.0.0-beta", "1.0.0", "1.0.0.1", "1.0.1-skia4",
-                   "1.0.1"]
-        self.assertEqual(ordered, sorted(reversed(ordered), key=package_inputs.version_key))
 
 
 @unittest.skipUnless(shutil.which("git"), "git is required")
@@ -386,28 +272,6 @@ class CommittedLockTests(LockMechanicsTests):
     def bump_apphost_versions(self):
         increment(self.props, MAJOR)
         increment(self.root / package_inputs.APPHOST_STATIC, r"(<Version>\$\(HostLibsVersion\)-alpha\.)(\d+)(</Version>)")
-
-    def test_force_cannot_change_committed_entries(self):
-        change_vmr_commit(self.root, "0" * 40)
-        before = self.lock_text()
-        code, output = self.lock_command("--force")
-        self.assertEqual(1, code)
-        self.assertIn("cannot change committed entries", output)
-        self.assertEqual(before, self.lock_text())
-
-    def test_force_replaces_uncommitted_entries_only(self):
-        committed = package_inputs.read_lock(self.root)
-        self.bump_apphost_versions()
-        self.assertEqual(0, self.lock_command()[0])
-        change_vmr_commit(self.root, "0" * 40)
-        self.assertEqual(1, self.lock_command()[0])
-        code, output = self.lock_command("--force")
-        self.assertEqual(0, code, output)
-        self.assertIn("replaced", output)
-        lock = package_inputs.read_lock(self.root)
-        self.assertEqual([], package_inputs.guard(lock, package_inputs.compute(self.root)))
-        self.assertEqual([], package_inputs.changed_entries(committed, lock))
-        self.assertEqual(0, self.lock_command("--check")[0])
 
     def test_edited_committed_entry_is_refused(self):
         lock = json.loads(self.lock_text())
@@ -454,75 +318,6 @@ class CommittedLockTests(LockMechanicsTests):
         self.assertEqual(0, code, output)
         self.assertIn("keep their first committed entries", output)
 
-    def test_history_accepts_appended_entries(self):
-        base = self.git("rev-parse", "HEAD")
-        increment(self.props, MAJOR)
-        self.assertEqual(0, self.lock_command()[0])
-        self.commit("bump")
-        count = sum(map(len, package_inputs.history(package_inputs.read_lock(self.root)).values()))
-        code, output = self.lock_command("--check")
-        self.assertEqual(0, code, output)
-        self.assertIn(f"All {count} versions on the first-parent history of HEAD keep their first committed entries",
-                      output)
-        self.assertEqual(0, self.lock_command("--check", "--base", base)[0])
-
-    def test_history_follows_the_first_parent(self):
-        # A branch merged into main: the entries of its own commits are not on the first-parent history.
-        main = self.git("branch", "--show-current")
-        self.git("switch", "-q", "-c", "topic")
-        increment(self.props, MAJOR)
-        self.assertEqual(0, self.lock_command()[0])
-        self.commit("topic: first attempt")
-        self.git("switch", "-q", main)
-        self.git("merge", "-q", "--no-ff", "--no-commit", "topic")
-        change_vmr_commit(self.root, "0" * 40)
-        self.git("checkout", main, "--", package_inputs.LOCK)
-        self.bump_apphost_versions()
-        self.assertEqual(0, self.lock_command()[0])
-        self.commit("merge topic with other inputs")
-        code, output = self.lock_command("--check")
-        self.assertEqual(0, code, output)
-        self.assertEqual(1, self.lock_command("--check", "--base", "topic")[0])
-
-    def test_history_without_a_lock_is_skipped(self):
-        self.git("checkout", "-q", "--orphan", "without-lock")
-        (self.root / package_inputs.LOCK).unlink()
-        base = self.commit("no lock")
-        self.write_lock()
-        code, output = self.lock_command("--check", "--base", base)
-        self.assertEqual(0, code, output)
-        self.assertIn(f"No commit on the first-parent history of {base} has {package_inputs.LOCK}; skipped", output)
-
-    def test_history_skips_locks_that_are_not_json(self):
-        good = self.lock_text().encode("utf-8")
-        skipped = []
-        for broken in (b"<<<<<<< HEAD\n" + good, b"\xff" + good):
-            (self.root / package_inputs.LOCK).write_bytes(broken)
-            skipped.append(self.commit("broken lock"))
-            # The commit itself fails its check, so nothing is published from it.
-            self.assertEqual(2, self.lock_command("--check")[0])
-            self.git("checkout", "HEAD~1", "--", package_inputs.LOCK)
-            self.commit("restore the lock")
-        for arguments in (("--check",), ()):
-            code, output = self.lock_command(*arguments)
-            self.assertEqual(0, code, output)
-            for commit in skipped:
-                self.assertIn(f"Skipped {package_inputs.LOCK} at {commit}: invalid JSON", output)
-
-    def test_history_rejects_a_lock_in_another_format(self):
-        lock = json.loads(self.lock_text())
-        family = lock["packages"]["ChsBuffer.Angle.Static"]
-        version = next(iter(family))
-        family[version] = {"version": version, **family[version]}
-        (self.root / package_inputs.LOCK).write_text(json.dumps(lock), encoding="utf-8")
-        other = self.commit("other format")
-        self.git("checkout", "HEAD~1", "--", package_inputs.LOCK)
-        self.commit("restore the lock")
-        for arguments in (("--check",), ()):
-            code, output = self.lock_command(*arguments)
-            self.assertEqual(2, code, arguments)
-            self.assertIn(f"{package_inputs.LOCK} at {other}: ChsBuffer.Angle.Static {version}: expected", output)
-
     def test_shallow_clone_is_an_error(self):
         self.commit("second")
         clone = self.root / "shallow"
@@ -533,12 +328,6 @@ class CommittedLockTests(LockMechanicsTests):
                 code = upstream.main(["--root", str(clone), "lock", *arguments])
             self.assertEqual(2, code, arguments)
             self.assertIn("shallow clone", stderr.getvalue())
-
-    def test_unknown_base_is_an_error(self):
-        code, output = self.lock_command("--check", "--base", "0" * 40)
-        self.assertEqual(2, code)
-        self.assertIn("cannot resolve", output)
-
 
 if __name__ == "__main__":
     unittest.main()

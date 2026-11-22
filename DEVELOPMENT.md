@@ -244,7 +244,7 @@ task matrix
 
 两个矩阵都对 `Directory.Build.props` 中 `HostForgeTargetFrameworks` 的每个 TFM 各运行一次；Static AppHost 矩阵因此需要先构建每个运行时版本的 HostLibs。Linux 上 Static AppHost 矩阵链接 .NET 11 HostLibs，CI 在最新运行时的 linux-x64 构建容器中运行它，NativeAOT 矩阵在 runner 上运行。
 
-`tests/native` 是不依赖构建产物的 Python 测试（缓存键、版本一致性、版本字面量、包输入锁、包文档版本、上游脚本，以及原生 recipe 与 deployer 中可单独测试的逻辑，如许可证收集；Conan 由测试替身代替），CI 在 `plan-all` 中运行：
+`tests/native` 是不依赖构建产物的 Python 测试（缓存键、版本一致性、版本字面量、包输入锁、包文档版本、上游脚本，以及原生 recipe 中可单独测试的逻辑，如许可证收集；Conan 由测试替身代替），CI 在 `plan-all` 中运行：
 
 ```bash
 python -m unittest discover -s tests/native
@@ -266,7 +266,7 @@ dotnet test --project .\tests\HostForge.StaticAppHost.Tests\HostForge.StaticAppH
 dotnet test --project .\tests\HostForge.AvaloniaAppHost.Tests\HostForge.AvaloniaAppHost.Tests.csproj -c Release -v:minimal
 ```
 
-Avalonia 测试包含平台特定用例：Windows 用例在非 Windows 系统跳过，Linux 用例在非 Linux 系统跳过。Linux 用例使用当前系统的 RID（可用 `HOSTFORGE_NATIVE_RID` 覆盖）：glibc 上为 `linux-x64`，Alpine 上为 `linux-musl-x64` / `linux-musl-arm64`；它们同时审计模板的 ELF 架构、解释器、libc 依赖，以及单文件宿主是否导出上游 singlefilehost 的诊断符号。
+Avalonia 测试包含平台特定用例：Windows 用例在非 Windows 系统跳过，Linux 用例在非 Linux 系统跳过。Linux 用例使用当前系统的 RID（可用 `HOSTFORGE_NATIVE_RID` 覆盖）：glibc 上为 `linux-x64`，Alpine 上为 `linux-musl-x64` / `linux-musl-arm64`；它们同时检查单文件宿主是否导出上游 singlefilehost 的诊断符号。
 
 测试、示例和元包从仓库打出的包还原：根目录的 [`NuGet.Config`](NuGet.Config) 只从 `artifacts/packages/Release` 还原 `ChsBuffer.*` 包，其余包取自 nuget.org。缺少本地包时还原失败，不会改用 nuget.org 上同版本的已发布包。包目录中已有的版本 NuGet 直接使用，不再读取包源，而开发中会以不变的版本重新打包：
 
@@ -422,7 +422,7 @@ flowchart LR
 
 | Job | 执行平台 | 主要输出 |
 | --- | --- | --- |
-| `plan-all` | Linux | 读取规范文件中的版本；`tests/native`（缓存键、版本一致性、版本字面量、包输入锁、包文档版本、上游脚本、原生 recipe 与 deployer 逻辑）；与 `main` 首父历史中的包输入锁比对；两个 SkiaSharp 版本与完整 8 RID 矩阵 |
+| `plan-all` | Linux | 读取规范文件中的版本；`tests/native`（缓存键、版本一致性、版本字面量、包输入锁、包文档版本、上游脚本、原生 recipe 逻辑）；与 `main` 首父历史中的包输入锁比对；两个 SkiaSharp 版本与完整 8 RID 矩阵 |
 | `build-skia-windows` | Windows x64 | 两个版本 × 两种架构的静态库、RID 包，以及 x64 AOT / 版本保护 |
 | `test-skia-windows-arm64` | Windows 11 ARM64 | ARM64 NativeAOT 原生发布、实际运行与架构审计 |
 | `build-skia-linux` | Linux | 固定 LLVM 20 / bionic sysroot 静态库、RID 包、AOT 运行及 ABI 审计、非 AOT 运行 |
@@ -443,7 +443,7 @@ flowchart LR
 | `link-avalonia-apphost-skia4-linux` | 同上 | SkiaSharp 4 的 Linux Avalonia 模板及版本匹配测试 |
 | `link-avalonia-apphost-linux-musl` | Linux，最新运行时的官方 linux-musl 构建容器 | `linux-musl-x64` / `linux-musl-arm64` Avalonia 模板 |
 | `link-avalonia-apphost-skia4-linux-musl` | 同上 | SkiaSharp 4 的 Alpine Avalonia 模板 |
-| `test-avalonia-apphost-linux-musl` | Linux x64 / ARM64 上的原生 Alpine 容器 | Alpine 模板的发布、运行、单文件与 ELF 解释器 / libc 审计 |
+| `test-avalonia-apphost-linux-musl` | Linux x64 / ARM64 上的原生 Alpine 容器 | Alpine 模板的发布、运行与单文件 |
 | `test-avalonia-apphost-skia4-linux-musl` | 同上 | SkiaSharp 4 的 Alpine 模板测试及版本匹配 |
 | `pack-avalonia-apphost` | Windows | 5 个 RID 包 + Build 包 + 元包（ChsBuffer.Avalonia.AppHost） |
 | `pack-avalonia-apphost-skia4` | Windows | SkiaSharp 4 的 5 个 RID 包 + Build 包 + 元包；版本追加 `skia4` |

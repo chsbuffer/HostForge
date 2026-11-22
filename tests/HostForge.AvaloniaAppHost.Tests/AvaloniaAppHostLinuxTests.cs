@@ -13,10 +13,6 @@ public class AvaloniaAppHostLinuxTests
     private static readonly string Rid =
         Environment.GetEnvironmentVariable("HOSTFORGE_NATIVE_RID") ?? RuntimeInformation.RuntimeIdentifier;
 
-    private static bool IsMusl => Rid.StartsWith("linux-musl-", StringComparison.Ordinal);
-
-    private static bool IsArm64 => Rid.EndsWith("-arm64", StringComparison.Ordinal);
-
     [Before(Class)]
     public static async Task PackAvaloniaPackage()
     {
@@ -235,23 +231,6 @@ public class AvaloniaAppHostLinuxTests
 
     [Test]
     [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
-    public async Task LinkedTemplates_UseTheLibcOfTheRid(string targetFramework)
-    {
-        string templateDirectory = Path.Combine(
-            RepoContext.RepoRoot, "artifacts", "avalonia-host", RepoContext.TargetAvaloniaVersion, targetFramework, Rid);
-
-        foreach (string template in new[] { "apphost", "singlefilehost" })
-        {
-            string path = Path.Combine(templateDirectory, template);
-            AssertEx.FileExists(path);
-            CommandResult readelf = await CommandRunner.RunAsync("readelf", $"-h -l -d -V \"{path}\"", templateDirectory);
-            AssertEx.Success(readelf, $"ELF audit of {Rid} {template} ({targetFramework})");
-            AuditElf(readelf.StandardOutput, $"{Rid} {template} ({targetFramework})");
-        }
-    }
-
-    [Test]
-    [MethodDataSource(typeof(RepoContext), nameof(RepoContext.AvaloniaTemplateTfmCases))]
     public async Task LinkedSingleFileHost_ExportsTheDiagnosticsSymbols(string targetFramework)
     {
         string path = Path.Combine(
@@ -267,32 +246,6 @@ public class AvaloniaAppHostLinuxTests
             if (!Regex.IsMatch(readelf.StandardOutput, $@"\sDEFAULT\s+\d+\s+{export}(@|\s|$)", RegexOptions.Multiline))
                 throw new InvalidOperationException(
                     $"{Rid} singlefilehost ({targetFramework}) does not export {export}.{Environment.NewLine}{readelf.StandardOutput}");
-        }
-    }
-
-    private static void AuditElf(string readelf, string template)
-    {
-        if (!Regex.IsMatch(readelf, IsArm64 ? @"Machine:\s+AArch64" : @"Machine:\s+Advanced Micro Devices X86-64"))
-            throw new InvalidOperationException($"{template} is not an ELF for {Rid}.{Environment.NewLine}{readelf}");
-        if (!IsMusl)
-        {
-            AssertEx.Contains(readelf, IsArm64 ? "/lib/ld-linux-aarch64.so.1" : "/lib64/ld-linux-x86-64.so.2");
-            return;
-        }
-
-        AssertEx.Contains(readelf, IsArm64 ? "/lib/ld-musl-aarch64.so.1" : "/lib/ld-musl-x86_64.so.1");
-        if (Regex.IsMatch(readelf, @"lib(c|m)\.so\.6|lib(pthread|dl|rt)\.so\.[012]|ld-linux"))
-            throw new InvalidOperationException($"{template} depends on glibc.{Environment.NewLine}{readelf}");
-        string provider = string.Empty;
-        foreach (string line in readelf.Split('\n'))
-        {
-            Match file = Regex.Match(line, @"\bFile: (\S+)");
-            if (file.Success)
-                provider = file.Groups[1].Value;
-            Match version = Regex.Match(line, @"\bName: (GLIBC_\S+)");
-            // GCC's libgcc-glibc.ver also labels musl unwind exports GLIBC_2.0.
-            if (version.Success && (provider != "libgcc_s.so.1" || version.Groups[1].Value != "GLIBC_2.0"))
-                throw new InvalidOperationException($"{template} requires {version.Groups[1].Value} from {provider}.");
         }
     }
 

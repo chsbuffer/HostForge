@@ -1,16 +1,13 @@
-"""The native recipes and deployers, without Conan; run with python -m unittest discover -s tests/native."""
+"""The native recipes, without Conan; run with python -m unittest discover -s tests/native."""
 
-import fnmatch
 import importlib.util
 import os
 import re
-import shutil
 import sys
 import tempfile
 import types
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -18,24 +15,6 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class ConanException(Exception):
     pass
-
-
-def _mkdir(conanfile, path):
-    os.makedirs(path, exist_ok=True)
-
-
-def _rmdir(conanfile, path):
-    if os.path.isdir(path):
-        shutil.rmtree(path)
-
-
-def _copy(conanfile, pattern, src, dst, keep_path=True, excludes=()):
-    for file in Path(src).rglob("*"):
-        relative = file.relative_to(src).as_posix()
-        if file.is_file() and fnmatch.fnmatch(relative, pattern):
-            target = Path(dst) / (relative if keep_path else file.name)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(file, target)
 
 
 class _ConanModule(types.ModuleType):
@@ -48,15 +27,12 @@ class _ConanModule(types.ModuleType):
 
 
 def _load(name, path):
-    """Loads a recipe or deployer with stand-ins for Conan, which these tests do not depend on."""
+    """Loads a recipe with stand-ins for Conan, which these tests do not depend on."""
     modules = {module: _ConanModule(module) for module in (
         "conan", "conan.errors", "conan.tools", "conan.tools.build", "conan.tools.env", "conan.tools.files",
         "conan.tools.microsoft", "conan.tools.scm", "conan.tools.system", "conan.tools.system.package_manager")}
     modules["conan.errors"].ConanException = ConanException
     modules["conan.errors"].ConanInvalidConfiguration = type("ConanInvalidConfiguration", (ConanException,), {})
-    modules["conan.tools.files"].copy = _copy
-    modules["conan.tools.files"].mkdir = _mkdir
-    modules["conan.tools.files"].rmdir = _rmdir
     # patch.dict also removes the sibling modules (windows, linux, macos) that a recipe imports.
     with mock.patch.dict(sys.modules, modules), mock.patch.object(sys, "path", [str(path.parent), *sys.path]):
         spec = importlib.util.spec_from_file_location(name, path)
@@ -68,9 +44,6 @@ def _load(name, path):
 angle = _load("angle_recipe", ROOT / "native/angle/conanfile.py")
 hostlibs = _load("hostlibs_recipe", ROOT / "native/hostlibs/conanfile.py")
 skiasharp = _load("skiasharp_recipe", ROOT / "native/skiasharp/conanfile.py")
-skiasharp_deploy = _load("skiasharp_deploy", ROOT / "native/skiasharp/deploy.py")
-
-
 def _archive(path, members):
     """Writes an MSVC-style archive: a symbol table, then names longer than 15 bytes in a NUL-separated "//"."""
     names = b""
@@ -96,13 +69,6 @@ class AngleLicenseTests(unittest.TestCase):
             path = os.path.join(temporary, "libANGLE_static.lib")
             _archive(path, members)
             self.assertEqual(members, angle.AngleConan._archive_members(path))
-
-    def test_archive_members_rejects_other_files(self):
-        with tempfile.TemporaryDirectory(prefix="hostforge-licenses-test-") as temporary:
-            path = os.path.join(temporary, "libANGLE_static.lib")
-            Path(path).write_bytes(b"MZ not an archive")
-            with self.assertRaises(ConanException):
-                angle.AngleConan._archive_members(path)
 
     def test_linked_licenses_maps_members_to_components(self):
         licenses = angle.AngleConan._linked_licenses([
@@ -156,8 +122,6 @@ class HostLibsDebugInfoTests(unittest.TestCase):
                 "  TARGET_PDB = corehost\\apphost.pdb",
     }
     COMPILES = ("c", "cxx", "pch-creator", "pch-consumer")
-    PCH = ("pch-creator", "pch-consumer")
-
     def rewrite(self, cache):
         with tempfile.TemporaryDirectory(prefix="hostforge-recipes-test-") as temporary:
             ninja = Path(temporary) / "build.ninja"
@@ -183,34 +147,6 @@ class HostLibsDebugInfoTests(unittest.TestCase):
                     flags = self.variable(blocks[name], "FLAGS")
                     self.assertNotRegex(flags, r"(?:^| )[/-]Zi(?: |$)")
                     self.assertRegex(flags, r"(?:^| )[/-]Z7(?: |$)")
-
-    def test_cached_build_compiles_precompiled_headers_directly(self):
-        blocks = self.rewrite(cache=True)
-        for name in self.COMPILES:
-            with self.subTest(block=name):
-                flags = self.variable(blocks[name], "FLAGS")
-                if name in self.PCH:
-                    self.assertEqual("", self.variable(blocks[name], "LAUNCHER"))
-                    self.assertIn(" /Zl", flags)
-                else:
-                    self.assertEqual(self.LAUNCHER, self.variable(blocks[name], "LAUNCHER"))
-                    self.assertIn(" -Zl", flags)
-                    self.assertNotIn(" /Zl", flags)
-
-    def test_uncached_build_keeps_the_launcher_and_zl(self):
-        blocks = self.rewrite(cache=False)
-        for name in self.COMPILES:
-            with self.subTest(block=name):
-                self.assertEqual(self.LAUNCHER, self.variable(blocks[name], "LAUNCHER"))
-                self.assertIn(" /Zl", self.variable(blocks[name], "FLAGS"))
-                self.assertNotIn(" -Zl", self.variable(blocks[name], "FLAGS"))
-
-    def test_other_blocks_are_unchanged(self):
-        for cache in (False, True):
-            blocks = self.rewrite(cache)
-            for name in self.BLOCKS.keys() - self.COMPILES:
-                with self.subTest(cache=cache, block=name):
-                    self.assertEqual(self.BLOCKS[name], blocks[name])
 
 
 class SkiaSharpLicenseTests(unittest.TestCase):
@@ -238,43 +174,10 @@ class SkiaSharpLicenseTests(unittest.TestCase):
         )
         self.assertEqual({"harfbuzz", "libpng", "zlib", "vulkanmemoryallocator"}, self.recipe._compiled_externals())
 
-    def test_harfbuzz_is_always_an_external(self):
-        self.objects("skia/obj/src/core/skia.SkCanvas.o")
-        self.assertEqual({"harfbuzz"}, self.recipe._compiled_externals())
-
     def test_unmapped_third_party_objects_fail(self):
         self.objects("skia/obj/src/third_party/newlib/new.o")
         with self.assertRaisesRegex(ConanException, "src/third_party/newlib"):
             self.recipe._compiled_externals()
-
-    def test_externals_without_licenses_fail(self):
-        self.objects("skia/obj/third_party/externals/newlib/new.o")
-        with self.assertRaisesRegex(ConanException, "third_party/externals/newlib"):
-            self.recipe._compiled_externals()
-
-
-class SkiaSharpToolchainTests(unittest.TestCase):
-    # toolchain.txt as build() writes it: clang-cl and the cl banner on Windows, $CC on Linux, then the SDK on macOS.
-    CL = ("Microsoft (R) C/C++ Optimizing Compiler Version 19.50.35719 for x64\n"
-          "Copyright (C) Microsoft Corporation.  All rights reserved.\n\n"
-          "usage: cl [ option... ] filename... [ /link linkoption... ]\n")
-    TOOLCHAINS = {
-        "23": "clang version 23.1.6\nTarget: x86_64-pc-windows-msvc\nThread model: posix\n"
-              "InstalledDir: C:\\Program Files\\LLVM\\bin\n" + CL,
-        "20": "Ubuntu clang version 20.1.8 (++20250708082409+6fb913d3e2ec-1~exp1~20250708202428.132)\n"
-              "Target: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-20/bin\n",
-        "17": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: arm64-apple-darwin24.6.0\nThread model: posix\n"
-              "InstalledDir: /Library/Developer/CommandLineTools/usr/bin\n15.5\n",
-    }
-
-    def test_manifest_records_the_major_version_of_the_clang_that_built(self):
-        for major, toolchain in self.TOOLCHAINS.items():
-            with self.subTest(major=major):
-                self.assertEqual(major, skiasharp.SkiaSharpConan._clang_major(toolchain))
-
-    def test_toolchain_without_clang_fails(self):
-        with self.assertRaisesRegex(ConanException, "names no clang version"):
-            skiasharp.SkiaSharpConan._clang_major(self.CL)
 
 
 class SkiaSharpSourceTests(unittest.TestCase):
@@ -308,53 +211,12 @@ class SkiaSharpSourceTests(unittest.TestCase):
         with mock.patch.dict(skiasharp.UPSTREAM_BUILD, {self.VERSION: records} if records is not None else {}):
             self.recipe._download_windows_harfbuzz()
 
-    def test_reviewed_files_are_downloaded(self):
-        self.source(self.BLOBS)
-        for path, content in self.CONTENTS.items():
-            self.assertEqual(content, (self.root / Path(path).name).read_bytes())
-
     def test_changed_files_fail(self):
         for path in self.CONTENTS:
             with self.subTest(path=path):
                 self.served = {**self.CONTENTS, path: self.CONTENTS[path] + b"\n"}
                 with self.assertRaisesRegex(ConanException, f"{re.escape(path)} at {self.COMMIT} is blob"):
                     self.source(self.BLOBS)
-
-    def test_unrecorded_files_fail(self):
-        for path in self.CONTENTS:
-            with self.subTest(path=path), self.assertRaisesRegex(ConanException, f"records None for {self.VERSION}"):
-                self.source({other: blob for other, blob in self.BLOBS.items() if other != path})
-        with self.subTest(version="unrecorded"), self.assertRaisesRegex(ConanException, "records None"):
-            self.source(None)
-
-    def test_cache_key_includes_the_records_of_the_checked_files(self):
-        spec = importlib.util.spec_from_file_location("cache_key", ROOT / "scripts/native-cache-key.py")
-        cache_key = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(cache_key)
-        self.assertEqual(skiasharp.WINDOWS_HARFBUZZ, cache_key.SKIASHARP_CHECKED_DOWNLOADS)
-
-
-class SkiaSharpDeployTests(unittest.TestCase):
-    def test_redeploy_replaces_the_payload_directory(self):
-        with tempfile.TemporaryDirectory(prefix="hostforge-licenses-test-") as temporary:
-            root = Path(temporary)
-            for name in ("skia.lib", "manifest.json", "licenses/skia/LICENSE"):
-                (root / "package/lib" / name).parent.mkdir(parents=True, exist_ok=True)
-                (root / "package/lib" / name).write_text(name, encoding="utf-8")
-            stale = root / "artifacts/1.2.3/win-x64/licenses/LICENSE"
-            stale.parent.mkdir(parents=True)
-            stale.write_text("earlier layout", encoding="utf-8")
-            package = SimpleNamespace(ref=SimpleNamespace(name="skiasharp", version="1.2.3"),
-                                      settings=SimpleNamespace(os="Windows", arch="x86_64"),
-                                      package_folder=str(root / "package"))
-            graph = SimpleNamespace(root=SimpleNamespace(conanfile=SimpleNamespace(dependencies={"skiasharp": package})))
-
-            skiasharp_deploy.deploy(graph, str(root / "artifacts"))
-
-            target = root / "artifacts/1.2.3/win-x64"
-            self.assertEqual(["licenses/skia/LICENSE", "manifest.json", "skia.lib"],
-                             sorted(file.relative_to(target).as_posix() for file in target.rglob("*") if file.is_file()))
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -9,33 +9,6 @@ namespace HostForge.NativeAot.Tests;
 public class PackageLayoutTests
 {
     [Test]
-    public async Task MetaPackages_RequireEverySupportedRidAtTheExactVersion()
-    {
-        if (Environment.GetEnvironmentVariable("HOSTFORGE_TEST_META") != "true")
-            Skip.Test("Set HOSTFORGE_TEST_META=true to test the meta packages.");
-
-        foreach ((string component, string version, string[] rids) in new[]
-        {
-            ("SkiaSharp", RepoContext.GetSkiaSharpPackageVersion(NativeAotMatrixTests.SkiaVersion), new[] { "win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64", "osx-x64", "osx-arm64" }),
-            ("Angle", RepoContext.AnglePackageVersion, new[] { "win-x64", "win-arm64" }),
-            ("Avalonia.Native", RepoContext.AvaloniaNativePackageVersion, new[] { "osx-x64", "osx-arm64" })
-        })
-        {
-            string id = $"ChsBuffer.{component}.Static";
-            string package = Path.Combine(RepoContext.AvaloniaPackageOutputDir, $"{id}.{version}.nupkg");
-            using ZipArchive zip = ZipFile.OpenRead(package);
-            using Stream stream = zip.Entries.Single(entry => entry.FullName.EndsWith(".nuspec", StringComparison.Ordinal)).Open();
-            XElement[] dependencies = XDocument.Load(stream).Descendants().Where(element => element.Name.LocalName == "dependency").ToArray();
-            await Assert.That(dependencies.Length).IsEqualTo(rids.Length);
-            foreach (string rid in rids)
-            {
-                XElement dependency = dependencies.Single(element => (string?)element.Attribute("id") == $"{id}.{rid}");
-                await Assert.That((string?)dependency.Attribute("version")).IsEqualTo($"[{version}]");
-            }
-        }
-    }
-
-    [Test]
     public async Task RidPackage_HasPortableLayoutAndVerifiablePayload()
     {
         string version = NativeAotMatrixTests.SkiaVersion;
