@@ -13,7 +13,7 @@ HostForge 将本机静态库重新链接进 .NET `AppHost` / `SingleFileHost`，
 | [`ChsBuffer.Avalonia.AppHost`](https://www.nuget.org/packages/ChsBuffer.Avalonia.AppHost/) | 已预链接 ANGLE / SkiaSharp / HarfBuzzSharp 的 Avalonia 宿主模板 | Avalonia 12；.NET 10（10.0.15）、.NET 11（11.0.0）；`win-x64`、`win-arm64`、`linux-x64`、`linux-arm64`、`linux-musl-x64`、`linux-musl-arm64`、`osx-x64`、`osx-arm64` |
 | [ChsBuffer.AppHost.Static.win-x64](src/package-apphost-static/README.md) | 在普通 .NET 项目的构建/发布过程中重新链接宿主；尚未发布到 nuget.org，需从源码打包 | .NET 10 / .NET 11（每个运行时一个包版本）、`win-x64` |
 | [ChsBuffer.SkiaSharp.Static](src/package-skiasharp-static/README.md) | NativeAOT 的 SkiaSharp / HarfBuzzSharp 静态库，包含 RID 包与元包 | 3.119.4 / 4.157.0：Windows、Linux glibc / musl、macOS 的 x64 / arm64 |
-| [ChsBuffer.Avalonia.Native.Static](src/package-avalonia-native-static/README.md) | NativeAOT 的 AvaloniaNative 静态链接输入 | Avalonia 12.1.6；`osx-x64`、`osx-arm64` |
+| [ChsBuffer.Avalonia.Native.Static](src/package-avalonia-native-static/README.md) | NativeAOT 的 AvaloniaNative 静态链接输入 | Avalonia 12.2.0；`osx-x64`、`osx-arm64` |
 | [ChsBuffer.Angle.Static](src/package-angle-static/README.md) | 提供 ANGLE 静态链接输入 | `win-x64`、`win-arm64` |
 | [静态图形元包](src/package-static-graphics/README.md) | SkiaSharp、ANGLE、Avalonia.Native 统一的 NativeAOT 引用入口 | SkiaSharp 覆盖 8 个 64 位 RID；ANGLE 覆盖 Windows；Avalonia.Native 覆盖 macOS |
 

@@ -1,12 +1,12 @@
 <Project>
 
   <PropertyGroup>
-    <AvaloniaVersion>12.1.6</AvaloniaVersion>
+    <AvaloniaVersion>12.2.0</AvaloniaVersion>
     <AngleVersion>2.1.27548.20260419</AngleVersion>
     <SkiaSharpVersion Condition="'$(SkiaSharpVersion)' == ''">3.119.4</SkiaSharpVersion>
     <HarfBuzzVersion Condition="'$(HarfBuzzVersion)' == '' and '$(SkiaSharpVersion)' == '3.119.4'">8.3.1.5</HarfBuzzVersion>
     <HarfBuzzVersion Condition="'$(HarfBuzzVersion)' == '' and '$(SkiaSharpVersion)' == '4.157.0'">14.4.0.200</HarfBuzzVersion>
-    <AvaloniaNativeVersion Condition="'$(AvaloniaNativeVersion)' == ''">12.1.6</AvaloniaNativeVersion>
+    <AvaloniaNativeVersion Condition="'$(AvaloniaNativeVersion)' == ''">12.2.0</AvaloniaNativeVersion>
   </PropertyGroup>
 
   <!--

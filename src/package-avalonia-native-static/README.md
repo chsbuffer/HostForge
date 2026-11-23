@@ -9,8 +9,8 @@ restore only one architecture.
   <PublishAot>true</PublishAot>
 </PropertyGroup>
 <ItemGroup>
-  <PackageReference Include="Avalonia.Desktop" Version="12.1.6" />
-  <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="12.1.6.1" />
+  <PackageReference Include="Avalonia.Desktop" Version="12.2.0" />
+  <PackageReference Include="ChsBuffer.Avalonia.Native.Static" Version="12.2.0.1" />
 </ItemGroup>
 ```
 
@@ -20,7 +20,7 @@ explicitly requests dynamic loading and bypasses Avalonia's default P/Invoke.
 Builds without NativeAOT or without a macOS RID load `libAvaloniaNative.dylib` as
 usual.
 
-The restored `Avalonia` and `Avalonia.Native` versions must be exactly 12.1.6
+The restored `Avalonia` and `Avalonia.Native` versions must be exactly 12.2.0
 (`HFG0004` otherwise); the fourth part of the package version is a HostForge
 packaging revision. The archives target macOS 12.0; the application must also meet
 the system requirements of its .NET and Avalonia versions.
