@@ -227,6 +227,11 @@ def compute(root=ROOT):
         runtimes[framework] = {"version": runtime, "vmr-tag": source["tag"], "vmr-commit": source["commit"]}
     angle = {"version": pinned["angle"], "branch": pinned["angle-branch"], "commit": pinned["angle-commit"]}
 
+    avalonia = pinned["avalonia-native"]
+    avalonia_source = pinned["avalonia-sources"][avalonia]
+    avalonia_native = {"avalonia": avalonia, "url": avalonia_source.get("url", ""),
+                       "sha256": avalonia_source.get("sha256", ""), "commit": avalonia_source.get("commit", "")}
+
     apphost, skiasharp = {}, {}
     for line in pinned["skiasharp-versions"]:
         variant = _skia_variant(line)
@@ -238,7 +243,7 @@ def compute(root=ROOT):
         apphost[variant] = {
             "version": _required(values, "AvaloniaAppHostPackageVersion", PROPS),
             "bump": "increment <_Major> in Directory.Build.props",
-            "inputs": {"runtimes": runtimes, "skiasharp": skia, "angle": angle},
+            "inputs": {"runtimes": runtimes, "skiasharp": skia, "angle": angle, "avalonia-native": avalonia_native},
         }
         skiasharp[variant] = {
             "version": _required(values, "SkiaSharpPackageVersion", PROPS),
@@ -260,8 +265,6 @@ def compute(root=ROOT):
         }
 
     values = evaluate(props)
-    avalonia = pinned["avalonia-native"]
-    avalonia_source = pinned["avalonia-sources"][avalonia]
     return {
         "ChsBuffer.Avalonia.AppHost": apphost,
         "ChsBuffer.AppHost.Static": apphost_static,
@@ -274,8 +277,7 @@ def compute(root=ROOT):
         "ChsBuffer.Avalonia.Native.Static": {"default": {
             "version": _required(values, "AvaloniaNativePackageVersion", PROPS),
             "bump": "increment the revision of <AvaloniaNativePackageVersion> in Directory.Build.props",
-            "inputs": {"avalonia": avalonia, "url": avalonia_source.get("url", ""),
-                       "sha256": avalonia_source.get("sha256", ""), "commit": avalonia_source.get("commit", "")},
+            "inputs": avalonia_native,
         }},
     }
 

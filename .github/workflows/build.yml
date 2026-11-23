@@ -91,6 +91,12 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-avalonianative-${{ matrix.rid }}
+          path: artifacts/avalonianative
+          if-no-files-found: error
+
   plan-all:
     runs-on: ubuntu-24.04
     outputs:
@@ -1498,7 +1504,7 @@ jobs:
           if-no-files-found: error
 
   link-avalonia-apphost-macos:
-    needs: [plan-all, build-hostlibs-macos, build-skia-macos]
+    needs: [plan-all, build-hostlibs-macos, build-skia-macos, build-avalonianative-macos]
     runs-on: ${{ matrix.target.runner }}
     strategy:
       fail-fast: false
@@ -1526,6 +1532,10 @@ jobs:
         with:
           name: native-skia-${{ matrix.version }}-${{ matrix.target.rid }}
           path: artifacts/skiasharp
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: native-avalonianative-${{ matrix.target.rid }}
+          path: artifacts/avalonianative
       - name: Link and test the macOS templates
         run: |
           task link-avalonia TARGET_OS=osx RID="$HOSTFORGE_NATIVE_RID" SKIASHARP_VERSION="$SKIASHARP_VERSION"
@@ -1751,6 +1761,7 @@ jobs:
             native-skia-*
             native-rootfs-*
             native-angle-*
+            native-avalonianative-*
             avalonia-host-*
             nuget-native-skia-*
             nuget-native-avalonianative-*

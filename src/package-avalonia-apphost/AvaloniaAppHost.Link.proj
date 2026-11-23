@@ -69,6 +69,8 @@
       <_AvaloniaHostRidIsWindows>$(AvaloniaHostRid.StartsWith('win'))</_AvaloniaHostRidIsWindows>
       <_AvaloniaHostRidIsMacOS>$(AvaloniaHostRid.StartsWith('osx-'))</_AvaloniaHostRidIsMacOS>
       <_AvaloniaHostRidIsLinux>$(AvaloniaHostRid.StartsWith('linux-'))</_AvaloniaHostRidIsLinux>
+      <_AvaloniaDesktopNativeDir>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/avalonianative/$(AvaloniaNativeVersion)', '$(AvaloniaHostRid)'))</_AvaloniaDesktopNativeDir>
+      <_AvaloniaDesktopNativeArchive>$(_AvaloniaDesktopNativeDir)/libAvaloniaNative.a</_AvaloniaDesktopNativeArchive>
       <_AvaloniaAppleExportsFile>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', 'macos-graphics.exports'))</_AvaloniaAppleExportsFile>
       <_AvaloniaNativeLibExtension Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'">.lib</_AvaloniaNativeLibExtension>
       <_AvaloniaNativeLibExtension Condition="'$(_AvaloniaHostRidIsWindows)' != 'True'">.a</_AvaloniaNativeLibExtension>
@@ -84,6 +86,8 @@
     <Error Condition="'$(HostLibsVersion)' == ''"
            Text="No host libs version is defined for target framework '$(HostLibsTargetFramework)'. Supported: $(HostForgeTargetFrameworks)." />
     <Error Condition="!Exists('$(PackageAssetsDir)')" Text="Host libs directory not found: $(PackageAssetsDir)" />
+    <Error Condition="'$(_AvaloniaHostRidIsMacOS)' == 'True' and !Exists('$(_AvaloniaDesktopNativeArchive)')"
+           Text="AvaloniaNative archive not found: $(_AvaloniaDesktopNativeArchive). Build it with task build-avalonianative." />
     <Error Condition="!Exists('$(AvaloniaNativeLibsDir)')" Text="Avalonia native libs directory not found: $(AvaloniaNativeLibsDir)" />
     <Error Condition="'$(_AvaloniaHostRidIsWindows)' == 'True' and !Exists('$(AngleNativeLibsDir)')"
            Text="ANGLE native libs directory not found: $(AngleNativeLibsDir)" />
@@ -107,6 +111,8 @@
 
     <ItemGroup>
       <NativeLibrary Include="@(_AvaloniaNativeLib)" />
+      <NativeLibrary Include="$(_AvaloniaDesktopNativeArchive)" WholeArchive="true"
+                     Condition="'$(_AvaloniaHostRidIsMacOS)' == 'True'" />
       <NativeLibrary Include="@(_AngleNativeLib)" />
       <NativeLibrary Update="@(NativeLibrary)" Condition="'%(NativeLibrary.Filename)' == 'libHarfBuzzSharp'">
        <WholeArchive>true</WholeArchive>
@@ -114,7 +120,8 @@
       <NativeLibrary Update="@(NativeLibrary)" Condition="'%(NativeLibrary.Filename)' == 'SkiaSharp'">
        <WholeArchive>true</WholeArchive>
       </NativeLibrary>
-      <NativeLibrary Update="@(NativeLibrary)" Condition="'$(_AvaloniaHostRidIsMacOS)' == 'True' and '%(NativeLibrary.Filename)' == 'libskia'">
+      <!-- SkiaSharp 4 already contains some libskia objects. Let the linker pull in only the missing ones. -->
+      <NativeLibrary Update="@(NativeLibrary)" Condition="'$(_AvaloniaHostRidIsMacOS)' == 'True' and !$(SkiaSharpVersion.StartsWith('4.')) and '%(NativeLibrary.Filename)' == 'libskia'">
        <WholeArchive>true</WholeArchive>
       </NativeLibrary>
       <NativeLibrary Update="@(NativeLibrary)" Condition="'%(NativeLibrary.Filename)' == 'libSkiaSharp'">
@@ -134,7 +141,7 @@
                  Condition="'$(_AvaloniaHostRidIsLinux)' == 'True'" />
       <LinkerArg Include="-Wl,--version-script=$(AvaloniaExportsFile)"
                  Condition="'$(_AvaloniaHostRidIsLinux)' == 'True' and '$(AvaloniaExportsFile)' != ''" />
-      <LinkerArg Include="-framework AppKit;-framework CoreFoundation;-framework CoreGraphics;-framework CoreServices;-framework CoreText;-framework Foundation;-framework Metal;-framework OpenGL;-framework QuartzCore;-lobjc"
+      <LinkerArg Include="-framework AppKit;-framework Carbon;-framework CoreFoundation;-framework CoreGraphics;-framework CoreServices;-framework CoreText;-framework CoreVideo;-framework Foundation;-framework IOSurface;-framework Metal;-framework OpenGL;-framework QuartzCore;-framework UniformTypeIdentifiers;-lobjc"
                  Condition="'$(_AvaloniaHostRidIsMacOS)' == 'True'" />
       <LinkerArg Include="-Wl,-exported_symbols_list,&quot;$(_AvaloniaAppleExportsFile)&quot;"
                  Condition="'$(_AvaloniaHostRidIsMacOS)' == 'True'" />
@@ -145,7 +152,7 @@
   <!--
     Copies the licenses of the linked inputs next to the templates, by component: the .NET runtime of the
     host libs, SkiaSharp (Skia, HarfBuzz, the third-party code in their archives and, for Linux SkiaSharp 4,
-    libc++) and, on Windows, ANGLE. The RID package turns them into its THIRD-PARTY-NOTICES.txt.
+    libc++), ANGLE on Windows and AvaloniaNative on macOS. The RID package assembles THIRD-PARTY-NOTICES.txt.
   -->
   <Target Name="_CopyAvaloniaHostLicenses"
           DependsOnTargets="_ResolveAvaloniaLinkInputs">
@@ -164,6 +171,9 @@
     <ItemGroup>
       <_AvaloniaHostLicense Include="$(PackageAssetsDir)/licenses/**/*" Component="dotnet/$(HostLibsVersion)" />
       <_AvaloniaHostLicense Include="$(AvaloniaNativeLibsDir)/licenses/**/*" Component="skiasharp" />
+      <_AvaloniaHostLicense Include="$(_AvaloniaDesktopNativeDir)/licenses/**/*"
+                            Component="avalonianative/$(AvaloniaNativeVersion)"
+                            Condition="'$(_AvaloniaHostRidIsMacOS)' == 'True'" />
       <_AvaloniaHostLicense Include="$(AngleNativeLibsDir)/licenses/**/*" Component="angle"
                             Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'" />
     </ItemGroup>

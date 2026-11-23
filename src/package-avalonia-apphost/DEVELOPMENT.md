@@ -159,7 +159,7 @@ in an Alpine container of the same architecture, with `fontconfig`, fonts, `binu
 
 ## macOS templates
 
-Build HostLibs and SkiaSharp for the same RID on a matching macOS runner with Xcode.
+Build HostLibs, SkiaSharp and AvaloniaNative for the same RID on a matching macOS runner with Xcode.
 `task link-avalonia TARGET_OS=osx RID=osx-arm64` links the templates and ad-hoc signs
 them with the .NET host entitlements. Use `osx-x64` on Intel. The Mach-O export lists
 expose the graphics imports and retain the .NET single-file diagnostics exports.

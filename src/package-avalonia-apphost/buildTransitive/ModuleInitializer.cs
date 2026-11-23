@@ -23,6 +23,8 @@ internal static class ModuleInitializer
             RegisterHarfBuzzSharp();
         if (Exports("EGL_GetError"))
             RegisterAngle();
+        if (Exports("CreateAvaloniaNative"))
+            RegisterAvaloniaNative();
     }
 
     // The registrations are separate methods so that the JIT loads their assemblies only when the
@@ -58,6 +60,14 @@ internal static class ModuleInitializer
     {
 #if HOSTFORGE_AVALONIA_WIN32
         SetResolver(typeof(global::Avalonia.Win32PlatformOptions).Assembly, "av_libglesv2");
+#endif
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void RegisterAvaloniaNative()
+    {
+#if HOSTFORGE_AVALONIA_NATIVE
+        SetResolver(typeof(global::Avalonia.AvaloniaNativePlatformOptions).Assembly, "libAvaloniaNative");
 #endif
     }
 

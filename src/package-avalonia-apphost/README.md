@@ -20,7 +20,11 @@ Each RID package depends on the SkiaSharp and HarfBuzzSharp versions linked into
 
 Linux templates require the system's `libfontconfig.so.1` to start.
 
-macOS templates link SkiaSharp and HarfBuzzSharp. Desktop applications can also depend on the separate Avalonia.Native library.
+macOS templates also link AvaloniaNative. The resolver uses it when the restored
+`Avalonia.Native` package version matches the template. Other versions retain their
+dynamic libraries and use the SDK host. Leave `AvaloniaNativeLibraryPath` unset to
+use Avalonia's default P/Invoke. Set `UsePrelinkedAvaloniaNative=false` when using
+a custom native library path; this selects the SDK host on macOS.
 
 ## Activation
 

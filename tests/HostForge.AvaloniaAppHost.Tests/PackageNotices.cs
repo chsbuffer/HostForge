@@ -28,6 +28,9 @@ internal static class PackageNotices
         else if (rid.StartsWith("linux-", StringComparison.Ordinal) && RepoContext.SkiaSharpVersion.StartsWith("4.", StringComparison.Ordinal))
             expected.Add("skiasharp/libcxx/LICENSE.TXT");
 
+        if (rid.StartsWith("osx-", StringComparison.Ordinal))
+            expected.Add($"avalonianative/{RepoContext.AvaloniaNativeVersion}/licence.md");
+
         string[] missing = expected.Where(section => !lines.Contains(section)).ToArray();
         if (missing.Length != 0)
             throw new InvalidOperationException($"{PackageLicense.Notices} of {nupkg} lacks the sections {string.Join(", ", missing)}.");

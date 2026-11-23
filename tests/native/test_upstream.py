@@ -498,7 +498,7 @@ class ApplyTests(UpstreamTestCase):
         values = self.props()
         self.assertEqual((new, new), (values["AvaloniaVersion"], values["AvaloniaNativeVersion"]))
         self.assertEqual(f"{new}.1", values["AvaloniaNativePackageVersion"])
-        self.assertEqual(major, values["_Major"], "Avalonia is not an AppHost input")
+        self.assertEqual(str(int(major) + 1), values["_Major"], "macOS templates link AvaloniaNative")
         commit = fake_commit("avalonia " + new)
         source = repo_versions.load(self.root)["avalonia-sources"][new]
         self.assertEqual({"url": upstream.AVALONIA_ARCHIVE.format(commit=commit), "commit": commit,
@@ -682,7 +682,7 @@ class AvaloniaMinorTests(UpstreamTestCase):
         values = self.props()
         self.assertEqual((new, new, f"{new}.1"), (values["AvaloniaVersion"], values["AvaloniaNativeVersion"],
                                                   values["AvaloniaNativePackageVersion"]))
-        self.assertEqual(major, values["_Major"])
+        self.assertEqual(str(int(major) + 1), values["_Major"])
         commit = fake_commit("avalonia " + new)
         self.assertEqual({"url": upstream.AVALONIA_ARCHIVE.format(commit=commit), "commit": commit,
                           "sha256": hashlib.sha256(b"archive " + new.encode()).hexdigest()},
