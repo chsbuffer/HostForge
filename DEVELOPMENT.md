@@ -388,8 +388,22 @@ flowchart LR
         MLA4 --> MTA4
     end
 
-    PA["pack-avalonia-apphost<br/>5 RIDs + Build + meta"]
-    PA4["pack-avalonia-apphost-skia4<br/>5 RIDs + Build + meta / skia4 suffix"]
+    subgraph MAC["macOS lane"]
+        direction LR
+        MH["build-hostlibs-macos<br/>10.0 / 11.0 × arm64 / x64"]
+        MA["link-avalonia-apphost-macos<br/>Skia 3/4 × arm64 / x64<br/>single-file desktop tests"]
+        MH --> MA
+    end
+
+    NP --> MH
+    NP --> MA
+    NM --> MA
+    AN --> MA
+    MA --> PA
+    MA --> PA4
+
+    PA["pack-avalonia-apphost<br/>8 RIDs + Build + meta"]
+    PA4["pack-avalonia-apphost-skia4<br/>8 RIDs + Build + meta / skia4 suffix"]
     PUB["publish-nuget<br/>OIDC / nuget.org"]
     NMP --> PUB
     NLCT --> PUB
@@ -431,7 +445,7 @@ flowchart LR
 | `build-skia-macos` | macOS 15 Intel / ARM64 | 两个版本的 Metal + GL 静态库、RID 包、AOT 实际运行、Mach-O 架构 / 部署版本审计 |
 | `pack-all` | Linux | 依赖全部 RID 的正式元包、消费 feed 与包体积审计 |
 | `test-all` | Windows / Linux / macOS 的原生 x64 / ARM64 | 三元包消费者（每个 TFM）、无 RID build、16 个发布运行单元、ABI 审计；静态 ANGLE / Vulkan / EGL / GLX 与 macOS 绘制证明 |
-| `build-avalonianative-macos` | macOS 15 ARM64 / Intel，Xcode 26.0.1 | AvaloniaNative RID 包、AOT 窗口/字体与链接测试结果 |
+| `build-avalonianative-macos` | macOS 15 ARM64 / Intel，Xcode 26.0.1 | AvaloniaNative RID 包、供 AppHost 链接的静态库及 AOT 测试结果 |
 | `build-hostlibs-windows` | Windows | 两个运行时版本 × 两种架构的 HostLib 缓存 |
 | `build-angle-windows` | Windows | `win-x64` / `win-arm64` ANGLE 静态库缓存 |
 | `test-all-windows` | Windows | Static AppHost 与 win-x64 NativeAOT 集成验证 |
@@ -446,7 +460,7 @@ flowchart LR
 | `test-avalonia-apphost-linux-cross` | glibc ARM64 和原生 Alpine 容器 | 模板的发布、运行与单文件 |
 | `test-avalonia-apphost-skia4-linux-cross` | 同上 | SkiaSharp 4 的模板测试及版本匹配 |
 | `build-hostlibs-macos` | macOS ARM64 / Intel | 两个运行时版本的 HostLibs 缓存 |
-| `link-avalonia-apphost-macos` | macOS ARM64 / Intel | 两条 SkiaSharp 版本线的 Avalonia 模板及单文件启动测试 |
+| `link-avalonia-apphost-macos` | macOS ARM64 / Intel | 两条 SkiaSharp 版本线的 Avalonia 模板及桌面窗口单文件启动测试 |
 | `pack-avalonia-apphost` | Windows | 8 个 RID 包 + Build 包 + 元包（ChsBuffer.Avalonia.AppHost） |
 | `pack-avalonia-apphost-skia4` | Windows | SkiaSharp 4 的 8 个 RID 包 + Build 包 + 元包；版本追加 `skia4` |
 | `publish-nuget` | Linux | 测试成功后，通过 Trusted Publishing 发布 native 和两条 Avalonia AppHost 版本线的 NuGet 包 |
