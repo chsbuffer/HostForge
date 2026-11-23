@@ -9,7 +9,7 @@ alongside Avalonia:
   <PublishAot>true</PublishAot>
 </PropertyGroup>
 <ItemGroup>
-  <PackageReference Include="Avalonia.Desktop" Version="12.1.6" />
+  <PackageReference Include="Avalonia.Desktop" Version="12.2.0" />
   <PackageReference Include="ChsBuffer.SkiaSharp.Static" Version="3.119.4.2" />
 </ItemGroup>
 ```
