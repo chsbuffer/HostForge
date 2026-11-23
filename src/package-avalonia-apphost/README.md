@@ -10,10 +10,17 @@ Prelinked Avalonia 12 apphost and single-file host templates for .NET 10 (10.0.1
 | `ChsBuffer.Avalonia.AppHost.win-x64` | `win-x64` only |
 | `ChsBuffer.Avalonia.AppHost.win-arm64` | `win-arm64` only |
 | `ChsBuffer.Avalonia.AppHost.linux-x64` | `linux-x64` only |
+| `ChsBuffer.Avalonia.AppHost.linux-arm64` | `linux-arm64` only |
 | `ChsBuffer.Avalonia.AppHost.linux-musl-x64` | `linux-musl-x64` (Alpine Linux) only |
 | `ChsBuffer.Avalonia.AppHost.linux-musl-arm64` | `linux-musl-arm64` (Alpine Linux) only |
+| `ChsBuffer.Avalonia.AppHost.osx-x64` | `osx-x64` only |
+| `ChsBuffer.Avalonia.AppHost.osx-arm64` | `osx-arm64` only |
 
 Each RID package depends on the SkiaSharp and HarfBuzzSharp versions linked into its templates.
+
+Linux templates require the system's `libfontconfig.so.1` to start.
+
+macOS templates link SkiaSharp and HarfBuzzSharp. Desktop applications can also depend on the separate Avalonia.Native library.
 
 ## Activation
 

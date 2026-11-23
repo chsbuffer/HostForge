@@ -90,10 +90,11 @@ class FakeClient:
 # The official build containers in the runtime's pipeline resources: one pinned by digest, the others by tag only.
 # Legs whose names contain linux_x64 come first, so a test fails when another leg is taken for linux_x64.
 CONTAINER_TAGS = {"linux-x64": "azurelinux-3.0-net99.0-cross-amd64",
+                  "linux-arm64": "azurelinux-3.0-net99.0-cross-arm64",
                   "linux-musl-x64": "azurelinux-3.0-net99.0-cross-amd64-musl",
                   "linux-musl-arm64": "azurelinux-3.0-net99.0-cross-arm64-musl"}
 PINNED_DIGEST = "sha256:" + "1" * 64
-MANIFESTS = {rid: f'{{"schemaVersion": 2, "config": "{rid}"}}'.encode() for rid in ("linux-x64", "linux-musl-arm64")}
+MANIFESTS = {rid: f'{{"schemaVersion": 2, "config": "{rid}"}}'.encode() for rid in ("linux-x64", "linux-arm64", "linux-musl-arm64")}
 PREREQS = "mcr.microsoft.com/dotnet-buildtools/prereqs"
 PIPELINE_RESOURCES = f"""    containers:
       SourceBuild_linux_x64:
@@ -103,7 +104,7 @@ PIPELINE_RESOURCES = f"""    containers:
         image: {PREREQS}:ubuntu-24.04
 
       linux_arm64:
-        image: {PREREQS}:azurelinux-3.0-net99.0-cross-arm64
+        image: {PREREQS}:{CONTAINER_TAGS["linux-arm64"]}
         env:
           ROOTFS_DIR: /crossrootfs/arm64
 
@@ -124,6 +125,8 @@ PIPELINE_RESOURCES = f"""    containers:
 """
 CONTAINERS = {
     "linux-x64": f"{PREREQS}:{CONTAINER_TAGS['linux-x64']}@sha256:{hashlib.sha256(MANIFESTS['linux-x64']).hexdigest()}",
+    "linux-arm64": f"{PREREQS}:{CONTAINER_TAGS['linux-arm64']}@sha256:"
+                   f"{hashlib.sha256(MANIFESTS['linux-arm64']).hexdigest()}",
     "linux-musl-x64": f"{PREREQS}:{CONTAINER_TAGS['linux-musl-x64']}@{PINNED_DIGEST}",
     "linux-musl-arm64": f"{PREREQS}:{CONTAINER_TAGS['linux-musl-arm64']}@sha256:"
                         f"{hashlib.sha256(MANIFESTS['linux-musl-arm64']).hexdigest()}",

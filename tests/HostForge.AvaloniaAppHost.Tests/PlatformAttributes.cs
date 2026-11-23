@@ -23,3 +23,14 @@ public sealed class LinuxOnlyAttribute : SkipAttribute
     public override Task<bool> ShouldSkip(TestRegisteredContext testContext)
         => Task.FromResult(!OperatingSystem.IsLinux());
 }
+
+public sealed class MacOSOnlyAttribute : SkipAttribute
+{
+    public MacOSOnlyAttribute()
+        : base("macOS only")
+    {
+    }
+
+    public override Task<bool> ShouldSkip(TestRegisteredContext testContext)
+        => Task.FromResult(!OperatingSystem.IsMacOS());
+}

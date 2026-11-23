@@ -34,7 +34,7 @@
 
   <PropertyGroup>
     <TargetAvaloniaVersion>12.0</TargetAvaloniaVersion>
-    <_Major>7</_Major>
+    <_Major>8</_Major>
     <_Preview Condition="'$(_Preview)' == ''"></_Preview>
 
     <_AvaloniaAppHostPreview>$(_Preview)</_AvaloniaAppHostPreview>

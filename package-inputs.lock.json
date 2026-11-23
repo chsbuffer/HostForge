@@ -7,7 +7,7 @@
   ],
   "packages": {
     "ChsBuffer.Avalonia.AppHost": {
-      "12.0.7-skia4": {
+      "12.0.8-skia4": {
         "variant": "skia4",
         "inputs": {
           "runtimes": {
@@ -18,7 +18,7 @@
           "angle": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"}
         }
       },
-      "12.0.7": {
+      "12.0.8": {
         "variant": "skia3",
         "inputs": {
           "runtimes": {

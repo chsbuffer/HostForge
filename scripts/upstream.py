@@ -91,7 +91,8 @@ MCR = "https://mcr.microsoft.com"
 # The runtime's pipeline resources name the container of each official build leg; HostLibs builds each Linux RID
 # in the container of its leg.
 VMR_PIPELINE_RESOURCES = "src/runtime/eng/pipelines/common/templates/pipeline-with-resources.yml"
-BUILD_CONTAINERS = {"linux-x64": "linux_x64", "linux-musl-x64": "linux_musl_x64", "linux-musl-arm64": "linux_musl_arm64"}
+BUILD_CONTAINERS = {"linux-x64": "linux_x64", "linux-arm64": "linux_arm64",
+                    "linux-musl-x64": "linux_musl_x64", "linux-musl-arm64": "linux_musl_arm64"}
 # The media types docker pull accepts, so that a tag resolves to the digest docker would pull.
 REGISTRY_MANIFESTS = ("application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, "
                       "application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json")

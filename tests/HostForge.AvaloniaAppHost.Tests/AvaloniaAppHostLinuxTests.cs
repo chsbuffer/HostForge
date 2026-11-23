@@ -9,7 +9,7 @@ namespace HostForge.AvaloniaAppHost.Tests;
 [LinuxOnly]
 public class AvaloniaAppHostLinuxTests
 {
-    // The RID of the running Linux: linux-x64 on glibc, linux-musl-x64 or linux-musl-arm64 on Alpine.
+    // Use the default runtime RID unless the native test container specifies one.
     private static readonly string Rid =
         Environment.GetEnvironmentVariable("HOSTFORGE_NATIVE_RID") ?? RuntimeInformation.RuntimeIdentifier;
 

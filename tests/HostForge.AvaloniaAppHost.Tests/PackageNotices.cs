@@ -25,7 +25,7 @@ internal static class PackageNotices
         }
         if (rid.StartsWith("win-", StringComparison.Ordinal))
             expected.Add("angle/angle/LICENSE");
-        else if (RepoContext.SkiaSharpVersion.StartsWith("4.", StringComparison.Ordinal))
+        else if (rid.StartsWith("linux-", StringComparison.Ordinal) && RepoContext.SkiaSharpVersion.StartsWith("4.", StringComparison.Ordinal))
             expected.Add("skiasharp/libcxx/LICENSE.TXT");
 
         string[] missing = expected.Where(section => !lines.Contains(section)).ToArray();

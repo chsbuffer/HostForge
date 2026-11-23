@@ -113,7 +113,8 @@ The `skia4` suffix is added automatically; keep `_Preview` as the desired base l
 Linked templates keep the same `artifacts/avalonia-host/<version>/<tfm>/<rid>/` paths.
 For local builds, link and pack one Skia variant before linking the other variant.
 CI uses separate jobs and `avalonia-host-skia4-windows` / `avalonia-host-skia4-linux` /
-`avalonia-host-skia4-linux-musl-<arch>` artifacts, then uploads the seven Skia 4 packages
+`avalonia-host-skia4-cross-<rid>` artifacts and the Skia 4 `avalonia-host-macos-<version>-<rid>` artifacts,
+then uploads the ten Skia 4 packages
 as `nuget-avalonia-apphost-skia4`.
 
 ## Windows templates
@@ -138,7 +139,8 @@ from the official build container of the newest runtime in `native/hostlibs/vers
 the RID. The PGO build of the .NET 11 GC is compiled with LTO, so its HostLibs contain LLVM
 bitcode that only an LLVM at least as new as the compiling one can link; the container of the
 newest runtime has that LLVM. The stage adds fontconfig to the rootfs of the container, from the
-package checksums of the SkiaSharp image of the RID, because the templates link `-lfontconfig`.
+package checksums of the SkiaSharp image of the RID, because the templates link `-lfontconfig`. The resulting Linux executables need the
+system's `libfontconfig.so.1` at startup.
 
 ```sh
 docker build $(python scripts/upstream.py build-args) -f native/hostlibs/linux.Dockerfile --target link --build-arg IMAGE=<container> --build-arg RID=linux-x64 -t hostforge-link .
@@ -149,11 +151,22 @@ docker run --rm -v "$PWD:/work" -v "$DOTNET_ROOT:$DOTNET_ROOT:ro" -e DOTNET_ROOT
     bash -c 'PATH="$DOTNET_ROOT:$PATH" task link-avalonia TARGET_OS=linux-musl RID=linux-musl-arm64 SYSROOT=/crossrootfs/arm64'
 ```
 
-`<container>` is the entry of the newest runtime for `RID`. Each musl RID needs its own sysroot,
-so `TARGET_OS=linux-musl` links one `RID` at a time. Run `task avalonia-test` for `linux-x64` on a
-glibc system with `binutils` and the .NET 10 and 11 runtimes, and for a musl RID in an Alpine
-container of the same architecture with `fontconfig`, `binutils` and the .NET 10 runtime installed;
-CI uses the Alpine .NET SDK image of `test-skia-linux-cross`.
+`<container>` is the entry of the newest runtime for `RID`. For glibc ARM64, build the link
+container with `RID=linux-arm64` and run `task link-avalonia TARGET_OS=linux RID=linux-arm64 SYSROOT=/crossrootfs/arm64`
+inside it. Each RID uses its own sysroot. Run `task avalonia-test` on a matching glibc system or
+in an Alpine container of the same architecture, with `fontconfig`, fonts, `binutils`, and both
+.NET runtimes installed.
+
+## macOS templates
+
+Build HostLibs and SkiaSharp for the same RID on a matching macOS runner with Xcode.
+`task link-avalonia TARGET_OS=osx RID=osx-arm64` links the templates and ad-hoc signs
+them with the .NET host entitlements. Use `osx-x64` on Intel. The Mach-O export lists
+expose the graphics imports and retain the .NET single-file diagnostics exports.
+The templates link system frameworks using the runner's SDK.
+
+Run `task avalonia-test` on both architectures. It publishes and runs framework-dependent
+and self-contained bundles and checks the extraction directory.
 
 ## Local commands
 

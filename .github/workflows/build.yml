@@ -123,22 +123,17 @@ jobs:
         ]
       linux-cross-targets: >-
         [
-          {"rid": "linux-arm64", "arch": "arm64", "runner": "ubuntu-24.04-arm"},
-          {"rid": "linux-musl-x64", "arch": "x64", "runner": "ubuntu-24.04"},
-          {"rid": "linux-musl-arm64", "arch": "arm64", "runner": "ubuntu-24.04-arm"}
+          {"rid": "linux-arm64", "arch": "arm64", "os": "linux", "runner": "ubuntu-24.04-arm"},
+          {"rid": "linux-musl-x64", "arch": "x64", "os": "linux-musl", "runner": "ubuntu-24.04"},
+          {"rid": "linux-musl-arm64", "arch": "arm64", "os": "linux-musl", "runner": "ubuntu-24.04-arm"}
         ]
       # HostLibs Linux RIDs, each built in its upstream container.
       hostlibs-linux-targets: >-
         [
           {"rid": "linux-x64", "arch": "x64"},
+          {"rid": "linux-arm64", "arch": "arm64"},
           {"rid": "linux-musl-x64", "arch": "x64"},
           {"rid": "linux-musl-arm64", "arch": "arm64"}
-        ]
-      # Alpine Avalonia AppHost RIDs; the runner of the same architecture tests each one.
-      linux-musl-targets: >-
-        [
-          {"rid": "linux-musl-x64", "arch": "x64", "runner": "ubuntu-24.04"},
-          {"rid": "linux-musl-arm64", "arch": "arm64", "runner": "ubuntu-24.04-arm"}
         ]
     steps:
       - uses: actions/checkout@v7
@@ -1236,7 +1231,7 @@ jobs:
           path: artifacts/avalonia-host
           if-no-files-found: error
 
-  link-avalonia-apphost-linux-musl:
+  link-avalonia-apphost-linux-cross:
     needs:
       - plan-all
       - build-hostlibs-linux
@@ -1245,11 +1240,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJSON(needs.plan-all.outputs.linux-musl-targets) }}
+        target: ${{ fromJSON(needs.plan-all.outputs.linux-cross-targets) }}
     env:
       SKIASHARP_VERSION: ${{ fromJSON(needs.plan-all.outputs.versions)[0] }}
       TARGET_RID: ${{ matrix.target.rid }}
       TARGET_ARCH: ${{ matrix.target.arch }}
+      TARGET_OS: ${{ matrix.target.os }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -1282,30 +1278,30 @@ jobs:
           rid: ${{ matrix.target.rid }}
           tag: hostforge-link
 
-      - name: Link Avalonia apphost templates for Alpine
+      - name: Link Avalonia apphost templates
         run: >-
           docker run --rm -v "$PWD:/work" -v "$DOTNET_ROOT:$DOTNET_ROOT:ro" -e DOTNET_ROOT
-          -e SKIASHARP_VERSION -e TARGET_RID -e TARGET_ARCH hostforge-link
-          bash -c 'PATH="$DOTNET_ROOT:$PATH" task link-avalonia SKIASHARP_VERSION="$SKIASHARP_VERSION" TARGET_OS=linux-musl RID="$TARGET_RID" SYSROOT="/crossrootfs/$TARGET_ARCH"'
+          -e SKIASHARP_VERSION -e TARGET_RID -e TARGET_ARCH -e TARGET_OS hostforge-link
+          bash -c 'PATH="$DOTNET_ROOT:$PATH" task link-avalonia SKIASHARP_VERSION="$SKIASHARP_VERSION" TARGET_OS="$TARGET_OS" RID="$TARGET_RID" SYSROOT="/crossrootfs/$TARGET_ARCH"'
 
       - name: Restore ownership of container link outputs
         run: sudo chown -R "$(id -u):$(id -g)" artifacts
 
-      - name: Upload Alpine Avalonia apphost artifact
+      - name: Upload Avalonia apphost artifact
         uses: actions/upload-artifact@v7
         with:
-          name: avalonia-host-linux-musl-${{ matrix.target.arch }}
+          name: avalonia-host-cross-${{ matrix.target.rid }}
           path: artifacts/avalonia-host
           if-no-files-found: error
 
-  test-avalonia-apphost-linux-musl:
+  test-avalonia-apphost-linux-cross:
     needs:
       - plan-all
-      - link-avalonia-apphost-linux-musl
+      - link-avalonia-apphost-linux-cross
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJSON(needs.plan-all.outputs.linux-musl-targets) }}
+        target: ${{ fromJSON(needs.plan-all.outputs.linux-cross-targets) }}
     runs-on: ${{ matrix.target.runner }}
     timeout-minutes: 30
     env:
@@ -1318,14 +1314,29 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Download Alpine Avalonia apphost artifact
+      - name: Download Avalonia apphost artifact
         uses: actions/download-artifact@v8.0.2
         with:
-          name: avalonia-host-linux-musl-${{ matrix.target.arch }}
+          name: avalonia-host-cross-${{ matrix.target.rid }}
           path: artifacts/avalonia-host
+
+      - uses: actions/setup-dotnet@v6
+        if: matrix.target.os == 'linux'
+        with:
+          dotnet-version: |
+            10.0.x
+            11.0.x
+
+      - name: Run Avalonia App Host package tests on glibc
+        if: matrix.target.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binutils fontconfig fonts-dejavu-core
+          SkiaSharpVersion="$SKIASHARP_VERSION" dotnet test --project tests/HostForge.AvaloniaAppHost.Tests/HostForge.AvaloniaAppHost.Tests.csproj -c Release
 
       # The SDK image has the .NET 11 runtime; framework-dependent net10.0 consumers also need .NET 10.
       - name: Run Avalonia App Host package tests in native Alpine
+        if: matrix.target.os == 'linux-musl'
         run: |
           docker run --rm -v "$PWD:$PWD" -w "$PWD" -e SkiaSharpVersion="$SKIASHARP_VERSION" -e HOSTFORGE_NATIVE_RID \
             mcr.microsoft.com/dotnet/sdk@sha256:52556c0fb9d0f609ae9aeab9efeeba96f4acc2f7038f7696f2235ccbdbb8e290 \
@@ -1334,7 +1345,7 @@ jobs:
               bash /tmp/dotnet-install.sh --channel 10.0 --runtime dotnet --install-dir /usr/share/dotnet
               dotnet test --project tests/HostForge.AvaloniaAppHost.Tests/HostForge.AvaloniaAppHost.Tests.csproj -c Release'
 
-  link-avalonia-apphost-skia4-linux-musl:
+  link-avalonia-apphost-skia4-linux-cross:
     needs:
       - plan-all
       - build-hostlibs-linux
@@ -1343,11 +1354,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJSON(needs.plan-all.outputs.linux-musl-targets) }}
+        target: ${{ fromJSON(needs.plan-all.outputs.linux-cross-targets) }}
     env:
       SKIASHARP_VERSION: ${{ fromJSON(needs.plan-all.outputs.versions)[1] }}
       TARGET_RID: ${{ matrix.target.rid }}
       TARGET_ARCH: ${{ matrix.target.arch }}
+      TARGET_OS: ${{ matrix.target.os }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -1380,30 +1392,30 @@ jobs:
           rid: ${{ matrix.target.rid }}
           tag: hostforge-link
 
-      - name: Link Avalonia apphost templates for Alpine
+      - name: Link Avalonia apphost templates
         run: >-
           docker run --rm -v "$PWD:/work" -v "$DOTNET_ROOT:$DOTNET_ROOT:ro" -e DOTNET_ROOT
-          -e SKIASHARP_VERSION -e TARGET_RID -e TARGET_ARCH hostforge-link
-          bash -c 'PATH="$DOTNET_ROOT:$PATH" task link-avalonia SKIASHARP_VERSION="$SKIASHARP_VERSION" TARGET_OS=linux-musl RID="$TARGET_RID" SYSROOT="/crossrootfs/$TARGET_ARCH"'
+          -e SKIASHARP_VERSION -e TARGET_RID -e TARGET_ARCH -e TARGET_OS hostforge-link
+          bash -c 'PATH="$DOTNET_ROOT:$PATH" task link-avalonia SKIASHARP_VERSION="$SKIASHARP_VERSION" TARGET_OS="$TARGET_OS" RID="$TARGET_RID" SYSROOT="/crossrootfs/$TARGET_ARCH"'
 
       - name: Restore ownership of container link outputs
         run: sudo chown -R "$(id -u):$(id -g)" artifacts
 
-      - name: Upload Alpine Avalonia apphost artifact
+      - name: Upload Avalonia apphost artifact
         uses: actions/upload-artifact@v7
         with:
-          name: avalonia-host-skia4-linux-musl-${{ matrix.target.arch }}
+          name: avalonia-host-skia4-cross-${{ matrix.target.rid }}
           path: artifacts/avalonia-host
           if-no-files-found: error
 
-  test-avalonia-apphost-skia4-linux-musl:
+  test-avalonia-apphost-skia4-linux-cross:
     needs:
       - plan-all
-      - link-avalonia-apphost-skia4-linux-musl
+      - link-avalonia-apphost-skia4-linux-cross
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJSON(needs.plan-all.outputs.linux-musl-targets) }}
+        target: ${{ fromJSON(needs.plan-all.outputs.linux-cross-targets) }}
     runs-on: ${{ matrix.target.runner }}
     timeout-minutes: 30
     env:
@@ -1416,14 +1428,29 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Download Alpine Avalonia apphost artifact
+      - name: Download Avalonia apphost artifact
         uses: actions/download-artifact@v8.0.2
         with:
-          name: avalonia-host-skia4-linux-musl-${{ matrix.target.arch }}
+          name: avalonia-host-skia4-cross-${{ matrix.target.rid }}
           path: artifacts/avalonia-host
+
+      - uses: actions/setup-dotnet@v6
+        if: matrix.target.os == 'linux'
+        with:
+          dotnet-version: |
+            10.0.x
+            11.0.x
+
+      - name: Run Avalonia App Host package tests on glibc
+        if: matrix.target.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binutils fontconfig fonts-dejavu-core
+          SkiaSharpVersion="$SKIASHARP_VERSION" dotnet test --project tests/HostForge.AvaloniaAppHost.Tests/HostForge.AvaloniaAppHost.Tests.csproj -c Release
 
       # The SDK image has the .NET 11 runtime; framework-dependent net10.0 consumers also need .NET 10.
       - name: Run Avalonia App Host package tests in native Alpine
+        if: matrix.target.os == 'linux-musl'
         run: |
           docker run --rm -v "$PWD:$PWD" -w "$PWD" -e SkiaSharpVersion="$SKIASHARP_VERSION" -e HOSTFORGE_NATIVE_RID \
             mcr.microsoft.com/dotnet/sdk@sha256:52556c0fb9d0f609ae9aeab9efeeba96f4acc2f7038f7696f2235ccbdbb8e290 \
@@ -1431,6 +1458,83 @@ jobs:
               wget -qO /tmp/dotnet-install.sh https://dot.net/v1/dotnet-install.sh
               bash /tmp/dotnet-install.sh --channel 10.0 --runtime dotnet --install-dir /usr/share/dotnet
               dotnet test --project tests/HostForge.AvaloniaAppHost.Tests/HostForge.AvaloniaAppHost.Tests.csproj -c Release'
+
+  build-hostlibs-macos:
+    needs: plan-all
+    runs-on: ${{ matrix.target.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.plan-all.outputs.hostlibs-versions) }}
+        target: ${{ fromJSON(needs.plan-all.outputs.macos) }}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
+      CONAN_HOME: ${{ github.workspace }}/build/conan
+      TARGET_RID: ${{ matrix.target.rid }}
+      HOSTLIBS_VERSION: ${{ matrix.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/native-cache
+        id: cache_hostlibs
+        with:
+          component: hostlibs
+          version: ${{ matrix.version }}
+          rid: ${{ matrix.target.rid }}
+          path: artifacts/hostlibs
+          compiler-cache-size: 512M
+          compiler: sccache
+      - uses: ./.github/actions/install-uv
+        if: steps.cache_hostlibs.outputs.cache-hit != 'true'
+      - uses: ./.github/actions/install-task
+        if: steps.cache_hostlibs.outputs.cache-hit != 'true'
+      - name: Build and deploy HostLibs
+        if: steps.cache_hostlibs.outputs.cache-hit != 'true'
+        run: python scripts/build-with-cache.py task build-hostlibs RID="$TARGET_RID" HOSTLIBS_VERSION="$HOSTLIBS_VERSION" JOBS=4
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-hostlib-default-${{ matrix.version }}-${{ matrix.target.rid }}
+          path: artifacts/hostlibs
+          if-no-files-found: error
+
+  link-avalonia-apphost-macos:
+    needs: [plan-all, build-hostlibs-macos, build-skia-macos]
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.plan-all.outputs.versions) }}
+        target: ${{ fromJSON(needs.plan-all.outputs.macos) }}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
+      HOSTFORGE_NATIVE_RID: ${{ matrix.target.rid }}
+      SKIASHARP_VERSION: ${{ matrix.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            10.0.x
+            11.0.x
+      - uses: ./.github/actions/install-task
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: native-hostlib-default-*-${{ matrix.target.rid }}
+          merge-multiple: true
+          path: artifacts/hostlibs
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: native-skia-${{ matrix.version }}-${{ matrix.target.rid }}
+          path: artifacts/skiasharp
+      - name: Link and test the macOS templates
+        run: |
+          task link-avalonia TARGET_OS=osx RID="$HOSTFORGE_NATIVE_RID" SKIASHARP_VERSION="$SKIASHARP_VERSION"
+          task avalonia-test SKIASHARP_VERSION="$SKIASHARP_VERSION"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: avalonia-host-macos-${{ matrix.version }}-${{ matrix.target.rid }}
+          path: artifacts/avalonia-host
+          if-no-files-found: error
 
   pack-avalonia-apphost:
     runs-on: windows-2025-vs2026
@@ -1438,7 +1542,8 @@ jobs:
       - plan-all
       - link-avalonia-apphost-windows
       - link-avalonia-apphost-linux
-      - test-avalonia-apphost-linux-musl
+      - test-avalonia-apphost-linux-cross
+      - link-avalonia-apphost-macos
     env:
       SKIASHARP_VERSION: ${{ fromJSON(needs.plan-all.outputs.versions)[0] }}
     steps:
@@ -1467,10 +1572,17 @@ jobs:
           name: avalonia-host-linux
           path: artifacts\avalonia-host
 
-      - name: Download Alpine Avalonia apphost artifacts
+      - name: Download Avalonia apphost artifacts for ARM64 glibc and Alpine
         uses: actions/download-artifact@v8.0.2
         with:
-          pattern: avalonia-host-linux-musl-*
+          pattern: avalonia-host-cross-*
+          merge-multiple: true
+          path: artifacts\avalonia-host
+
+      - name: Download macOS Avalonia apphost artifacts
+        uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: avalonia-host-macos-${{ env.SKIASHARP_VERSION }}-*
           merge-multiple: true
           path: artifacts\avalonia-host
 
@@ -1491,7 +1603,8 @@ jobs:
       - plan-all
       - link-avalonia-apphost-skia4-windows
       - link-avalonia-apphost-skia4-linux
-      - test-avalonia-apphost-skia4-linux-musl
+      - test-avalonia-apphost-skia4-linux-cross
+      - link-avalonia-apphost-macos
     env:
       SKIASHARP_VERSION: ${{ fromJSON(needs.plan-all.outputs.versions)[1] }}
     steps:
@@ -1520,10 +1633,17 @@ jobs:
           name: avalonia-host-skia4-linux
           path: artifacts\avalonia-host
 
-      - name: Download Alpine Avalonia apphost artifacts
+      - name: Download Avalonia apphost artifacts for ARM64 glibc and Alpine
         uses: actions/download-artifact@v8.0.2
         with:
-          pattern: avalonia-host-skia4-linux-musl-*
+          pattern: avalonia-host-skia4-cross-*
+          merge-multiple: true
+          path: artifacts\avalonia-host
+
+      - name: Download macOS Avalonia apphost artifacts
+        uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: avalonia-host-macos-${{ env.SKIASHARP_VERSION }}-*
           merge-multiple: true
           path: artifacts\avalonia-host
 
@@ -1602,8 +1722,8 @@ jobs:
       needs.test-skia-linux-cross.result == 'success' && needs.test-skia-windows-arm64.result == 'success' &&
       needs.test-all.result == 'success' && needs.build-skia-macos.result == 'success' &&
       needs.test-all-windows.result == 'success' && needs.test-all-linux.result == 'success' &&
-      needs.test-avalonia-apphost-linux-musl.result == 'success' &&
-      needs.test-avalonia-apphost-skia4-linux-musl.result == 'success' &&
+      needs.test-avalonia-apphost-linux-cross.result == 'success' &&
+      needs.test-avalonia-apphost-skia4-linux-cross.result == 'success' &&
       needs.pack-avalonia-apphost.result == 'success' && needs.pack-avalonia-apphost-skia4.result == 'success')) }}
     runs-on: ubuntu-24.04
     needs:
@@ -1614,8 +1734,8 @@ jobs:
       - build-skia-macos
       - test-all-windows
       - test-all-linux
-      - test-avalonia-apphost-linux-musl
-      - test-avalonia-apphost-skia4-linux-musl
+      - test-avalonia-apphost-linux-cross
+      - test-avalonia-apphost-skia4-linux-cross
       - pack-avalonia-apphost
       - pack-avalonia-apphost-skia4
     permissions:

@@ -35,7 +35,7 @@ public static class AvaloniaPackageBuilder
             string artifactRoot = Path.Combine(
                 RepoContext.RepoRoot,
                 "artifacts", "avalonia-host", RepoContext.TargetAvaloniaVersion);
-            string[] knownRids = ["win-x64", "win-arm64", "linux-x64", "linux-musl-x64", "linux-musl-arm64"];
+            string[] knownRids = ["win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64", "osx-x64", "osx-arm64"];
             var availableRids = new List<string>();
 
             foreach (string rid in knownRids)

@@ -28,6 +28,8 @@ COPY native/skiasharp/fontconfig-*.sha256 /fontconfig/
 RUN case "$RID" in \
       linux-x64) arch=x64 release=ubuntu18.04 checksums=fontconfig-ubuntu18.04-amd64.sha256 \
         packages=https://archive.ubuntu.com/ubuntu/pool/main/f/fontconfig ;; \
+      linux-arm64) arch=arm64 release=ubuntu18.04 checksums=fontconfig-ubuntu18.04-arm64.sha256 \
+        packages=https://ports.ubuntu.com/ubuntu-ports/pool/main/f/fontconfig ;; \
       linux-musl-x64) arch=x64 release=alpine3.17 checksums=fontconfig-alpine3.17-x86_64.sha256 \
         packages=https://dl-cdn.alpinelinux.org/alpine/v3.17/main/x86_64 ;; \
       linux-musl-arm64) arch=arm64 release=alpine3.17 checksums=fontconfig-alpine3.17-aarch64.sha256 \

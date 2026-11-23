@@ -6,7 +6,7 @@
 
   <PropertyGroup>
     <_AvaloniaModuleInitializer>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', 'ModuleInitializer.cs'))</_AvaloniaModuleInitializer>
-    <_AvaloniaSkiaHarfBuzzNativeFileNames>;libSkiaSharp.dll;libSkiaSharp.so;libSkiaSharp.pdb;libHarfBuzzSharp.dll;libHarfBuzzSharp.so;libHarfBuzzSharp.pdb;</_AvaloniaSkiaHarfBuzzNativeFileNames>
+    <_AvaloniaSkiaHarfBuzzNativeFileNames>;libSkiaSharp.dll;libSkiaSharp.so;libSkiaSharp.dylib;libSkiaSharp.pdb;libHarfBuzzSharp.dll;libHarfBuzzSharp.so;libHarfBuzzSharp.dylib;libHarfBuzzSharp.pdb;</_AvaloniaSkiaHarfBuzzNativeFileNames>
     <_AvaloniaAngleNativeFileNames>;av_libglesv2.dll;av_libglesv2.pdb;</_AvaloniaAngleNativeFileNames>
   </PropertyGroup>
 
