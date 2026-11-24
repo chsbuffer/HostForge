@@ -31,8 +31,8 @@ jobs:
       CONAN_HOME: ${{ github.workspace }}/build/conan
       DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: |
             10.0.x
@@ -81,7 +81,7 @@ jobs:
           PY
       - name: Publish, inspect linkage and run AvaloniaNative tests
         run: task test-avalonianative
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && steps.pack.outcome == 'success'
         with:
           compression-level: 0
@@ -141,7 +141,7 @@ jobs:
           {"rid": "linux-musl-arm64", "arch": "arm64", "runner": "ubuntu-24.04-arm"}
         ]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The package lock check reads the lock of every commit on the first-parent history.
           fetch-depth: 0
@@ -196,7 +196,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           submodules: false
@@ -226,7 +226,7 @@ jobs:
         run: python scripts/build-with-cache.py task build-angle ARCH=${{ matrix.arch }} JOBS=4
 
       - name: Upload ANGLE artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-angle-${{ matrix.rid }}
           path: artifacts\angle
@@ -244,7 +244,7 @@ jobs:
     env:
       CONAN_HOME: ${{ github.workspace }}/build/conan
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/native-cache
         id: native-cache
         with:
@@ -263,7 +263,7 @@ jobs:
       - name: Build static SkiaSharp and HarfBuzzSharp
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: python scripts/build-with-cache.py task build-skiasharp RID=${{ matrix.rid }} SKIASHARP_VERSION=${{ matrix.version }} JOBS=4
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 11.0.x
       - name: Pack RID package
@@ -274,14 +274,14 @@ jobs:
           HOSTFORGE_SKIA_VERSION: ${{ matrix.version }}
           HOSTFORGE_CHECK_ANGLE: 'false'
         run: dotnet test --project tests/HostForge.NativeAot.Tests/HostForge.NativeAot.Tests.csproj -c Release
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           compression-level: 0
           name: nuget-native-skia-${{ matrix.version }}-${{ matrix.rid }}
           path: artifacts/packages/Release/*.nupkg
           if-no-files-found: error
           retention-days: 7
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-skia-${{ matrix.version }}-${{ matrix.rid }}
           path: artifacts/skiasharp
@@ -302,11 +302,11 @@ jobs:
       HOSTFORGE_SKIA_VERSION: ${{ matrix.version }}
       HOSTFORGE_CHECK_ANGLE: 'false'
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 11.0.x
-      - uses: actions/download-artifact@v8.0.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nuget-native-skia-${{ matrix.version }}-win-arm64
           path: artifacts/packages/Release
@@ -322,7 +322,7 @@ jobs:
       matrix:
         version: ${{ fromJSON(needs.plan-all.outputs.versions) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/native-cache
         id: native-cache
         with:
@@ -332,7 +332,7 @@ jobs:
           path: artifacts/skiasharp/${{ matrix.version }}/linux-x64
           compiler-cache-size: 64M
           compiler: sccache
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: rootfs-cache
         with:
           path: artifacts/rootfs/target.tar.gz
@@ -361,13 +361,13 @@ jobs:
           tar xzf artifacts/rootfs/target.tar.gz -C build/rootfs/x64
           sudo apt-get update
           sudo apt-get install -y clang lld fontconfig fonts-dejavu-core
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-rootfs-${{ matrix.version }}-linux-x64
           path: artifacts/rootfs/target.tar.gz
           compression-level: 0
           retention-days: 3
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 11.0.x
       - name: Pack RID package
@@ -378,14 +378,14 @@ jobs:
           HOSTFORGE_CHECK_ANGLE: 'false'
           ROOTFS_DIR: ${{ github.workspace }}/build/rootfs/x64
         run: dotnet test --project tests/HostForge.NativeAot.Tests/HostForge.NativeAot.Tests.csproj -c Release
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           compression-level: 0
           name: nuget-native-skia-${{ matrix.version }}-linux-x64
           path: artifacts/packages/Release/*.nupkg
           if-no-files-found: error
           retention-days: 7
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-skia-${{ matrix.version }}-linux-x64
           path: artifacts/skiasharp
@@ -406,7 +406,7 @@ jobs:
       TARGET_ARCH: ${{ matrix.target.arch }}
       SKIA_VERSION: ${{ matrix.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/native-cache
         id: native-cache
         with:
@@ -416,7 +416,7 @@ jobs:
           path: artifacts/skiasharp/${{ matrix.version }}/${{ matrix.target.rid }}
           compiler-cache-size: 64M
           compiler: sccache
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: rootfs-cache
         with:
           path: artifacts/rootfs/target.tar.gz
@@ -442,26 +442,26 @@ jobs:
       - name: Restore ownership of container build outputs
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: sudo chown -R "$(id -u):$(id -g)" artifacts build
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 11.0.x
       - name: Pack RID package
         run: dotnet pack src/package-skiasharp-static/SkiaSharp.Static.csproj -c Release -p:AvaloniaHostRid="$TARGET_RID" -p:SkiaSharpVersion="$SKIA_VERSION"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           compression-level: 0
           name: nuget-native-skia-${{ matrix.version }}-${{ matrix.target.rid }}
           path: artifacts/packages/Release/*.nupkg
           if-no-files-found: error
           retention-days: 7
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-rootfs-${{ matrix.version }}-${{ matrix.target.rid }}
           path: artifacts/rootfs/target.tar.gz
           if-no-files-found: error
           compression-level: 0
           retention-days: 3
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-skia-${{ matrix.version }}-${{ matrix.target.rid }}
           path: artifacts/skiasharp
@@ -484,12 +484,12 @@ jobs:
       HOSTFORGE_CHECK_ANGLE: 'false'
       ROOTFS_DIR: ${{ github.workspace }}/build/rootfs
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nuget-native-skia-${{ matrix.version }}-${{ matrix.target.rid }}
           path: artifacts/packages/Release
-      - uses: actions/download-artifact@v8.0.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-rootfs-${{ matrix.version }}-${{ matrix.target.rid }}
           path: artifacts/rootfs
@@ -497,7 +497,7 @@ jobs:
         run: |
           mkdir -p "$ROOTFS_DIR"
           tar xzf artifacts/rootfs/target.tar.gz -C "$ROOTFS_DIR"
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         if: matrix.target.rid == 'linux-arm64'
         with:
           dotnet-version: 11.0.x
@@ -528,7 +528,7 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
       CONAN_HOME: ${{ github.workspace }}/build/conan
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/native-cache
         id: native-cache
         with:
@@ -545,7 +545,7 @@ jobs:
       - name: Build static SkiaSharp and HarfBuzzSharp with GN
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: python scripts/build-with-cache.py task build-skiasharp RID=${{ matrix.target.rid }} SKIASHARP_VERSION=${{ matrix.version }} JOBS=4
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 11.0.x
       - name: Pack RID package
@@ -556,14 +556,14 @@ jobs:
           HOSTFORGE_SKIA_VERSION: ${{ matrix.version }}
           HOSTFORGE_CHECK_ANGLE: 'false'
         run: dotnet test --project tests/HostForge.NativeAot.Tests/HostForge.NativeAot.Tests.csproj -c Release
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           compression-level: 0
           name: nuget-native-skia-${{ matrix.version }}-${{ matrix.target.rid }}
           path: artifacts/packages/Release/*.nupkg
           if-no-files-found: error
           retention-days: 7
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-skia-${{ matrix.version }}-${{ matrix.target.rid }}
           path: artifacts/skiasharp
@@ -574,22 +574,22 @@ jobs:
     needs: [plan-all, build-skia-windows, build-skia-linux, build-skia-linux-cross, build-skia-macos, build-angle-windows, build-avalonianative-macos]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 11.0.x
       - uses: ./.github/actions/install-task
-      - uses: actions/download-artifact@v8.0.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: nuget-native-skia-*
           merge-multiple: true
           path: artifacts/packages/Release
-      - uses: actions/download-artifact@v8.0.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: nuget-native-avalonianative-*
           merge-multiple: true
           path: artifacts/packages/Release
-      - uses: actions/download-artifact@v8.0.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: native-angle-*
           merge-multiple: true
@@ -614,7 +614,7 @@ jobs:
               records.append({"package": package.name, "bytes": size, "sha256": hashlib.sha256(package.read_bytes()).hexdigest()})
           pathlib.Path("artifacts/packages/Release/package-sizes.json").write_text(json.dumps(records, indent=2))
           PY
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           compression-level: 0
           name: nuget-native-all
@@ -637,16 +637,16 @@ jobs:
       HOSTFORGE_TEST_META: 'true'
       HOSTFORGE_CHECK_ANGLE: ${{ startsWith(matrix.target.rid, 'win-') && 'true' || 'false' }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         if: ${{ !startsWith(matrix.target.rid, 'linux-musl-') }}
         with:
           dotnet-version: 11.0.x
-      - uses: actions/download-artifact@v8.0.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nuget-native-all
           path: artifacts/packages/Release
-      - uses: actions/download-artifact@v8.0.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: runner.os == 'Linux'
         with:
           name: native-rootfs-${{ matrix.version }}-${{ matrix.target.rid }}
@@ -745,7 +745,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           submodules: false
@@ -774,7 +774,7 @@ jobs:
         run: python scripts/build-with-cache.py task build-hostlibs HOSTLIBS_VERSION=${{ matrix.version }} ARCH=${{ matrix.target.arch }} PGO=True JOBS=4
 
       - name: Upload hostlibs artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-hostlib-default-${{ matrix.version }}-${{ matrix.target.rid }}
           path: artifacts\hostlibs
@@ -793,32 +793,32 @@ jobs:
       HOSTFORGE_SKIA_VERSION: ${{ fromJSON(needs.plan-all.outputs.versions)[0] }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           submodules: false
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: |
             10.0.x
             11.0.x
 
       - name: Download HostLibs artifacts (default win-x64, all runtimes)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: native-hostlib-default-*-win-x64
           merge-multiple: true
           path: artifacts\hostlibs
 
       - name: Download SkiaSharp artifact (win-x64)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-skia-${{ env.SKIASHARP_VERSION }}-win-x64
           path: artifacts\skiasharp
 
       - name: Download ANGLE artifact (win-x64)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-angle-win-x64
           path: artifacts\angle
@@ -841,12 +841,12 @@ jobs:
       SKIASHARP_VERSION: ${{ fromJSON(needs.plan-all.outputs.versions)[0] }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           submodules: false
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: |
             9.0.x
@@ -857,39 +857,39 @@ jobs:
         uses: ./.github/actions/install-task
 
       - name: Download HostLibs artifacts (win-x64, all runtimes)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: native-hostlib-default-*-win-x64
           merge-multiple: true
           path: artifacts\hostlibs
 
       - name: Download HostLibs artifacts (win-arm64, all runtimes)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: native-hostlib-default-*-win-arm64
           merge-multiple: true
           path: artifacts\hostlibs
 
       - name: Download SkiaSharp artifact (win-x64)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-skia-${{ env.SKIASHARP_VERSION }}-win-x64
           path: artifacts\skiasharp
 
       - name: Download SkiaSharp artifact (win-arm64)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-skia-${{ env.SKIASHARP_VERSION }}-win-arm64
           path: artifacts\skiasharp
 
       - name: Download ANGLE artifact (win-x64)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-angle-win-x64
           path: artifacts\angle
 
       - name: Download ANGLE artifact (win-arm64)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-angle-win-arm64
           path: artifacts\angle
@@ -898,7 +898,7 @@ jobs:
         shell: powershell
         run: task link-avalonia SKIASHARP_VERSION=${{ env.SKIASHARP_VERSION }} TARGET_OS=windows
       - name: Upload Windows Avalonia apphost artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: avalonia-host-windows
           path: artifacts\avalonia-host
@@ -919,12 +919,12 @@ jobs:
       SKIASHARP_VERSION: ${{ fromJSON(needs.plan-all.outputs.versions)[1] }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           submodules: false
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: |
             9.0.x
@@ -935,39 +935,39 @@ jobs:
         uses: ./.github/actions/install-task
 
       - name: Download HostLibs artifacts (win-x64, all runtimes)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: native-hostlib-default-*-win-x64
           merge-multiple: true
           path: artifacts\hostlibs
 
       - name: Download HostLibs artifacts (win-arm64, all runtimes)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: native-hostlib-default-*-win-arm64
           merge-multiple: true
           path: artifacts\hostlibs
 
       - name: Download SkiaSharp artifact (win-x64)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-skia-${{ env.SKIASHARP_VERSION }}-win-x64
           path: artifacts\skiasharp
 
       - name: Download SkiaSharp artifact (win-arm64)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-skia-${{ env.SKIASHARP_VERSION }}-win-arm64
           path: artifacts\skiasharp
 
       - name: Download ANGLE artifact (win-x64)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-angle-win-x64
           path: artifacts\angle
 
       - name: Download ANGLE artifact (win-arm64)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-angle-win-arm64
           path: artifacts\angle
@@ -976,7 +976,7 @@ jobs:
         shell: powershell
         run: task link-avalonia SKIASHARP_VERSION=${{ env.SKIASHARP_VERSION }} TARGET_OS=windows
       - name: Upload Windows Avalonia apphost artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: avalonia-host-skia4-windows
           path: artifacts\avalonia-host
@@ -1001,7 +1001,7 @@ jobs:
       TARGET_ARCH: ${{ matrix.target.arch }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           submodules: false
@@ -1038,7 +1038,7 @@ jobs:
         run: sudo chown -R "$(id -u):$(id -g)" artifacts build
 
       - name: Upload hostlibs artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-hostlib-default-${{ matrix.version }}-${{ matrix.target.rid }}
           path: artifacts/hostlibs
@@ -1056,12 +1056,12 @@ jobs:
       HOSTFORGE_SKIA_VERSION: ${{ fromJSON(needs.plan-all.outputs.versions)[0] }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           submodules: false
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: |
             10.0.x
@@ -1076,14 +1076,14 @@ jobs:
           sudo apt-get install -y llvm clang zlib1g-dev libfontconfig1-dev
 
       - name: Download HostLibs artifacts (linux-x64, all runtimes)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: native-hostlib-default-*-linux-x64
           merge-multiple: true
           path: artifacts/hostlibs
 
       - name: Download SkiaSharp artifact (linux-x64)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-skia-${{ env.SKIASHARP_VERSION }}-linux-x64
           path: artifacts/skiasharp
@@ -1120,12 +1120,12 @@ jobs:
       SKIASHARP_VERSION: ${{ fromJSON(needs.plan-all.outputs.versions)[0] }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           submodules: false
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: |
             10.0.x
@@ -1135,14 +1135,14 @@ jobs:
         uses: ./.github/actions/install-task
 
       - name: Download HostLibs artifacts (linux-x64, all runtimes)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: native-hostlib-default-*-linux-x64
           merge-multiple: true
           path: artifacts/hostlibs
 
       - name: Download SkiaSharp artifact (linux-x64)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-skia-${{ env.SKIASHARP_VERSION }}-linux-x64
           path: artifacts/skiasharp
@@ -1167,7 +1167,7 @@ jobs:
       - name: Run Avalonia App Host package tests
         run: task avalonia-test SKIASHARP_VERSION=${{ env.SKIASHARP_VERSION }}
       - name: Upload Linux Avalonia apphost artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: avalonia-host-linux
           path: artifacts/avalonia-host
@@ -1183,12 +1183,12 @@ jobs:
       SKIASHARP_VERSION: ${{ fromJSON(needs.plan-all.outputs.versions)[1] }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           submodules: false
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: |
             10.0.x
@@ -1198,14 +1198,14 @@ jobs:
         uses: ./.github/actions/install-task
 
       - name: Download HostLibs artifacts (linux-x64, all runtimes)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: native-hostlib-default-*-linux-x64
           merge-multiple: true
           path: artifacts/hostlibs
 
       - name: Download SkiaSharp artifact (linux-x64)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-skia-${{ env.SKIASHARP_VERSION }}-linux-x64
           path: artifacts/skiasharp
@@ -1230,7 +1230,7 @@ jobs:
       - name: Run Avalonia App Host package tests
         run: task avalonia-test SKIASHARP_VERSION=${{ env.SKIASHARP_VERSION }}
       - name: Upload Linux Avalonia apphost artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: avalonia-host-skia4-linux
           path: artifacts/avalonia-host
@@ -1252,24 +1252,24 @@ jobs:
       TARGET_ARCH: ${{ matrix.target.arch }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           submodules: false
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 11.0.x
 
       - name: Download HostLibs artifacts (all runtimes)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: native-hostlib-default-*-${{ matrix.target.rid }}
           merge-multiple: true
           path: artifacts/hostlibs
 
       - name: Download SkiaSharp artifact
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-skia-${{ env.SKIASHARP_VERSION }}-${{ matrix.target.rid }}
           path: artifacts/skiasharp
@@ -1292,7 +1292,7 @@ jobs:
         run: sudo chown -R "$(id -u):$(id -g)" artifacts
 
       - name: Upload Alpine Avalonia apphost artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: avalonia-host-linux-musl-${{ matrix.target.arch }}
           path: artifacts/avalonia-host
@@ -1313,13 +1313,13 @@ jobs:
       HOSTFORGE_NATIVE_RID: ${{ matrix.target.rid }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           submodules: false
 
       - name: Download Alpine Avalonia apphost artifact
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: avalonia-host-linux-musl-${{ matrix.target.arch }}
           path: artifacts/avalonia-host
@@ -1350,24 +1350,24 @@ jobs:
       TARGET_ARCH: ${{ matrix.target.arch }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           submodules: false
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 11.0.x
 
       - name: Download HostLibs artifacts (all runtimes)
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: native-hostlib-default-*-${{ matrix.target.rid }}
           merge-multiple: true
           path: artifacts/hostlibs
 
       - name: Download SkiaSharp artifact
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-skia-${{ env.SKIASHARP_VERSION }}-${{ matrix.target.rid }}
           path: artifacts/skiasharp
@@ -1390,7 +1390,7 @@ jobs:
         run: sudo chown -R "$(id -u):$(id -g)" artifacts
 
       - name: Upload Alpine Avalonia apphost artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: avalonia-host-skia4-linux-musl-${{ matrix.target.arch }}
           path: artifacts/avalonia-host
@@ -1411,13 +1411,13 @@ jobs:
       HOSTFORGE_NATIVE_RID: ${{ matrix.target.rid }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           submodules: false
 
       - name: Download Alpine Avalonia apphost artifact
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: avalonia-host-skia4-linux-musl-${{ matrix.target.arch }}
           path: artifacts/avalonia-host
@@ -1443,12 +1443,12 @@ jobs:
       SKIASHARP_VERSION: ${{ fromJSON(needs.plan-all.outputs.versions)[0] }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           submodules: false
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 11.0.x
 
@@ -1456,19 +1456,19 @@ jobs:
         uses: ./.github/actions/install-task
 
       - name: Download Windows Avalonia apphost artifact
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: avalonia-host-windows
           path: artifacts\avalonia-host
 
       - name: Download Linux Avalonia apphost artifact
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: avalonia-host-linux
           path: artifacts\avalonia-host
 
       - name: Download Alpine Avalonia apphost artifacts
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: avalonia-host-linux-musl-*
           merge-multiple: true
@@ -1479,7 +1479,7 @@ jobs:
         run: task pack-avalonia SKIASHARP_VERSION=${{ env.SKIASHARP_VERSION }}
 
       - name: Upload nuget packages
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nuget-avalonia-apphost
           path: artifacts\packages\Release
@@ -1496,12 +1496,12 @@ jobs:
       SKIASHARP_VERSION: ${{ fromJSON(needs.plan-all.outputs.versions)[1] }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           submodules: false
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 11.0.x
 
@@ -1509,19 +1509,19 @@ jobs:
         uses: ./.github/actions/install-task
 
       - name: Download Windows Avalonia apphost artifact
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: avalonia-host-skia4-windows
           path: artifacts\avalonia-host
 
       - name: Download Linux Avalonia apphost artifact
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: avalonia-host-skia4-linux
           path: artifacts\avalonia-host
 
       - name: Download Alpine Avalonia apphost artifacts
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: avalonia-host-skia4-linux-musl-*
           merge-multiple: true
@@ -1532,7 +1532,7 @@ jobs:
         run: task pack-avalonia SKIASHARP_VERSION=${{ env.SKIASHARP_VERSION }}
 
       - name: Upload nuget packages
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nuget-avalonia-apphost-skia4
           path: artifacts\packages\Release
@@ -1556,27 +1556,27 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 11.0.x
       - name: Download native packages
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nuget-native-all
           path: artifacts/packages/Release
       - name: Download Avalonia AppHost packages
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nuget-avalonia-apphost
           path: artifacts/packages/Release
       - name: Download Skia 4 Avalonia AppHost packages
-        uses: actions/download-artifact@v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nuget-avalonia-apphost-skia4
           path: artifacts/packages/Release
       # Request the short-lived key only after all packages are downloaded.
       - name: NuGet login with Trusted Publishing
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         id: login
         with:
           user: ${{ secrets.NUGET_USER }}
@@ -1622,7 +1622,7 @@ jobs:
       actions: write
     steps:
       - name: Delete packaged build artifacts
-        uses: geekyeggo/delete-artifact@v6
+        uses: geekyeggo/delete-artifact@176a747ab7e287e3ff4787bf8a148716375ca118 # v6.0.0
         with:
           # The artifact service can answer a delete with 404 for an artifact it has just listed. The artifacts
           # expire after their retention days anyway, so a failed delete is reported without failing the build.

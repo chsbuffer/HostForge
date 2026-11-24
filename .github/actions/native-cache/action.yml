@@ -39,13 +39,13 @@ runs:
         VERSION: ${{ inputs.version }}
         RID: ${{ inputs.rid }}
       run: python scripts/native-cache-key.py "$COMPONENT" "$VERSION" "$RID"
-    - uses: actions/cache@v6
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       id: payload
       with:
         path: ${{ inputs.path }}
         key: ${{ steps.key.outputs.key }}
         lookup-only: ${{ inputs.mode != 'normal' }}
-    - uses: actions/cache@v6
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       if: inputs.mode != 'normal' || steps.payload.outputs.cache-hit != 'true'
       with:
         path: build/compiler-cache

@@ -509,13 +509,13 @@ native RID 包及聚合包统一使用上游版本的前三段加第四段修复
 
 推送到 `main` 后，`build.yml` 的 `publish-nuget` job 等待全部打包及相关测试成功，下载 `nuget-native-all`、`nuget-avalonia-apphost` 和 `nuget-avalonia-apphost-skia4`，将其中的 `.nupkg` 发布到 nuget.org。使用 `--skip-duplicate` 跳过已存在版本，CI 重跑可继续完成剩余包的发布；发布新修复仍须先递增对应版本号。
 
-认证采用 [NuGet Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing)：发布 job 具有 `id-token: write` 权限，`NuGet/login@v1` 使用 `secrets.NUGET_USER`（NuGet 用户名）换取临时 API key，随后立即执行 push。nuget.org 策略的 Workflow File 应为 `build.yml`，Environment 留空，与当前发布 job 保持一致。发布成功后才执行中间工件清理；认证或 push 失败会使 job 失败。
+认证采用 [NuGet Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing)：发布 job 具有 `id-token: write` 权限，`NuGet/login` 使用 `secrets.NUGET_USER`（NuGet 用户名）换取临时 API key，随后立即执行 push。nuget.org 策略的 Workflow File 应为 `build.yml`，Environment 留空，与当前发布 job 保持一致。发布成功后才执行中间工件清理；认证或 push 失败会使 job 失败。
 
 ## 上游跟踪与版本守卫
 
 [`upstream.yml`](.github/workflows/upstream.yml) 每天 05:37 UTC 检查上游（也可手动触发），按组开 PR；GitHub Actions 版本由 [Dependabot](.github/dependabot.yml) 每周开一个 PR。PR 不自动合并，合并到 `main` 即发布。
 
-运行时到 VMR 标签的映射、包版本递增和包输入锁都依赖仓库内的逻辑，由 `scripts/upstream.py` 计算；GitHub Actions 版本由 Dependabot 更新。PR 用 `GITHUB_TOKEN` 创建，不需要保存密钥。
+运行时到 VMR 标签的映射、包版本递增和包输入锁都依赖仓库内的逻辑，由 `scripts/upstream.py` 计算；GitHub Actions 版本由 Dependabot 更新。workflow 和复合 action 引用的外部 action 都固定到 commit SHA，行尾注释写对应版本，Dependabot 同时更新两者：多数 action 的版本标签可以被移动，而构建 job 产出要发布的包，发布 job 能换取 nuget.org 的发布凭据。PR 用 `GITHUB_TOKEN` 创建，不需要保存密钥。
 
 ### 更新组
 
