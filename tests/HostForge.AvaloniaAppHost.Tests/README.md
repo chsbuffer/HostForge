@@ -33,7 +33,8 @@ Current coverage:
   as the package README requires; the bundle runs on the prelinked singlefilehost (exact runtime version checked)
   and resolves ANGLE / Skia / HarfBuzz from the executable, with none of their dynamic libraries (or, on Windows, their
   symbol files) in the publish directory or extracted from the bundle (`DOTNET_BUNDLE_EXTRACT_BASE_DIR` points extraction into the test project)
-- Linux publish-and-run output validation for every template TFM, on the RID of the test system (`linux-x64` on
+- macOS framework-dependent and self-contained publish-and-run tests, with an empty bundle extraction directory.
+- Linux publish-and-run output validation for every template TFM, on the RID of the test system (`linux-x64` / `linux-arm64` on
   glibc, `linux-musl-x64` / `linux-musl-arm64` on Alpine; `HOSTFORGE_NATIVE_RID` overrides it)
 - Build output on Windows and Linux for every template TFM: runs on the template, and on `dotnet`, whose main
   program exports no native library, the resolver of the application assembly leaves them to the build output

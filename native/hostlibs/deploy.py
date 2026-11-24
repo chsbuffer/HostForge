@@ -22,9 +22,10 @@ def deploy(graph, output_folder: str, **kwargs):
     flavor = "default" if package.options.get_safe("pgo", True) else "no-pgo"
     os_name = str(package.settings.os)
     arch = _ARCH[str(package.settings.arch)]
-    rid = f"{'win' if os_name == 'Windows' else 'linux'}-{arch}"
+    platform = {"Windows": "win", "Macos": "osx", "Linux": "linux"}[os_name]
     if os_name == "Linux" and package.options.libc == "musl":
-        rid = f"linux-musl-{arch}"
+        platform = "linux-musl"
+    rid = f"{platform}-{arch}"
     parts = (version, flavor, rid)
     if not all(re.fullmatch(r"[A-Za-z0-9][\w.+-]*", part) for part in parts):
         raise ConanException(f"Unexpected HostLibs deploy directory: {parts}")

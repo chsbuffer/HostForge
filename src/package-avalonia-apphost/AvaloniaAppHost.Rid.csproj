@@ -13,6 +13,7 @@
     <NoWarn>$(NoWarn);NU5128;NU5129</NoWarn>
     <PackageId>ChsBuffer.Avalonia.AppHost.$(AvaloniaHostRid)</PackageId>
     <Version>$(AvaloniaAppHostPackageVersion)</Version>
+    <Version Condition="$(AvaloniaHostRid.StartsWith('osx-'))">$(AvaloniaAppHostMacOSPackageVersion)</Version>
     <Authors>ChsBuffer</Authors>
     <Description>Prelinked Avalonia apphost/singlefilehost templates for $(AvaloniaHostRid) ($(AvaloniaTemplateTfms.Replace(";", ", "))), with static native libraries.</Description>
     <PackageTags>avalonia;apphost;single-file;host-template;$(AvaloniaHostRid)</PackageTags>
@@ -69,6 +70,7 @@
           BeforeTargets="_GetPackageFiles"
           DependsOnTargets="_ResolveAvaloniaSinglePackRid">
     <PropertyGroup>
+      <_AvaloniaPackNativeVersion Condition="$(AvaloniaHostRid.StartsWith('osx-'))">$(AvaloniaNativeVersion)</_AvaloniaPackNativeVersion>
       <_AvaloniaPackRidExtension>@(_AvaloniaPackRid->'%(ExecutableExtension)')</_AvaloniaPackRidExtension>
     </PropertyGroup>
 
@@ -85,6 +87,8 @@
                                         Condition="!Exists('%(Identity)')" />
       <!-- Link.proj copies the licenses of the linked inputs with the templates. -->
       <_AvaloniaTemplateLicenseMarker Include="@(_AvaloniaPackTfm->'$(AvaloniaAppHostArtifactRoot)/%(Identity)/$(AvaloniaHostRid)/licenses/skiasharp/skia/LICENSE')" />
+      <_AvaloniaTemplateLicenseMarker Include="@(_AvaloniaPackTfm->'$(AvaloniaAppHostArtifactRoot)/%(Identity)/$(AvaloniaHostRid)/licenses/avalonianative/$(_AvaloniaPackNativeVersion)/licence.md')"
+                                      Condition="'$(_AvaloniaPackNativeVersion)' != ''" />
       <_AvaloniaMissingTemplateHostFile Include="@(_AvaloniaTemplateLicenseMarker)"
                                         Condition="!Exists('%(Identity)')" />
 
@@ -105,6 +109,7 @@
       <_AvaloniaRidRegistration Include="@(_AvaloniaPackTfm)">
         <Text><![CDATA[    <AvaloniaAppHostRids Include="$(AvaloniaHostRid)">
       <AppHostTemplateTfm>%(Identity)</AppHostTemplateTfm>
+      <AvaloniaNativeVersion>$(_AvaloniaPackNativeVersion)</AvaloniaNativeVersion>
       <AppHostTemplatePath>%24([MSBuild]::NormalizePath('%24(MSBuildThisFileDirectory)', '..', 'template/%(Identity)/$(AvaloniaHostRid)/apphost$(_AvaloniaPackRidExtension)'))</AppHostTemplatePath>
       <SingleFileHostTemplatePath>%24([MSBuild]::NormalizePath('%24(MSBuildThisFileDirectory)', '..', 'template/%(Identity)/$(AvaloniaHostRid)/singlefilehost$(_AvaloniaPackRidExtension)'))</SingleFileHostTemplatePath>
     </AvaloniaAppHostRids>]]></Text>

@@ -1,17 +1,32 @@
 <Project>
   <PropertyGroup>
     <DisableSkiaHarfBuzzRuntimeCopy Condition="'$(DisableSkiaHarfBuzzRuntimeCopy)' == ''">true</DisableSkiaHarfBuzzRuntimeCopy>
+    <UsePrelinkedAvaloniaNative Condition="'$(UsePrelinkedAvaloniaNative)' == ''">true</UsePrelinkedAvaloniaNative>
     <DisableAngleRuntimeCopy Condition="'$(DisableAngleRuntimeCopy)' == ''">true</DisableAngleRuntimeCopy>
   </PropertyGroup>
 
   <PropertyGroup>
     <_AvaloniaModuleInitializer>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', 'ModuleInitializer.cs'))</_AvaloniaModuleInitializer>
-    <_AvaloniaSkiaHarfBuzzNativeFileNames>;libSkiaSharp.dll;libSkiaSharp.so;libSkiaSharp.pdb;libHarfBuzzSharp.dll;libHarfBuzzSharp.so;libHarfBuzzSharp.pdb;</_AvaloniaSkiaHarfBuzzNativeFileNames>
+    <_AvaloniaSkiaHarfBuzzNativeFileNames>;libSkiaSharp.dll;libSkiaSharp.so;libSkiaSharp.dylib;libSkiaSharp.pdb;libHarfBuzzSharp.dll;libHarfBuzzSharp.so;libHarfBuzzSharp.dylib;libHarfBuzzSharp.pdb;</_AvaloniaSkiaHarfBuzzNativeFileNames>
     <_AvaloniaAngleNativeFileNames>;av_libglesv2.dll;av_libglesv2.pdb;</_AvaloniaAngleNativeFileNames>
   </PropertyGroup>
 
+  <Target Name="_ResolveAvaloniaNativePackage"
+          Condition="$(RuntimeIdentifier.StartsWith('osx-'))"
+          DependsOnTargets="ResolvePackageAssets">
+    <ItemGroup>
+      <_AvaloniaNativeRuntime Include="@(RuntimeCopyLocalItems)"
+                              Condition="'%(RuntimeCopyLocalItems.NuGetPackageId)' == 'Avalonia.Native'
+                                     and '%(RuntimeCopyLocalItems.Filename)' == 'Avalonia.Native'" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_ResolvedAvaloniaNativeVersion>@(_AvaloniaNativeRuntime->'%(NuGetPackageVersion)')</_ResolvedAvaloniaNativeVersion>
+    </PropertyGroup>
+  </Target>
+
   <Target Name="ResolveAvaloniaAppHostActivation"
-          BeforeTargets="PrepareForBuild;_GetAppHostPaths">
+          BeforeTargets="PrepareForBuild;_GetAppHostPaths"
+          DependsOnTargets="_ResolveAvaloniaNativePackage">
     <PropertyGroup>
       <!-- Templates depend only on the .NET runtime, so net11.0-windows uses the net11.0 template. -->
       <_AvaloniaTemplateTfm Condition="'$(_AvaloniaTemplateTfm)' == '' and '$(TargetFrameworkIdentifier)' == '.NETCoreApp' and '$(TargetFrameworkVersion)' != ''">net$(TargetFrameworkVersion.TrimStart('vV'))</_AvaloniaTemplateTfm>
@@ -35,6 +50,10 @@
                    and $([System.String]::Copy('%(AppHostTemplateTfm)').ToLowerInvariant()) == '$(_AvaloniaTemplateTfmLower)'" />
     </ItemGroup>
 
+    <PropertyGroup>
+      <_LinkedAvaloniaNativeVersion>@(_AvaloniaMatchedRid->'%(AvaloniaNativeVersion)')</_LinkedAvaloniaNativeVersion>
+    </PropertyGroup>
+
     <!--
       NativeAOT and UseAppHost=false run without an apphost, so nothing would load the libraries that the
       publish step removes. ChsBuffer.SkiaSharp.Static and ChsBuffer.Angle.Static link them into NativeAOT
@@ -48,11 +67,16 @@
                 and Exists('@(_AvaloniaMatchedRid->'%(AppHostTemplatePath)')')
                 and Exists('@(_AvaloniaMatchedRid->'%(SingleFileHostTemplatePath)')'))">NoTemplate</_AvaloniaAppHostInactiveReason>
       <_AvaloniaAppHostInactiveReason Condition="'$(_AvaloniaAppHostInactiveReason)' == '' and '$(UseAppHost)' == 'false'">UseAppHost</_AvaloniaAppHostInactiveReason>
+      <!-- Keep only one set of Objective-C classes in the process. -->
+      <_AvaloniaAppHostInactiveReason Condition="'$(_AvaloniaAppHostInactiveReason)' == '' and '$(_LinkedAvaloniaNativeVersion)' != ''
+            and ('$(UsePrelinkedAvaloniaNative)' != 'true' or ('$(_ResolvedAvaloniaNativeVersion)' != '' and '$(_LinkedAvaloniaNativeVersion)' != '$(_ResolvedAvaloniaNativeVersion)'))">AvaloniaNative</_AvaloniaAppHostInactiveReason>
       <AvaloniaAppHostActive Condition="'$(_AvaloniaAppHostInactiveReason)' == ''">true</AvaloniaAppHostActive>
     </PropertyGroup>
 
     <PropertyGroup>
       <AvaloniaAppHostActive Condition="'$(AvaloniaAppHostActive)' == ''">false</AvaloniaAppHostActive>
+      <_PrelinkedAvaloniaNativeActive Condition="'$(AvaloniaAppHostActive)' == 'true' and '$(UsePrelinkedAvaloniaNative)' == 'true'
+            and '$(_LinkedAvaloniaNativeVersion)' != '' and '$(_LinkedAvaloniaNativeVersion)' == '$(_ResolvedAvaloniaNativeVersion)'">true</_PrelinkedAvaloniaNativeActive>
 
       <AppHostSourcePath Condition="'$(AvaloniaAppHostActive)' == 'true' and '$(AppHostSourcePath)' == ''">@(_AvaloniaMatchedRid->'%(AppHostTemplatePath)')</AppHostSourcePath>
       <SingleFileHostSourcePath Condition="'$(AvaloniaAppHostActive)' == 'true' and '$(SingleFileHostSourcePath)' == ''">@(_AvaloniaMatchedRid->'%(SingleFileHostTemplatePath)')</SingleFileHostSourcePath>
@@ -76,6 +100,7 @@
       <DefineConstants Condition="'@(ReferencePath->AnyHaveMetadataValue('Filename', 'SkiaSharp.SceneGraph'))' == 'true'">$(DefineConstants);HOSTFORGE_SKIASHARP_SCENEGRAPH</DefineConstants>
       <DefineConstants Condition="'@(ReferencePath->AnyHaveMetadataValue('Filename', 'SkiaSharp.Resources'))' == 'true'">$(DefineConstants);HOSTFORGE_SKIASHARP_RESOURCES</DefineConstants>
       <DefineConstants Condition="'@(ReferencePath->AnyHaveMetadataValue('Filename', 'HarfBuzzSharp'))' == 'true'">$(DefineConstants);HOSTFORGE_HARFBUZZSHARP</DefineConstants>
+      <DefineConstants Condition="'$(_PrelinkedAvaloniaNativeActive)' == 'true'">$(DefineConstants);HOSTFORGE_AVALONIA_NATIVE</DefineConstants>
       <DefineConstants Condition="'$(_AvaloniaTemplateRidIsWindows)' == 'True' and '@(ReferencePath->AnyHaveMetadataValue('Filename', 'Avalonia.Win32'))' == 'true'">$(DefineConstants);HOSTFORGE_AVALONIA_WIN32</DefineConstants>
     </PropertyGroup>
 
@@ -99,6 +124,8 @@
              Text="$(_AvaloniaAppHostInactive) because the project language is $(Language). The executable resolves ANGLE, Skia and HarfBuzz through a C# module initializer, so only C# projects use the templates; this project publishes the dynamic libraries." />
     <Warning Condition="'$(_AvaloniaAppHostInactiveReason)' == 'NoTemplate'"
              Text="$(_AvaloniaAppHostInactive). No matching AvaloniaAppHostRids item for TFM '$(_AvaloniaTemplateTfm)' and RID '$(_AvaloniaTemplateRid)'. Registered: @(AvaloniaAppHostRids->'%(AppHostTemplateTfm)/%(Identity)', ', '). Host replacement and ANGLE/Skia/HarfBuzz runtime copy suppression are disabled." />
+    <Message Importance="high" Condition="'$(_AvaloniaAppHostInactiveReason)' == 'AvaloniaNative'"
+             Text="$(_AvaloniaAppHostInactive) because prelinked AvaloniaNative $(_LinkedAvaloniaNativeVersion) was disabled or differs from the restored version $(_ResolvedAvaloniaNativeVersion). The SDK host keeps the native libraries in the publish output." />
     <Warning Condition="'$(_AvaloniaAppHostInactiveReason)' == 'UseAppHost'"
              Text="$(_AvaloniaAppHostInactive) because UseAppHost is false. The application runs on dotnet, not on an apphost, so the ANGLE, Skia and HarfBuzz dynamic libraries are published." />
   </Target>
@@ -118,6 +145,9 @@
                              Condition="'$(DisableSkiaHarfBuzzRuntimeCopy)' == 'true' and $(_AvaloniaSkiaHarfBuzzNativeFileNames.Contains(';%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension);'))" />
       <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
                              Condition="'$(DisableAngleRuntimeCopy)' == 'true' and $(_AvaloniaAngleNativeFileNames.Contains(';%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension);'))" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'$(_PrelinkedAvaloniaNativeActive)' == 'true'
+                                   and '%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'libAvaloniaNative.dylib'" />
     </ItemGroup>
   </Target>
 </Project>

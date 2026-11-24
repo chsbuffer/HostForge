@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shlex
 import shutil
 from pathlib import Path
 
@@ -45,12 +46,10 @@ class HostLibsConan(ConanFile):
     def config_options(self):
         if self.settings.os != "Linux":
             self.options.rm_safe("libc")
-        if self.settings.os != "Windows":
-            # build.sh runs in the pinned upstream build container, which selects
-            # its own LLVM; the container digest identifies it in the cache key.
+        if self.settings.os == "Linux":
+            # The pinned upstream build container supplies the compiler.
             self.settings.rm_safe("compiler")
-            # Linux hosts are built like the official Linux runtime, with its PGO
-            # data; the no-PGO flavor exists for the Windows AppHost.Static package.
+        if self.settings.os != "Windows":
             self.options.rm_safe("pgo")
 
     def validate(self):
@@ -75,7 +74,8 @@ class HostLibsConan(ConanFile):
 
     @property
     def _rid(self):
-        prefix = "win" if self.settings.os == "Windows" else "linux-musl" if self._musl else "linux"
+        platform = str(self.settings.os)
+        prefix = "linux-musl" if self._musl else {"Windows": "win", "Macos": "osx", "Linux": "linux"}[platform]
         return f"{prefix}-{self._target_arch}"
 
     def source(self):
@@ -107,7 +107,8 @@ class HostLibsConan(ConanFile):
             # tar on PATH, which may be Git's GNU tar ("Cannot connect to C:").
             env.define("DOTNET_INSTALL_SKIP_TAR", "1")
         env.vars(self).save_script("build_env")
-        VCVars(self).generate()
+        if self.settings.os == "Windows":
+            VCVars(self).generate()
 
     def build(self):
         self._build_apphost()
@@ -136,6 +137,8 @@ class HostLibsConan(ConanFile):
             )
             shutil.copy2(source, Path(self.package_folder) / source.name)
 
+        if self.settings.os == "Macos":
+            shutil.copy2(self._runtime_root / "eng/native/entitlements.plist", Path(self.package_folder))
         # The runtime's notices cover the third-party code of its native components, which the hosts link.
         licenses = Path(self.package_folder) / "licenses"
         licenses.mkdir()
@@ -282,7 +285,7 @@ class HostLibsConan(ConanFile):
         return artifacts / f"{self._rid}.Release"
 
     def _singlefilehost_build_root(self):
-        os_name = "windows" if self.settings.os == "Windows" else "linux"
+        os_name = {"Windows": "windows", "Macos": "osx", "Linux": "linux"}[str(self.settings.os)]
         return (
             self._runtime_root
             / "artifacts"
@@ -296,16 +299,27 @@ class HostLibsConan(ConanFile):
 
     def _unix_target(self):
         # build.sh derives the musl RID, CMake defines and PGO data from --os, as in the official builds.
-        cross = " --cross" if self._sysroot() else ""
+        cross = " --cross" if self.settings.os == "Linux" and self._sysroot() else ""
         return f"{cross} --os linux-musl" if self._musl else cross
 
     def _bundle(self, name: str, build_root: Path):
-        tokens, link_flags, flags = self._parse_link_rule(build_root, name)
+        apple = self.settings.os == "Macos"
+        tokens, link_flags, flags = self._parse_link_rule(build_root, name, apple)
+        if apple:
+            flags, link_flags = self._apple_link_flags(flags, link_flags)
         copied: set[Path] = set()
         package = Path(self.package_folder)
         response = []
         for token in tokens:
             path = self._token_input_path(token)
+            if apple and self._is_absolute(path) and Path(path).suffix == ".tbd":
+                # Resolve system stubs from the linker SDK instead of distributing the original SDK files.
+                stub = Path(path)
+                if ".framework" in path:
+                    response.extend(("-framework", stub.stem))
+                else:
+                    response.append(f"-l{stub.stem.removeprefix('lib')}")
+                continue
             source = self._resolve_token(build_root, path)
             if source is not None:
                 relative = self._token_output_path(path)
@@ -318,7 +332,7 @@ class HostLibsConan(ConanFile):
                     # A library outside the build tree, such as the libpthread.a stub that CMake finds in the
                     # musl rootfs. The link runs in the package directory, so name the packaged copy.
                     token = token[:len(token) - len(path)] + relative.as_posix()
-            response.append(token)
+            response.append(shlex.quote(token) if apple else token)
 
         save(self, str(package / f"{name}.rsp"), "\n".join(response) + "\n")
         save(
@@ -326,6 +340,24 @@ class HostLibsConan(ConanFile):
             str(package / f"{name}.linkflags"),
             f"{flags}\n{link_flags}\n",
         )
+
+    @staticmethod
+    def _apple_link_flags(flags, link_flags):
+        # The link runner selects its own SDK. Keep the deployment target assigned by the runtime.
+        deployment = [flag for flag in shlex.split(flags) if flag.startswith("-mmacosx-version-min=")]
+        linker = iter(shlex.split(link_flags))
+        portable = []
+        for flag in linker:
+            if flag.startswith("-Wl,-exported_symbols_list,"):
+                continue
+            if flag == "-Xlinker":
+                option = next(linker)
+                if option == "-no_exported_symbols":
+                    continue
+                portable.extend((flag, option))
+            else:
+                portable.append(flag)
+        return shlex.join(deployment), shlex.join(portable)
 
     @staticmethod
     def _token_input_path(token: str):
@@ -357,7 +389,7 @@ class HostLibsConan(ConanFile):
         return Path(*parts)
 
     @staticmethod
-    def _parse_link_rule(build_root: Path, name: str):
+    def _parse_link_rule(build_root: Path, name: str, apple=False):
         target_outputs = {
             "apphost": {"apphost/standalone/apphost", "apphost/standalone/apphost.exe"},
             "singlefilehost": {
@@ -394,7 +426,7 @@ class HostLibsConan(ConanFile):
                     if following.startswith(prefix):
                         values[key] = following.removeprefix(prefix).strip()
 
-            libraries = values["LINK_LIBRARIES"].split()
+            libraries = shlex.split(values["LINK_LIBRARIES"]) if apple else values["LINK_LIBRARIES"].split()
             if not objects or not libraries or not values["LINK_FLAGS"]:
                 raise ConanException(f"Malformed Ninja link rule for {name}")
             return [*objects, *libraries], values["LINK_FLAGS"], values["FLAGS"]

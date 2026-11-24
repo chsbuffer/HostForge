@@ -23,7 +23,7 @@ HOSTLIBS = VERSIONS["hostlibs"]
 OTHER_HOSTLIBS = next((v for v in VERSIONS["hostlibs-versions"] if v != HOSTLIBS), None)
 AVALONIA = VERSIONS["avalonia-native"]
 # The RIDs whose HostLibs build in an upstream container.
-HOSTLIBS_LINUX_RIDS = ("linux-x64", "linux-musl-x64", "linux-musl-arm64")
+HOSTLIBS_LINUX_RIDS = ("linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64")
 
 
 class NativeCacheKeyTests(unittest.TestCase):

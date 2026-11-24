@@ -90,10 +90,11 @@ class FakeClient:
 # The official build containers in the runtime's pipeline resources: one pinned by digest, the others by tag only.
 # Legs whose names contain linux_x64 come first, so a test fails when another leg is taken for linux_x64.
 CONTAINER_TAGS = {"linux-x64": "azurelinux-3.0-net99.0-cross-amd64",
+                  "linux-arm64": "azurelinux-3.0-net99.0-cross-arm64",
                   "linux-musl-x64": "azurelinux-3.0-net99.0-cross-amd64-musl",
                   "linux-musl-arm64": "azurelinux-3.0-net99.0-cross-arm64-musl"}
 PINNED_DIGEST = "sha256:" + "1" * 64
-MANIFESTS = {rid: f'{{"schemaVersion": 2, "config": "{rid}"}}'.encode() for rid in ("linux-x64", "linux-musl-arm64")}
+MANIFESTS = {rid: f'{{"schemaVersion": 2, "config": "{rid}"}}'.encode() for rid in ("linux-x64", "linux-arm64", "linux-musl-arm64")}
 PREREQS = "mcr.microsoft.com/dotnet-buildtools/prereqs"
 PIPELINE_RESOURCES = f"""    containers:
       SourceBuild_linux_x64:
@@ -103,7 +104,7 @@ PIPELINE_RESOURCES = f"""    containers:
         image: {PREREQS}:ubuntu-24.04
 
       linux_arm64:
-        image: {PREREQS}:azurelinux-3.0-net99.0-cross-arm64
+        image: {PREREQS}:{CONTAINER_TAGS["linux-arm64"]}
         env:
           ROOTFS_DIR: /crossrootfs/arm64
 
@@ -124,6 +125,8 @@ PIPELINE_RESOURCES = f"""    containers:
 """
 CONTAINERS = {
     "linux-x64": f"{PREREQS}:{CONTAINER_TAGS['linux-x64']}@sha256:{hashlib.sha256(MANIFESTS['linux-x64']).hexdigest()}",
+    "linux-arm64": f"{PREREQS}:{CONTAINER_TAGS['linux-arm64']}@sha256:"
+                   f"{hashlib.sha256(MANIFESTS['linux-arm64']).hexdigest()}",
     "linux-musl-x64": f"{PREREQS}:{CONTAINER_TAGS['linux-musl-x64']}@{PINNED_DIGEST}",
     "linux-musl-arm64": f"{PREREQS}:{CONTAINER_TAGS['linux-musl-arm64']}@sha256:"
                         f"{hashlib.sha256(MANIFESTS['linux-musl-arm64']).hexdigest()}",
@@ -475,7 +478,7 @@ class ApplyTests(UpstreamTestCase):
         props.write_text(re.sub(r"(<AvaloniaNativePackageVersion>\$\(AvaloniaNativeVersion\)\.)\d+",
                                 r"\g<1>2", props.read_text(encoding="utf-8")), encoding="utf-8")
         self.relock()
-        major = self.props()["_Major"]
+        previous = self.props()
         old = self.pinned["avalonia"]
         old_commit = self.pinned["avalonia-sources"][self.pinned["avalonia-native"]]["commit"]
         readme = self.root / "src/package-avalonia-native-static/README.md"
@@ -495,7 +498,9 @@ class ApplyTests(UpstreamTestCase):
         values = self.props()
         self.assertEqual((new, new), (values["AvaloniaVersion"], values["AvaloniaNativeVersion"]))
         self.assertEqual(f"{new}.1", values["AvaloniaNativePackageVersion"])
-        self.assertEqual(major, values["_Major"], "Avalonia is not an AppHost input")
+        self.assertEqual(previous["_Major"], values["_Major"])
+        self.assertEqual(previous["AvaloniaAppHostPackageVersion"], values["AvaloniaAppHostPackageVersion"])
+        self.assertEqual(f"{new}.{values['_Major']}", values["AvaloniaAppHostMacOSPackageVersion"])
         commit = fake_commit("avalonia " + new)
         source = repo_versions.load(self.root)["avalonia-sources"][new]
         self.assertEqual({"url": upstream.AVALONIA_ARCHIVE.format(commit=commit), "commit": commit,
@@ -671,7 +676,7 @@ class AvaloniaMinorTests(UpstreamTestCase):
         props = self.root / package_inputs.PROPS
         set_text(props, r"(<AvaloniaNativePackageVersion>\$\(AvaloniaNativeVersion\)\.)\d+", r"\g<1>3")
         self.relock()
-        major = self.props()["_Major"]
+        previous = self.props()
         client = fake_upstream(self.root, avalonia=True, avalonia_minor=True, avalonia_major=True)
         code, stdout, stderr, metadata = self.apply(client, "--group", "avalonia-minor")
         self.assertEqual(0, code, stderr)
@@ -679,7 +684,9 @@ class AvaloniaMinorTests(UpstreamTestCase):
         values = self.props()
         self.assertEqual((new, new, f"{new}.1"), (values["AvaloniaVersion"], values["AvaloniaNativeVersion"],
                                                   values["AvaloniaNativePackageVersion"]))
-        self.assertEqual(major, values["_Major"])
+        self.assertEqual(previous["_Major"], values["_Major"])
+        self.assertEqual(previous["AvaloniaAppHostPackageVersion"], values["AvaloniaAppHostPackageVersion"])
+        self.assertEqual(f"{new}.{values['_Major']}", values["AvaloniaAppHostMacOSPackageVersion"])
         commit = fake_commit("avalonia " + new)
         self.assertEqual({"url": upstream.AVALONIA_ARCHIVE.format(commit=commit), "commit": commit,
                           "sha256": hashlib.sha256(b"archive " + new.encode()).hexdigest()},

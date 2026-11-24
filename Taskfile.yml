@@ -31,6 +31,27 @@ tasks:
       - task: _hostlibs-linux
         vars: {RID: "{{.RID}}", SYSROOT: "{{.SYSROOT}}", PGO: "{{.PGO}}", HOSTLIBS_VERSION: "{{.HOSTLIBS_VERSION}}"}
         platforms: [linux]
+      - task: _hostlibs-macos
+        vars: {RID: "{{.RID}}", HOSTLIBS_VERSION: "{{.HOSTLIBS_VERSION}}"}
+        platforms: [darwin]
+
+  _hostlibs-macos:
+    internal: true
+    platforms: [darwin]
+    requires:
+      vars:
+        - name: RID
+          enum: [osx-x64, osx-arm64]
+        - HOSTLIBS_VERSION
+    cmds:
+      - uv run conan export native/hostlibs --version={{.HOSTLIBS_VERSION}}
+      - >-
+        uv run conan install --requires="hostlibs/{{.HOSTLIBS_VERSION}}" --build=missing --no-remote --envs-generation=false
+        -pr:b=native/hostlibs/profiles/macos-{{trimPrefix "osx-" .RID}}
+        -pr:h=native/hostlibs/profiles/macos-{{trimPrefix "osx-" .RID}}
+        -c tools.build:jobs={{.JOBS}}
+        --deployer=native/hostlibs/deploy.py
+        --deployer-folder=artifacts/hostlibs
 
   _hostlibs-windows:
     internal: true
@@ -57,7 +78,7 @@ tasks:
     requires:
       vars:
         - name: TARGET_RID
-          enum: [linux-x64, linux-musl-x64, linux-musl-arm64]
+          enum: [linux-x64, linux-arm64, linux-musl-x64, linux-musl-arm64]
         - HOSTLIBS_VERSION
     preconditions:
       - sh: '[ "{{.PGO}}" = True ]'
@@ -252,7 +273,7 @@ tasks:
     requires:
       vars:
         - name: TARGET_OS
-          enum: [windows, linux, linux-musl]
+          enum: [windows, linux, linux-musl, osx]
     cmds:
       - >-
         dotnet msbuild src/package-avalonia-apphost/AvaloniaAppHost.Link.proj
@@ -279,7 +300,7 @@ tasks:
     requires:
       vars:
         - name: RID
-          enum: [win-x64, win-arm64, linux-x64, linux-musl-x64, linux-musl-arm64]
+          enum: [win-x64, win-arm64, linux-x64, linux-arm64, linux-musl-x64, linux-musl-arm64, osx-x64, osx-arm64]
     cmds:
       - >-
         dotnet pack src/package-avalonia-apphost/AvaloniaAppHost.Rid.csproj
@@ -316,9 +337,15 @@ tasks:
       - task: pack-avalonia-rid
         vars: {RID: linux-x64, SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
       - task: pack-avalonia-rid
+        vars: {RID: linux-arm64, SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
+      - task: pack-avalonia-rid
         vars: {RID: linux-musl-x64, SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
       - task: pack-avalonia-rid
         vars: {RID: linux-musl-arm64, SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
+      - task: pack-avalonia-rid
+        vars: {RID: osx-x64, SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
+      - task: pack-avalonia-rid
+        vars: {RID: osx-arm64, SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
       - task: pack-avalonia-build
         vars: {SKIASHARP_VERSION: '{{.SKIASHARP_VERSION}}'}
       - task: pack-avalonia-meta

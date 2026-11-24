@@ -12,8 +12,11 @@ Supported template targets
 - win-x64
 - win-arm64
 - linux-x64
+- linux-arm64
 - linux-musl-x64
 - linux-musl-arm64
+- osx-x64
+- osx-arm64
 
 Compatibility and fallback
 --------------------------
@@ -21,8 +24,11 @@ Compatibility and fallback
 - net10.0 / net11.0 + win-x64: active
 - net10.0 / net11.0 + win-arm64: active
 - net10.0 / net11.0 + linux-x64: active
+- net10.0 / net11.0 + linux-arm64: active
 - net10.0 / net11.0 + linux-musl-x64: active
 - net10.0 / net11.0 + linux-musl-arm64: active
+- net10.0 / net11.0 + osx-x64: active
+- net10.0 / net11.0 + osx-arm64: active
 - OS-specific TFMs (e.g. net11.0-windows) use the template of their .NET version
 - builds without a runtime identifier: inactive, without a warning
 - NativeAOT (PublishAot=true) and UseAppHost=false: inactive, the dynamic native libraries are published

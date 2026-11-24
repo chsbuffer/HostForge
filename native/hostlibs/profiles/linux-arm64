@@ -1,0 +1,6 @@
+# The upstream build container of each runtime and RID supplies the compiler
+# (native/hostlibs/versions.json), so the recipe declares no compiler setting for Linux.
+[settings]
+os=Linux
+arch=armv8
+build_type=Release

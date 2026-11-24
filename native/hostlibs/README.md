@@ -32,8 +32,13 @@ passes over under "Not applied". A runtime pinned to a preview is only reported.
 `task upstream-apply -- --dotnet` computes the same change locally; see
 [DEVELOPMENT.md](../../DEVELOPMENT.md#更新组).
 
+On macOS, build with Xcode and the matching Apple Silicon or Intel runner by
+passing `RID=osx-arm64` or `RID=osx-x64` to `task build-hostlibs`.
+The deployed link inputs include the deployment flags and .NET host signing
+entitlements. The linker resolves system libraries from the runner's SDK.
+
 On Linux, Task's `RID` selects the host profile: `linux-x64` (the default),
-`linux-musl-x64` or `linux-musl-arm64`. The musl profiles set `libc=musl`, and the
+`linux-arm64`, `linux-musl-x64` or `linux-musl-arm64`. The musl profiles set `libc=musl`, and the
 recipe passes `--os linux-musl` to the Runtime's `build.sh`, which selects the musl
 RID, its CMake definitions and the PGO data as in the official builds. Every Linux RID
 builds in the official build container of the runtime and RID, which `versions.json`

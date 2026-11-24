@@ -19,6 +19,24 @@
   </PropertyGroup>
 
   <Target Name="SetupOSSpecificProps">
+    <PropertyGroup Condition="'$(_IsApplePlatform)' == 'true'">
+      <_AppleLinkArch>$(_targetArchitecture)</_AppleLinkArch>
+      <_AppleLinkArch Condition="'$(_targetArchitecture)' == 'x64'">x86_64</_AppleLinkArch>
+      <_AppleEntitlements>$([MSBuild]::NormalizePath('$(StaticHostAssetsDir)', 'entitlements.plist'))</_AppleEntitlements>
+      <_AppHostPostLinkCommand>strip -no_code_signature_warning -S &quot;$(AppHostLinkFullPath)&quot; &amp;&amp; codesign -s - -f --entitlements &quot;$(_AppleEntitlements)&quot; &quot;$(AppHostLinkFullPath)&quot;</_AppHostPostLinkCommand>
+      <_SingleFileHostPostLinkCommand>strip -no_code_signature_warning -S &quot;$(SingleFileHostLinkFullPath)&quot; &amp;&amp; codesign -s - -f --entitlements &quot;$(_AppleEntitlements)&quot; &quot;$(SingleFileHostLinkFullPath)&quot;</_SingleFileHostPostLinkCommand>
+    </PropertyGroup>
+
+    <ItemGroup Condition="'$(_IsApplePlatform)' == 'true'">
+      <LinkerInput Include="$(_AppleEntitlements);$(_SingleFileHostExportsFile);$(StaticHostAssetsDir)/apphost.linkflags;$(StaticHostAssetsDir)/singlefilehost.linkflags" />
+    </ItemGroup>
+
+    <ReadLinesFromFile File="$(StaticHostAssetsDir)/apphost.linkflags" Condition="'$(_IsApplePlatform)' == 'true'">
+      <Output TaskParameter="Lines" ItemName="_AppleAppHostLinkFlags" />
+    </ReadLinesFromFile>
+    <ReadLinesFromFile File="$(StaticHostAssetsDir)/singlefilehost.linkflags" Condition="'$(_IsApplePlatform)' == 'true'">
+      <Output TaskParameter="Lines" ItemName="_AppleSingleFileHostLinkFlags" />
+    </ReadLinesFromFile>
     <ItemGroup>
       <_NativeLibraryInput Include="@(NativeLibrary)">
         <WholeArchive Condition="'%(NativeLibrary.WholeArchive)' == ''">false</WholeArchive>
@@ -73,13 +91,9 @@
     <Error Condition="'$(_IsApplePlatform)' != 'true' and '$(_WhereSymbolStripper)' != '0' and '$(ObjCopyNameAlternative)' == ''"
            Text="Symbol stripping tool ('$(ObjCopyName)') not found in PATH." />
 
-    <PropertyGroup>
-      <_AppHostLinkFlags>-fuse-ld=$(LinkerFlavor)</_AppHostLinkFlags>
-      <_AppHostLinkFlags Condition="'$(_IsApplePlatform)' != 'true'">$(_AppHostLinkFlags) -pie -Wl,--build-id=sha1 -Wl,-z,relro,-z,now -Xlinker -Bsymbolic -Wl,--export-dynamic -rdynamic</_AppHostLinkFlags>
-
-      <_SingleFileHostLinkFlags>-fuse-ld=$(LinkerFlavor)</_SingleFileHostLinkFlags>
-      <_SingleFileHostLinkFlags Condition="'$(_IsApplePlatform)' != 'true'">$(_SingleFileHostLinkFlags) -pie -Wl,--build-id=sha1 -Wl,-z,relro,-z,now -Wl,--export-dynamic -rdynamic</_SingleFileHostLinkFlags>
-      <_SingleFileHostLinkFlags Condition="false and '$(_IsApplePlatform)' != 'true'">$(_SingleFileHostLinkFlags) -Wl,--version-script=&quot;$(_SingleFileHostExportsFile)&quot;</_SingleFileHostLinkFlags>
+    <PropertyGroup Condition="'$(_IsApplePlatform)' != 'true'">
+      <_AppHostLinkFlags>-pie -Wl,--build-id=sha1 -Wl,-z,relro,-z,now -Xlinker -Bsymbolic -Wl,--export-dynamic -rdynamic</_AppHostLinkFlags>
+      <_SingleFileHostLinkFlags>-pie -Wl,--build-id=sha1 -Wl,-z,relro,-z,now -Wl,--export-dynamic -rdynamic</_SingleFileHostLinkFlags>
     </PropertyGroup>
 
     <!-- The link targets run these after linking, so stripping shares their up-to-date check instead of rewriting a current host. -->
@@ -90,13 +104,14 @@
 
     <ItemGroup>
       <_CommonLinkerArg Include="-fuse-ld=$(LinkerFlavor)" Condition="'$(LinkerFlavor)' != ''" />
+      <_CommonLinkerArg Include="-arch $(_AppleLinkArch)" Condition="'$(_IsApplePlatform)' == 'true'" />
       <_CommonLinkerArg Include="@(AdditionalNativeLibraryDirectories->'-L&quot;%(Identity)&quot;')" />
       <_CommonLinkerArg Include="@(LinkerArg)" />
 
       <_WholeArchiveNativeLib Include="@(_NativeLibraryInput)" Condition="'%(WholeArchive)' == 'true'" />
       <_DefaultNativeLib Include="@(_NativeLibraryInput)" Condition="'%(WholeArchive)' != 'true'" />
 
-      <_AppHostLinkerArg Include="$(_AppHostLinkFlags)" />
+      <_AppHostLinkerArg Include="$(_AppHostLinkFlags);@(_AppleAppHostLinkFlags)" />
       <_AppHostLinkerArg Include="@(_CommonLinkerArg)" />
       <_AppHostLinkerArg Include="@apphost.rsp" />
       <_AppHostLinkerArg Include="-Wl,--start-group" Condition="'$(GroupNativeLibraries)' == 'true'" />
@@ -108,7 +123,9 @@
       <_AppHostLinkerArg Include="-Wl,--end-group" Condition="'$(GroupNativeLibraries)' == 'true'" />
       <_AppHostLinkerArg Include="-o &quot;$(AppHostLinkFullPath)&quot;" />
 
-      <_SingleFileHostLinkerArg Include="$(_SingleFileHostLinkFlags)" />
+      <_SingleFileHostLinkerArg Include="$(_SingleFileHostLinkFlags);@(_AppleSingleFileHostLinkFlags)" />
+      <_SingleFileHostLinkerArg Include="-Wl,-exported_symbols_list,&quot;$(_SingleFileHostExportsFile)&quot;"
+                                Condition="'$(_IsApplePlatform)' == 'true'" />
       <_SingleFileHostLinkerArg Include="@(_CommonLinkerArg)" />
       <!-- The upstream singlefilehost link keeps these exports of singlefilehost.exports for the debugger and
            diagnostics tools: nothing in the host references the archive members that define them. -->

@@ -6,9 +6,9 @@ inputs change while its version stays the same is silently not published. The lo
 declared inputs; the locks committed on main before it hold the earlier versions. compute() returns one record
 per variant:
 
-- ChsBuffer.Avalonia.AppHost (RID, Build and meta packages), one record per SkiaSharp line:
-  the runtime and VMR source of each target framework, the SkiaSharp line with its skia commit and
-  HarfBuzzSharp version, and ANGLE (linked into the Windows templates).
+- ChsBuffer.Avalonia.AppHost (RID, Build and meta packages), two records per SkiaSharp line:
+  Windows/Linux and Build track the runtimes, SkiaSharp, HarfBuzzSharp and ANGLE. The macOS and meta
+  release also tracks the Avalonia.Native source and the Windows/Linux dependency version.
 - ChsBuffer.AppHost.Static, one record per target framework: runtime and VMR source.
 - ChsBuffer.SkiaSharp.Static, one record per SkiaSharp line: skia commit and HarfBuzzSharp version.
 - ChsBuffer.Angle.Static: AngleVersion, branch and commit.
@@ -227,6 +227,11 @@ def compute(root=ROOT):
         runtimes[framework] = {"version": runtime, "vmr-tag": source["tag"], "vmr-commit": source["commit"]}
     angle = {"version": pinned["angle"], "branch": pinned["angle-branch"], "commit": pinned["angle-commit"]}
 
+    avalonia = pinned["avalonia-native"]
+    avalonia_source = pinned["avalonia-sources"][avalonia]
+    avalonia_native = {"avalonia": avalonia, "url": avalonia_source.get("url", ""),
+                       "sha256": avalonia_source.get("sha256", ""), "commit": avalonia_source.get("commit", "")}
+
     apphost, skiasharp = {}, {}
     for line in pinned["skiasharp-versions"]:
         variant = _skia_variant(line)
@@ -235,10 +240,17 @@ def compute(root=ROOT):
         values = evaluate(props, {"SkiaSharpVersion": line})
         source = pinned["skiasharp-sources"][line]
         skia = {"version": line, "skia-commit": source["skia-commit"], "harfbuzz": source["harfbuzz"]}
+        shared_version = _required(values, "AvaloniaAppHostPackageVersion", PROPS)
         apphost[variant] = {
-            "version": _required(values, "AvaloniaAppHostPackageVersion", PROPS),
+            "version": shared_version,
             "bump": "increment <_Major> in Directory.Build.props",
             "inputs": {"runtimes": runtimes, "skiasharp": skia, "angle": angle},
+        }
+        apphost[f"{variant}-macos-meta"] = {
+            "version": _required(values, "AvaloniaAppHostMacOSPackageVersion", PROPS),
+            "bump": apphost[variant]["bump"],
+            "inputs": {"runtimes": runtimes, "skiasharp": skia, "avalonia-native": avalonia_native,
+                       "windows-linux-version": shared_version},
         }
         skiasharp[variant] = {
             "version": _required(values, "SkiaSharpPackageVersion", PROPS),
@@ -260,8 +272,6 @@ def compute(root=ROOT):
         }
 
     values = evaluate(props)
-    avalonia = pinned["avalonia-native"]
-    avalonia_source = pinned["avalonia-sources"][avalonia]
     return {
         "ChsBuffer.Avalonia.AppHost": apphost,
         "ChsBuffer.AppHost.Static": apphost_static,
@@ -274,8 +284,7 @@ def compute(root=ROOT):
         "ChsBuffer.Avalonia.Native.Static": {"default": {
             "version": _required(values, "AvaloniaNativePackageVersion", PROPS),
             "bump": "increment the revision of <AvaloniaNativePackageVersion> in Directory.Build.props",
-            "inputs": {"avalonia": avalonia, "url": avalonia_source.get("url", ""),
-                       "sha256": avalonia_source.get("sha256", ""), "commit": avalonia_source.get("commit", "")},
+            "inputs": avalonia_native,
         }},
     }
 

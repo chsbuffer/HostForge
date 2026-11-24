@@ -24,12 +24,20 @@
         <TargetOs>linux</TargetOs>
         <ExecutableExtension></ExecutableExtension>
       </_AvaloniaKnownRid>
+      <_AvaloniaKnownRid Include="linux-arm64">
+        <TargetOs>linux</TargetOs>
+        <ExecutableExtension></ExecutableExtension>
+      </_AvaloniaKnownRid>
       <_AvaloniaKnownRid Include="linux-musl-x64">
         <TargetOs>linux-musl</TargetOs>
         <ExecutableExtension></ExecutableExtension>
       </_AvaloniaKnownRid>
       <_AvaloniaKnownRid Include="linux-musl-arm64">
         <TargetOs>linux-musl</TargetOs>
+        <ExecutableExtension></ExecutableExtension>
+      </_AvaloniaKnownRid>
+      <_AvaloniaKnownRid Include="osx-x64;osx-arm64">
+        <TargetOs>osx</TargetOs>
         <ExecutableExtension></ExecutableExtension>
       </_AvaloniaKnownRid>
     </ItemGroup>

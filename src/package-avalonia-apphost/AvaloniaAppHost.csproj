@@ -11,9 +11,9 @@
     <NoBuild>true</NoBuild>
     <NoWarn>$(NoWarn);NU5128;NU5129</NoWarn>
     <PackageId>ChsBuffer.Avalonia.AppHost</PackageId>
-    <Version>$(AvaloniaAppHostPackageVersion)</Version>
+    <Version>$(AvaloniaAppHostMacOSPackageVersion)</Version>
     <Authors>ChsBuffer</Authors>
-    <Description>Prelinked Avalonia apphost/singlefilehost template package for .NET 10 and .NET 11 on Windows, Linux and Alpine Linux, with static ANGLE, SkiaSharp, and HarfBuzz native libraries.</Description>
+    <Description>Prelinked Avalonia apphost/singlefilehost template package for .NET 10 and .NET 11 on Windows, Linux and macOS, with static ANGLE, SkiaSharp, and HarfBuzz native libraries.</Description>
     <PackageTags>avalonia;apphost;single-file;host-template;angle;skia;harfbuzz</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
@@ -31,11 +31,14 @@
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
 
   <ItemGroup>
-    <PackageReference Include="ChsBuffer.Avalonia.AppHost.win-x64" Version="$(AvaloniaAppHostPackageVersion)" />
-    <PackageReference Include="ChsBuffer.Avalonia.AppHost.win-arm64" Version="$(AvaloniaAppHostPackageVersion)" />
-    <PackageReference Include="ChsBuffer.Avalonia.AppHost.linux-x64" Version="$(AvaloniaAppHostPackageVersion)" />
-    <PackageReference Include="ChsBuffer.Avalonia.AppHost.linux-musl-x64" Version="$(AvaloniaAppHostPackageVersion)" />
-    <PackageReference Include="ChsBuffer.Avalonia.AppHost.linux-musl-arm64" Version="$(AvaloniaAppHostPackageVersion)" />
+    <PackageReference Include="ChsBuffer.Avalonia.AppHost.win-x64" Version="[$(AvaloniaAppHostPackageVersion)]" />
+    <PackageReference Include="ChsBuffer.Avalonia.AppHost.win-arm64" Version="[$(AvaloniaAppHostPackageVersion)]" />
+    <PackageReference Include="ChsBuffer.Avalonia.AppHost.linux-x64" Version="[$(AvaloniaAppHostPackageVersion)]" />
+    <PackageReference Include="ChsBuffer.Avalonia.AppHost.linux-arm64" Version="[$(AvaloniaAppHostPackageVersion)]" />
+    <PackageReference Include="ChsBuffer.Avalonia.AppHost.linux-musl-x64" Version="[$(AvaloniaAppHostPackageVersion)]" />
+    <PackageReference Include="ChsBuffer.Avalonia.AppHost.linux-musl-arm64" Version="[$(AvaloniaAppHostPackageVersion)]" />
+    <PackageReference Include="ChsBuffer.Avalonia.AppHost.osx-x64" Version="[$(AvaloniaAppHostMacOSPackageVersion)]" />
+    <PackageReference Include="ChsBuffer.Avalonia.AppHost.osx-arm64" Version="[$(AvaloniaAppHostMacOSPackageVersion)]" />
   </ItemGroup>
 
   <ItemGroup>

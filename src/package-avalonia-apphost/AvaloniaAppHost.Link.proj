@@ -2,7 +2,7 @@
   Dedicated linking project for Avalonia apphost templates.
 
   Responsibilities:
-  - Resolve the RID set for one OS at a time (`AvaloniaAppHostTarget=windows|linux|linux-musl`).
+  - Resolve the RID set for one OS at a time (`AvaloniaAppHostTarget=windows|linux|linux-musl|osx`).
   - Link `apphost` and `singlefilehost` for every `AvaloniaTemplateTfms` entry into
     `artifacts/avalonia-host/<version>/<tfm>/<rid>/`. Each TFM links the host libs of its own
     .NET runtime (`HostLibsTargetFramework` selects `HostLibsVersion` in Directory.Build.props).
@@ -25,6 +25,7 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <NoBuild>true</NoBuild>
+    <AvaloniaHostRids Condition="'$(AvaloniaHostRids)' == '' and '$(AvaloniaAppHostTarget)' == 'linux'">linux-x64</AvaloniaHostRids>
 
     <AvaloniaTemplateTfm Condition="'$(AvaloniaTemplateTfm)' == ''">$(HostLibsTargetFramework)</AvaloniaTemplateTfm>
     <AvaloniaAppHostArtifactRoot>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/avalonia-host/$(TargetAvaloniaVersion)'))</AvaloniaAppHostArtifactRoot>
@@ -58,17 +59,23 @@
 
   <Target Name="_ValidateAvaloniaAppHostTarget">
     <Error Condition="'$(AvaloniaAppHostTarget)' == ''"
-           Text="AvaloniaAppHostTarget is required. Use 'windows', 'linux' or 'linux-musl'." />
-    <Error Condition="'$(AvaloniaAppHostTarget)' != 'windows' and '$(AvaloniaAppHostTarget)' != 'linux' and '$(AvaloniaAppHostTarget)' != 'linux-musl'"
-           Text="AvaloniaAppHostTarget='$(AvaloniaAppHostTarget)' is invalid. Use 'windows', 'linux' or 'linux-musl'." />
+           Text="AvaloniaAppHostTarget is required. Use 'windows', 'linux', 'linux-musl' or 'osx'." />
+    <Error Condition="'$(AvaloniaAppHostTarget)' != 'windows' and '$(AvaloniaAppHostTarget)' != 'linux' and '$(AvaloniaAppHostTarget)' != 'linux-musl' and '$(AvaloniaAppHostTarget)' != 'osx'"
+           Text="AvaloniaAppHostTarget='$(AvaloniaAppHostTarget)' is invalid. Use 'windows', 'linux', 'linux-musl' or 'osx'." />
   </Target>
 
   <Target Name="_ResolveAvaloniaLinkInputs">
     <PropertyGroup>
       <_AvaloniaHostRidIsWindows>$(AvaloniaHostRid.StartsWith('win'))</_AvaloniaHostRidIsWindows>
+      <_AvaloniaHostRidIsMacOS>$(AvaloniaHostRid.StartsWith('osx-'))</_AvaloniaHostRidIsMacOS>
+      <_AvaloniaHostRidIsLinux>$(AvaloniaHostRid.StartsWith('linux-'))</_AvaloniaHostRidIsLinux>
+      <_AvaloniaDesktopNativeDir>$([MSBuild]::NormalizePath('$(RepoRoot)', 'artifacts/avalonianative/$(AvaloniaNativeVersion)', '$(AvaloniaHostRid)'))</_AvaloniaDesktopNativeDir>
+      <_AvaloniaDesktopNativeArchive>$(_AvaloniaDesktopNativeDir)/libAvaloniaNative.a</_AvaloniaDesktopNativeArchive>
+      <_AvaloniaAppleExportsFile>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', 'macos-graphics.exports'))</_AvaloniaAppleExportsFile>
       <_AvaloniaNativeLibExtension Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'">.lib</_AvaloniaNativeLibExtension>
       <_AvaloniaNativeLibExtension Condition="'$(_AvaloniaHostRidIsWindows)' != 'True'">.a</_AvaloniaNativeLibExtension>
-      <GroupNativeLibraries Condition="'$(_AvaloniaHostRidIsWindows)' != 'True' and $(SkiaSharpVersion.StartsWith('4.'))">true</GroupNativeLibraries>
+      <GroupNativeLibraries Condition="'$(_AvaloniaHostRidIsLinux)' == 'True' and $(SkiaSharpVersion.StartsWith('4.'))">true</GroupNativeLibraries>
+      <_AvaloniaHostTargetTriple Condition="'$(AvaloniaHostRid)' == 'linux-arm64'">aarch64-linux-gnu</_AvaloniaHostTargetTriple>
       <!-- The Alpine triple selects musl's loader and the GCC runtime of the sysroot from any Clang host. -->
       <_AvaloniaHostTargetTriple Condition="'$(AvaloniaHostRid)' == 'linux-musl-x64'">x86_64-alpine-linux-musl</_AvaloniaHostTargetTriple>
       <_AvaloniaHostTargetTriple Condition="'$(AvaloniaHostRid)' == 'linux-musl-arm64'">aarch64-alpine-linux-musl</_AvaloniaHostTargetTriple>
@@ -79,6 +86,8 @@
     <Error Condition="'$(HostLibsVersion)' == ''"
            Text="No host libs version is defined for target framework '$(HostLibsTargetFramework)'. Supported: $(HostForgeTargetFrameworks)." />
     <Error Condition="!Exists('$(PackageAssetsDir)')" Text="Host libs directory not found: $(PackageAssetsDir)" />
+    <Error Condition="'$(_AvaloniaHostRidIsMacOS)' == 'True' and !Exists('$(_AvaloniaDesktopNativeArchive)')"
+           Text="AvaloniaNative archive not found: $(_AvaloniaDesktopNativeArchive). Build it with task build-avalonianative." />
     <Error Condition="!Exists('$(AvaloniaNativeLibsDir)')" Text="Avalonia native libs directory not found: $(AvaloniaNativeLibsDir)" />
     <Error Condition="'$(_AvaloniaHostRidIsWindows)' == 'True' and !Exists('$(AngleNativeLibsDir)')"
            Text="ANGLE native libs directory not found: $(AngleNativeLibsDir)" />
@@ -93,7 +102,7 @@
 
     <Error Condition="'@(_AvaloniaNativeLib)' == ''"
            Text="No $(_AvaloniaNativeLibExtension) files were found in $(AvaloniaNativeLibsDir)." />
-    <Error Condition="'$(_AvaloniaHostRidIsWindows)' != 'True' and $(SkiaSharpVersion.StartsWith('4.')) and !Exists('$(AvaloniaNativeLibsDir)/cxx/libc++.a')"
+    <Error Condition="'$(_AvaloniaHostRidIsLinux)' == 'True' and $(SkiaSharpVersion.StartsWith('4.')) and !Exists('$(AvaloniaNativeLibsDir)/cxx/libc++.a')"
            Text="SkiaSharp 4 requires the bundled target libc++ archive: $(AvaloniaNativeLibsDir)/cxx/libc++.a" />
     <Error Condition="'$(_AvaloniaHostRidIsWindows)' == 'True' and '@(_AngleNativeLib)' == ''"
            Text="No ANGLE static libraries were found in $(AngleNativeLibsDir)." />
@@ -102,11 +111,17 @@
 
     <ItemGroup>
       <NativeLibrary Include="@(_AvaloniaNativeLib)" />
+      <NativeLibrary Include="$(_AvaloniaDesktopNativeArchive)" WholeArchive="true"
+                     Condition="'$(_AvaloniaHostRidIsMacOS)' == 'True'" />
       <NativeLibrary Include="@(_AngleNativeLib)" />
       <NativeLibrary Update="@(NativeLibrary)" Condition="'%(NativeLibrary.Filename)' == 'libHarfBuzzSharp'">
        <WholeArchive>true</WholeArchive>
       </NativeLibrary>
       <NativeLibrary Update="@(NativeLibrary)" Condition="'%(NativeLibrary.Filename)' == 'SkiaSharp'">
+       <WholeArchive>true</WholeArchive>
+      </NativeLibrary>
+      <!-- SkiaSharp 4 already contains some libskia objects. Let the linker pull in only the missing ones. -->
+      <NativeLibrary Update="@(NativeLibrary)" Condition="'$(_AvaloniaHostRidIsMacOS)' == 'True' and !$(SkiaSharpVersion.StartsWith('4.')) and '%(NativeLibrary.Filename)' == 'libskia'">
        <WholeArchive>true</WholeArchive>
       </NativeLibrary>
       <NativeLibrary Update="@(NativeLibrary)" Condition="'%(NativeLibrary.Filename)' == 'libSkiaSharp'">
@@ -123,22 +138,27 @@
       <LinkerArg Include="--target=$(_AvaloniaHostTargetTriple)"
                  Condition="'$(_AvaloniaHostTargetTriple)' != ''" />
       <LinkerArg Include="-lfontconfig"
-                 Condition="'$(_AvaloniaHostRidIsWindows)' != 'True'" />
+                 Condition="'$(_AvaloniaHostRidIsLinux)' == 'True'" />
       <LinkerArg Include="-Wl,--version-script=$(AvaloniaExportsFile)"
-                 Condition="'$(_AvaloniaHostRidIsWindows)' != 'True' and '$(AvaloniaExportsFile)' != ''" />
+                 Condition="'$(_AvaloniaHostRidIsLinux)' == 'True' and '$(AvaloniaExportsFile)' != ''" />
+      <LinkerArg Include="-framework AppKit;-framework Carbon;-framework CoreFoundation;-framework CoreGraphics;-framework CoreServices;-framework CoreText;-framework CoreVideo;-framework Foundation;-framework IOSurface;-framework Metal;-framework OpenGL;-framework QuartzCore;-framework UniformTypeIdentifiers;-lobjc"
+                 Condition="'$(_AvaloniaHostRidIsMacOS)' == 'True'" />
+      <LinkerArg Include="-Wl,-exported_symbols_list,&quot;$(_AvaloniaAppleExportsFile)&quot;"
+                 Condition="'$(_AvaloniaHostRidIsMacOS)' == 'True'" />
+      <LinkerInput Include="$(_AvaloniaAppleExportsFile)" Condition="'$(_AvaloniaHostRidIsMacOS)' == 'True'" />
     </ItemGroup>
   </Target>
 
   <!--
     Copies the licenses of the linked inputs next to the templates, by component: the .NET runtime of the
     host libs, SkiaSharp (Skia, HarfBuzz, the third-party code in their archives and, for Linux SkiaSharp 4,
-    libc++) and, on Windows, ANGLE. The RID package turns them into its THIRD-PARTY-NOTICES.txt.
+    libc++), ANGLE on Windows and AvaloniaNative on macOS. The RID package assembles THIRD-PARTY-NOTICES.txt.
   -->
   <Target Name="_CopyAvaloniaHostLicenses"
           DependsOnTargets="_ResolveAvaloniaLinkInputs">
     <PropertyGroup>
       <_AvaloniaHostLicensesDir>$([MSBuild]::NormalizePath('$(AvaloniaHostOutputDir)', 'licenses'))</_AvaloniaHostLicensesDir>
-      <_AvaloniaLibcxxLicense Condition="'$(_AvaloniaHostRidIsWindows)' != 'True' and $(SkiaSharpVersion.StartsWith('4.'))">$(MSBuildProjectDirectory)/../package-skiasharp-static/licenses/libcxx.LICENSE.TXT</_AvaloniaLibcxxLicense>
+      <_AvaloniaLibcxxLicense Condition="'$(_AvaloniaHostRidIsLinux)' == 'True' and $(SkiaSharpVersion.StartsWith('4.'))">$(MSBuildProjectDirectory)/../package-skiasharp-static/licenses/libcxx.LICENSE.TXT</_AvaloniaLibcxxLicense>
     </PropertyGroup>
 
     <Error Condition="!Exists('$(PackageAssetsDir)/licenses/THIRD-PARTY-NOTICES.TXT')"
@@ -151,6 +171,9 @@
     <ItemGroup>
       <_AvaloniaHostLicense Include="$(PackageAssetsDir)/licenses/**/*" Component="dotnet/$(HostLibsVersion)" />
       <_AvaloniaHostLicense Include="$(AvaloniaNativeLibsDir)/licenses/**/*" Component="skiasharp" />
+      <_AvaloniaHostLicense Include="$(_AvaloniaDesktopNativeDir)/licenses/**/*"
+                            Component="avalonianative/$(AvaloniaNativeVersion)"
+                            Condition="'$(_AvaloniaHostRidIsMacOS)' == 'True'" />
       <_AvaloniaHostLicense Include="$(AngleNativeLibsDir)/licenses/**/*" Component="angle"
                             Condition="'$(_AvaloniaHostRidIsWindows)' == 'True'" />
     </ItemGroup>
