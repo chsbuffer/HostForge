@@ -7,7 +7,7 @@
   ],
   "packages": {
     "ChsBuffer.Avalonia.AppHost": {
-      "12.0.9-skia4": {
+      "12.0.10-skia4": {
         "variant": "skia4",
         "inputs": {
           "runtimes": {
@@ -15,11 +15,10 @@
             "net11.0": {"version": "11.0.0", "vmr-tag": "v11.0.100", "vmr-commit": "297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f"}
           },
           "skiasharp": {"version": "4.157.0", "skia-commit": "51cb594d773b5383a45065ea3c8cbec398ad2c36", "harfbuzz": "14.4.0.200"},
-          "angle": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"},
-          "avalonia-native": {"avalonia": "12.2.0", "url": "https://codeload.github.com/AvaloniaUI/Avalonia/tar.gz/5d9e6d1b0e87337f74f233bead580db186412357", "sha256": "d94c6de1e0feb292fe53a48e58982a3c638d44b2a29dad938a98587efe51294c", "commit": "5d9e6d1b0e87337f74f233bead580db186412357"}
+          "angle": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"}
         }
       },
-      "12.0.9": {
+      "12.0.10": {
         "variant": "skia3",
         "inputs": {
           "runtimes": {
@@ -27,8 +26,31 @@
             "net11.0": {"version": "11.0.0", "vmr-tag": "v11.0.100", "vmr-commit": "297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f"}
           },
           "skiasharp": {"version": "3.119.4", "skia-commit": "7dbfc07dd33181f84e0958afb7ee805c6c769f0b", "harfbuzz": "8.3.1.5"},
-          "angle": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"},
-          "avalonia-native": {"avalonia": "12.2.0", "url": "https://codeload.github.com/AvaloniaUI/Avalonia/tar.gz/5d9e6d1b0e87337f74f233bead580db186412357", "sha256": "d94c6de1e0feb292fe53a48e58982a3c638d44b2a29dad938a98587efe51294c", "commit": "5d9e6d1b0e87337f74f233bead580db186412357"}
+          "angle": {"version": "2.1.27548.20260419", "branch": "chromium/7802", "commit": "1ffb4e6262b07c3891f2b5fefb7bd81a37f92833"}
+        }
+      },
+      "12.2.0.10-skia4": {
+        "variant": "skia4-macos-meta",
+        "inputs": {
+          "runtimes": {
+            "net10.0": {"version": "10.0.15", "vmr-tag": "v10.0.115", "vmr-commit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7"},
+            "net11.0": {"version": "11.0.0", "vmr-tag": "v11.0.100", "vmr-commit": "297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f"}
+          },
+          "skiasharp": {"version": "4.157.0", "skia-commit": "51cb594d773b5383a45065ea3c8cbec398ad2c36", "harfbuzz": "14.4.0.200"},
+          "avalonia-native": {"avalonia": "12.2.0", "url": "https://codeload.github.com/AvaloniaUI/Avalonia/tar.gz/5d9e6d1b0e87337f74f233bead580db186412357", "sha256": "d94c6de1e0feb292fe53a48e58982a3c638d44b2a29dad938a98587efe51294c", "commit": "5d9e6d1b0e87337f74f233bead580db186412357"},
+          "windows-linux-version": "12.0.10-skia4"
+        }
+      },
+      "12.2.0.10": {
+        "variant": "skia3-macos-meta",
+        "inputs": {
+          "runtimes": {
+            "net10.0": {"version": "10.0.15", "vmr-tag": "v10.0.115", "vmr-commit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7"},
+            "net11.0": {"version": "11.0.0", "vmr-tag": "v11.0.100", "vmr-commit": "297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f"}
+          },
+          "skiasharp": {"version": "3.119.4", "skia-commit": "7dbfc07dd33181f84e0958afb7ee805c6c769f0b", "harfbuzz": "8.3.1.5"},
+          "avalonia-native": {"avalonia": "12.2.0", "url": "https://codeload.github.com/AvaloniaUI/Avalonia/tar.gz/5d9e6d1b0e87337f74f233bead580db186412357", "sha256": "d94c6de1e0feb292fe53a48e58982a3c638d44b2a29dad938a98587efe51294c", "commit": "5d9e6d1b0e87337f74f233bead580db186412357"},
+          "windows-linux-version": "12.0.10"
         }
       }
     },

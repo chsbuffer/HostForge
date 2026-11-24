@@ -20,7 +20,7 @@ public class AvaloniaAppHostMacOSTests
     public void RidPackage_NoticesCoverTheLinkedInputs()
     {
         string nupkg = Path.Combine(RepoContext.AvaloniaPackageOutputDir,
-            $"{RepoContext.GetAvaloniaRidPackageId(Rid)}.{RepoContext.AvaloniaPackageIdentityVersion}.nupkg");
+            $"{RepoContext.GetAvaloniaRidPackageId(Rid)}.{RepoContext.AvaloniaMacOSPackageIdentityVersion}.nupkg");
         AssertEx.FileExists(nupkg);
         PackageNotices.AssertCoverTemplateInputs(nupkg, Rid);
     }

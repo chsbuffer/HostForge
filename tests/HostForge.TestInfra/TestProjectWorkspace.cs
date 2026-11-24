@@ -145,7 +145,10 @@ public sealed class TestProjectWorkspace : IAsyncDisposable
         // As in an application, the RID package brings the Build package and the SkiaSharp and HarfBuzzSharp
         // versions that its templates link.
         ProjectItemGroupElement itemGroup = project.AddItemGroup();
-        AddPackageReference(itemGroup, RepoContext.GetAvaloniaRidPackageId(appHostPackageRid), "$(AvaloniaAppHostPackageVersion)");
+        string appHostPackageVersion = appHostPackageRid.StartsWith("osx-", StringComparison.Ordinal)
+            ? "$(AvaloniaAppHostMacOSPackageVersion)"
+            : "$(AvaloniaAppHostPackageVersion)";
+        AddPackageReference(itemGroup, RepoContext.GetAvaloniaRidPackageId(appHostPackageRid), appHostPackageVersion);
         // Skottie also brings SkiaSharp.SceneGraph and SkiaSharp.Resources, each with its own libSkiaSharp imports.
         AddPackageReference(itemGroup, "SkiaSharp.Skottie", "$(SkiaSharpVersion)");
         if (referenceAvaloniaWin32)

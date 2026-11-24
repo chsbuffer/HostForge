@@ -478,7 +478,7 @@ class ApplyTests(UpstreamTestCase):
         props.write_text(re.sub(r"(<AvaloniaNativePackageVersion>\$\(AvaloniaNativeVersion\)\.)\d+",
                                 r"\g<1>2", props.read_text(encoding="utf-8")), encoding="utf-8")
         self.relock()
-        major = self.props()["_Major"]
+        previous = self.props()
         old = self.pinned["avalonia"]
         old_commit = self.pinned["avalonia-sources"][self.pinned["avalonia-native"]]["commit"]
         readme = self.root / "src/package-avalonia-native-static/README.md"
@@ -498,7 +498,9 @@ class ApplyTests(UpstreamTestCase):
         values = self.props()
         self.assertEqual((new, new), (values["AvaloniaVersion"], values["AvaloniaNativeVersion"]))
         self.assertEqual(f"{new}.1", values["AvaloniaNativePackageVersion"])
-        self.assertEqual(str(int(major) + 1), values["_Major"], "macOS templates link AvaloniaNative")
+        self.assertEqual(previous["_Major"], values["_Major"])
+        self.assertEqual(previous["AvaloniaAppHostPackageVersion"], values["AvaloniaAppHostPackageVersion"])
+        self.assertEqual(f"{new}.{values['_Major']}", values["AvaloniaAppHostMacOSPackageVersion"])
         commit = fake_commit("avalonia " + new)
         source = repo_versions.load(self.root)["avalonia-sources"][new]
         self.assertEqual({"url": upstream.AVALONIA_ARCHIVE.format(commit=commit), "commit": commit,
@@ -674,7 +676,7 @@ class AvaloniaMinorTests(UpstreamTestCase):
         props = self.root / package_inputs.PROPS
         set_text(props, r"(<AvaloniaNativePackageVersion>\$\(AvaloniaNativeVersion\)\.)\d+", r"\g<1>3")
         self.relock()
-        major = self.props()["_Major"]
+        previous = self.props()
         client = fake_upstream(self.root, avalonia=True, avalonia_minor=True, avalonia_major=True)
         code, stdout, stderr, metadata = self.apply(client, "--group", "avalonia-minor")
         self.assertEqual(0, code, stderr)
@@ -682,7 +684,9 @@ class AvaloniaMinorTests(UpstreamTestCase):
         values = self.props()
         self.assertEqual((new, new, f"{new}.1"), (values["AvaloniaVersion"], values["AvaloniaNativeVersion"],
                                                   values["AvaloniaNativePackageVersion"]))
-        self.assertEqual(str(int(major) + 1), values["_Major"])
+        self.assertEqual(previous["_Major"], values["_Major"])
+        self.assertEqual(previous["AvaloniaAppHostPackageVersion"], values["AvaloniaAppHostPackageVersion"])
+        self.assertEqual(f"{new}.{values['_Major']}", values["AvaloniaAppHostMacOSPackageVersion"])
         commit = fake_commit("avalonia " + new)
         self.assertEqual({"url": upstream.AVALONIA_ARCHIVE.format(commit=commit), "commit": commit,
                           "sha256": hashlib.sha256(b"archive " + new.encode()).hexdigest()},

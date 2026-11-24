@@ -93,16 +93,15 @@ Each RID package also depends on SkiaSharp and HarfBuzzSharp at the linked versi
 for link, pack and test commands. When omitted, `SkiaSharpVersion` in `Directory.Build.props`
 (the Skia 3 version) applies; set it to the Skia 4 version from
 `native/skiasharp/versions.json` for Skia 4.
-Package IDs are shared, and the Skia 4 variant adds `skia4` to the prerelease part
-of every RID, Build and meta-package version (`<major>` is `_Major` in `Directory.Build.props`):
+Windows/Linux RID packages and Build use `<Avalonia major>.0.<_Major>`.
+The meta-package and macOS RID packages use `<full Avalonia version>.<_Major>`.
+The meta-package pins each RID dependency to its platform's package version.
+An Avalonia minor or patch upgrade can reuse the Windows/Linux and Build packages.
+SkiaSharp 4 appends `-skia4` to both version formats, or `-beta.skia4` when
+`_Preview=beta`. SkiaSharp 3 uses just the configured preview suffix, if any.
 
-| `_Preview` | SkiaSharp 3 | SkiaSharp 4 |
-|---|---|---|
-| empty | `12.0.<major>` | `12.0.<major>-skia4` |
-| `beta` | `12.0.<major>-beta` | `12.0.<major>-beta.skia4` |
-
-Increment `_Major` whenever the AppHost inputs (.NET runtimes, SkiaSharp, ANGLE) change;
-the package lock test fails otherwise. Upstream pull requests and `task upstream-apply`
+Increment `_Major` when a package's locked inputs change and its version is unchanged.
+Upstream pull requests and `task upstream-apply`
 increment it automatically. See the upstream tracking section of the root
 [DEVELOPMENT.md](../../DEVELOPMENT.md#上游跟踪与版本守卫).
 

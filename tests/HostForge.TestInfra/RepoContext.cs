@@ -27,6 +27,9 @@ public static class RepoContext
 
     public static string AvaloniaPackageIdentityVersion { get; } = StripSemVerBuildMetadata(AvaloniaPackageVersion);
 
+    public static string AvaloniaMacOSPackageIdentityVersion { get; } =
+        StripSemVerBuildMetadata(ReadProperty("AvaloniaAppHostMacOSPackageVersion"));
+
     public static string SkiaSharpVersion { get; } = ReadProperty("SkiaSharpVersion");
 
     public static string SkiaSharpPackageVersion { get; } = ReadProperty("SkiaSharpPackageVersion");

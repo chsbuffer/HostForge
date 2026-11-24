@@ -130,9 +130,15 @@ class LockMechanicsTests(unittest.TestCase):
         records = package_inputs.compute(self.root)
         values = package_inputs.evaluate([self.props])
         apphost = records["ChsBuffer.Avalonia.AppHost"]
-        base = f"{values['TargetAvaloniaVersion']}.{values['_Major']}"
-        for variant, item in apphost.items():
-            self.assertEqual(base if variant == "skia3" else f"{base}-{variant}", item["version"])
+        avalonia = values["AvaloniaVersion"]
+        major = values["_Major"]
+        for variant, suffix in (("skia3", ""), ("skia4", "-skia4")):
+            shared = f"{avalonia.split('.')[0]}.0.{major}{suffix}"
+            self.assertEqual(shared, apphost[variant]["version"])
+            macos = apphost[f"{variant}-macos-meta"]
+            self.assertEqual(f"{avalonia}.{major}{suffix}", macos["version"])
+            self.assertEqual(shared, macos["inputs"]["windows-linux-version"])
+
         for item in records["ChsBuffer.SkiaSharp.Static"].values():
             self.assertRegex(item["version"], rf"^{re.escape(item['inputs']['version'])}\.\d+$")
         angle = records["ChsBuffer.Angle.Static"]["default"]
@@ -169,7 +175,7 @@ class LockMechanicsTests(unittest.TestCase):
         else:
             replace(angle, r'^(sources:\n(?:  .*\n)*?  branch: .*\n)', r'\g<1>  commit: "' + "1" * 40 + '"\n')
         apphost = [("ChsBuffer.Avalonia.AppHost", variant) for variant in
-                   package_inputs.compute(self.root)["ChsBuffer.Avalonia.AppHost"]]
+                   package_inputs.compute(self.root)["ChsBuffer.Avalonia.AppHost"] if not variant.endswith("-macos-meta")]
         self.assertEqual(sorted([("ChsBuffer.Angle.Static", "default")] + apphost), self.violated())
         increment(self.props, r"(<AnglePackageVersion>.*\)\.)(\d+)(</AnglePackageVersion>)")
         self.assertEqual(sorted(apphost), self.violated())
@@ -181,7 +187,8 @@ class LockMechanicsTests(unittest.TestCase):
         replace(self.props, r"(<_AvaloniaAppHostPreview Condition=\"[^\"]*'\$\(_Preview\)' == ''\">)skia4(<)", r"\1\2")
         increment(self.props, MAJOR)
         conflicts = package_inputs.conflicts(package_inputs.compute(self.root))
-        self.assertEqual([("ChsBuffer.Avalonia.AppHost", ["skia3", "skia4"])],
+        self.assertEqual([("ChsBuffer.Avalonia.AppHost", ["skia3", "skia4"]),
+                          ("ChsBuffer.Avalonia.AppHost", ["skia3-macos-meta", "skia4-macos-meta"])],
                          [(item["family"], item["variants"]) for item in conflicts])
         before = self.lock_text()
         for arguments in ((), ("--check",)):

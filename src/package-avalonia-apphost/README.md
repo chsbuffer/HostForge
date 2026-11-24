@@ -16,6 +16,20 @@ Prelinked Avalonia 12 apphost and single-file host templates for .NET 10 (10.0.1
 | `ChsBuffer.Avalonia.AppHost.osx-x64` | `osx-x64` only |
 | `ChsBuffer.Avalonia.AppHost.osx-arm64` | `osx-arm64` only |
 
+### Choose a package version
+
+For the meta-package and macOS RID packages, use
+`<Avalonia major>.<minor>.<patch>.<HostForge major>`. Match the first three
+components to the Avalonia version used by your application.
+
+For a standalone Windows or Linux RID package, including Alpine, use
+`<Avalonia major>.0.<HostForge major>`. For example, use `12.0.<HostForge major>`
+with Avalonia 12. The meta-package pins each RID package to its platform's
+version, so an Avalonia minor or patch upgrade can reuse the Windows and Linux
+packages.
+
+SkiaSharp 4 packages use the `-skia4` suffix on the corresponding versions.
+
 Each RID package depends on the SkiaSharp and HarfBuzzSharp versions linked into its templates.
 
 Linux templates require the system's `libfontconfig.so.1` to start.

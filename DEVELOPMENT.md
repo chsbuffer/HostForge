@@ -466,7 +466,7 @@ flowchart LR
 | `publish-nuget` | Linux | 测试成功后，通过 Trusted Publishing 发布 native 和两条 Avalonia AppHost 版本线的 NuGet 包 |
 | `cleanup-all` | Linux | 测试和发布成功后删除已打包的中间工件；PR 中在测试成功后删除，fork 的 PR 除外 |
 
-AppHost 的 link、pack 与平台集成测试从 `plan-all.outputs.versions` 选择 Skia 版本，Linux HostLibs 的 RID 来自 `plan-all.outputs.hostlibs-linux-targets`，glibc ARM64 与 Alpine 的 AppHost job 使用 `plan-all.outputs.linux-cross-targets` 中的 RID 与 runner。官方构建容器的镜像由 [`upstream-container`](.github/actions/upstream-container/action.yml) 从 `versions.json` 读取。Skia 4 使用独立 job 与 `avalonia-host-skia4-*` / `nuget-avalonia-apphost-skia4` 工件，链接产物路径保持 `artifacts/avalonia-host/<版本>/<TFM>/<RID>`。设置 `_Preview=beta` 时，Skia 4 包版本为 `12.0.<_Major>-beta.skia4`；留空时为 `12.0.<_Major>-skia4`。本地把 `SKIASHARP_VERSION` 设为 Skia 4 版本，依次 link、test、pack，详见 [Avalonia AppHost 打包说明](src/package-avalonia-apphost/DEVELOPMENT.md)。
+AppHost 的 link、pack 与平台集成测试从 `plan-all.outputs.versions` 选择 Skia 版本，Linux HostLibs 的 RID 来自 `plan-all.outputs.hostlibs-linux-targets`，glibc ARM64 与 Alpine 的 AppHost job 使用 `plan-all.outputs.linux-cross-targets` 中的 RID 与 runner。官方构建容器的镜像由 [`upstream-container`](.github/actions/upstream-container/action.yml) 从 `versions.json` 读取。Skia 4 使用独立 job 与 `avalonia-host-skia4-*` / `nuget-avalonia-apphost-skia4` 工件，链接产物路径保持 `artifacts/avalonia-host/<版本>/<TFM>/<RID>`。设置 `_Preview=beta` 时，Skia 4 包版本带 `-beta.skia4` 后缀；留空时带 `-skia4` 后缀。本地把 `SKIASHARP_VERSION` 设为 Skia 4 版本，依次 link、test、pack，详见 [Avalonia AppHost 打包说明](src/package-avalonia-apphost/DEVELOPMENT.md)。
 
 NativeAOT 发布测试按阶段分工，两处都覆盖全部 TFM：RID 包在构建它的 job（`build-skia-*`、`test-skia-*`）里由 RID 消费者验证；`test-all` 设置 `HOSTFORGE_TEST_META=true`，只验证三元包消费者，元包恢复的是同一批 RID 包。AppHost 链接时，同一 RID 的各 TFM 并行链接。
 
@@ -593,13 +593,14 @@ SkiaSharp 的 recipe 按 mono/SkiaSharp 对应标签的构建文件（各平台 
 
 | 包族 | 上游输入 | 输入变化时递增 |
 | --- | --- | --- |
-| `ChsBuffer.Avalonia.AppHost`（每条 SkiaSharp 线） | 各 TFM 的运行时与 VMR 标签/commit、SkiaSharp 与 skia commit、HarfBuzzSharp、ANGLE | `Directory.Build.props` 的 `_Major` |
+| `ChsBuffer.Avalonia.AppHost` Windows/Linux 与 Build（每条 SkiaSharp 线） | 各 TFM 的运行时与 VMR 标签/commit、SkiaSharp 与 skia commit、HarfBuzzSharp、ANGLE | `Directory.Build.props` 的 `_Major` |
+| `ChsBuffer.Avalonia.AppHost` macOS 与元包（每条 SkiaSharp 线） | 各 TFM 的运行时与 VMR 标签/commit、SkiaSharp 与 skia commit、HarfBuzzSharp、Avalonia.Native 源码归档、Windows/Linux 依赖版本 | `Directory.Build.props` 的 `_Major` |
 | `ChsBuffer.AppHost.Static`（每个 TFM） | 运行时与 VMR 标签/commit | `AppHostStatic.csproj` 中 `<Version>` 的 `-alpha.N` |
 | `ChsBuffer.SkiaSharp.Static`（每条 SkiaSharp 线） | skia commit、HarfBuzzSharp | 对应 `SkiaSharpPackageVersion` 的修订号 |
 | `ChsBuffer.Angle.Static` | `AngleVersion`、分支、commit | `AnglePackageVersion` 的修订号 |
 | `ChsBuffer.Avalonia.Native.Static` | Avalonia 源码归档（URL、SHA-256、commit） | `AvaloniaNativePackageVersion` 的修订号 |
 
-Avalonia 版本不是 AppHost 的输入。版本公式本身已随输入变化时（例如运行时版本变化使 `AppHostStatic` 的版本前缀变化），无需另外递增。
+单独升级 Avalonia 的 minor 或 patch 版本只会改变 macOS RID 包与元包的 AppHost 版本。版本公式本身已随输入变化时（例如运行时版本变化使 `AppHostStatic` 的版本前缀变化），无需另外递增。
 
 | 命令 | 作用 |
 | --- | --- |
