@@ -15,7 +15,7 @@ alongside Avalonia:
 ```
 
 Publish with an explicit RID, for example `dotnet publish -c Release -r linux-x64`.
-Use version `4.157.0.3` for SkiaSharp 4. A single architecture can instead reference
+Use version `4.158.0.1` for SkiaSharp 4. A single architecture can instead reference
 `ChsBuffer.SkiaSharp.Static.<RID>`. Builds without NativeAOT or without a RID load
 the dynamic libraries as usual.
 
@@ -25,7 +25,7 @@ Both versions support `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`,
 | Static package | Minimum managed SkiaSharp | Minimum managed HarfBuzzSharp |
 | --- | --- | --- |
 | 3.119.4 | 3.119.4 | 8.3.1.5 |
-| 4.157.0 | 4.157.0 | 14.4.0.200 |
+| 4.158.0 | 4.158.0 | 15.0.0 |
 
 ## Requirements
 
@@ -33,7 +33,7 @@ Both versions support `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`,
   Alpine 3.17; publishing on a newer system can raise the executable's requirements.
   With SkiaSharp 4, Avalonia 12 should request Vulkan API 1.3.
 - macOS: SkiaSharp 3.119.4 targets macOS 10.13 on x64 and 11.0 on arm64; SkiaSharp
-  4.157.0 targets macOS 12.0.
+  4.158.0 targets macOS 12.0.
 
 ANGLE on Windows and AvaloniaNative on macOS are separate packages:
 `ChsBuffer.Angle.Static` and `ChsBuffer.Avalonia.Native.Static`.
