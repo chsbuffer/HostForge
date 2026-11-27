@@ -5,7 +5,7 @@
     <AngleVersion>2.1.27548.20260419</AngleVersion>
     <SkiaSharpVersion Condition="'$(SkiaSharpVersion)' == ''">3.119.4</SkiaSharpVersion>
     <HarfBuzzVersion Condition="'$(HarfBuzzVersion)' == '' and '$(SkiaSharpVersion)' == '3.119.4'">8.3.1.5</HarfBuzzVersion>
-    <HarfBuzzVersion Condition="'$(HarfBuzzVersion)' == '' and '$(SkiaSharpVersion)' == '4.157.0'">14.4.0.200</HarfBuzzVersion>
+    <HarfBuzzVersion Condition="'$(HarfBuzzVersion)' == '' and '$(SkiaSharpVersion)' == '4.158.0'">15.0.0</HarfBuzzVersion>
     <AvaloniaNativeVersion Condition="'$(AvaloniaNativeVersion)' == ''">12.2.0</AvaloniaNativeVersion>
   </PropertyGroup>
 
@@ -27,14 +27,14 @@
   <!-- Increment only the affected native version line when publishing a fix. -->
   <PropertyGroup>
     <SkiaSharpPackageVersion Condition="$(SkiaSharpVersion.StartsWith('3.'))">$(SkiaSharpVersion).2</SkiaSharpPackageVersion>
-    <SkiaSharpPackageVersion Condition="$(SkiaSharpVersion.StartsWith('4.'))">$(SkiaSharpVersion).3</SkiaSharpPackageVersion>
+    <SkiaSharpPackageVersion Condition="$(SkiaSharpVersion.StartsWith('4.'))">$(SkiaSharpVersion).1</SkiaSharpPackageVersion>
     <AnglePackageVersion>$([System.Version]::Parse('$(AngleVersion)').ToString(3)).2</AnglePackageVersion>
     <AvaloniaNativePackageVersion>$(AvaloniaNativeVersion).1</AvaloniaNativePackageVersion>
   </PropertyGroup>
 
   <PropertyGroup>
     <TargetAvaloniaVersion>12.0</TargetAvaloniaVersion>
-    <_Major>7</_Major>
+    <_Major>8</_Major>
     <_Preview Condition="'$(_Preview)' == ''"></_Preview>
 
     <_AvaloniaAppHostPreview>$(_Preview)</_AvaloniaAppHostPreview>

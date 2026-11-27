@@ -8,7 +8,7 @@
     "native/windows/libHarfBuzzSharp/libHarfBuzzSharp.vcxproj": "bc83e87fd6d3c1e9d36c53a88e4de3c6a035ee67",
     "scripts/cake/native-shared.cake": "ea264584dfab9fed4f525e4d195711f9efebdcd5"
   },
-  "4.157.0": {
+  "4.158.0": {
     "native/linux/build.cake": "89f4b3726c4bb38eb96a88eb480cfe9614edb8f8",
     "native/macos/build.cake": "fad17af09658225e78114c2c53b4ed86243b86c3",
     "native/macos/libHarfBuzzSharp/libHarfBuzzSharp.xcodeproj/project.pbxproj": "380d5b15460c63d9006a1f91a88797b1741c0d90",
